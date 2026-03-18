@@ -20,22 +20,31 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
     const scanner = new Html5Qrcode(container.id)
     scannerRef.current = scanner
 
-    scanner
-      .start(
-        { facingMode: 'environment' },
-        {
-          fps: 10,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-            return { width: Math.min(280, minEdge * 0.8), height: Math.min(140, minEdge * 0.4) }
-          },
-          aspectRatio: 1.333,
-        },
-        (decodedText) => {
-          onScan(decodedText)
-        },
-        () => {}
-      )
+    const config = {
+      fps: 10,
+      qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+        return { width: Math.min(280, minEdge * 0.8), height: Math.min(140, minEdge * 0.4) }
+      },
+      aspectRatio: 1.333,
+    }
+    const onSuccess = (decodedText: string) => onScan(decodedText)
+    const onError = () => {}
+
+    Html5Qrcode.getCameras()
+      .then((cameras) => {
+        if (!cameras || cameras.length === 0) {
+          setCameraError('No cameras found. Allow camera access and try again.')
+          return
+        }
+        const back = cameras.find(
+          (c) =>
+            /back|environment|rear/i.test(c.label) ||
+            (c as { facingMode?: string }).facingMode === 'environment'
+        )
+        const cameraId = back?.id ?? cameras[0].id
+        return scanner.start(cameraId, config, onSuccess, onError)
+      })
       .catch((err: unknown) => {
         console.error('Camera start failed:', err)
         const msg = err instanceof Error ? err.message : String(err)
