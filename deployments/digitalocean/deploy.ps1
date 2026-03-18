@@ -98,16 +98,35 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 Set-Location $repoRoot
 
 $config = Load-Config $ConfigPath
+
+# Optional: if Supabase not in .env.deploy, try project .env or scanner-app/.env
+$supabaseUrl = Get-Setting $config 'VITE_SUPABASE_URL' $null
+$supabaseAnonKey = Get-Setting $config 'VITE_SUPABASE_ANON_KEY' $null
+if (-not $supabaseUrl -or -not $supabaseAnonKey) {
+  foreach ($envPath in @((Join-Path $repoRoot '.env'), (Join-Path $repoRoot 'scanner-app\.env'))) {
+    if (Test-Path $envPath) {
+      $envConfig = Load-Config $envPath
+      if (-not $supabaseUrl) { $supabaseUrl = Get-Setting $envConfig 'VITE_SUPABASE_URL' $null }
+      if (-not $supabaseAnonKey) { $supabaseAnonKey = Get-Setting $envConfig 'VITE_SUPABASE_ANON_KEY' $null }
+      if ($supabaseUrl -and $supabaseAnonKey) {
+        Write-Info "Using Supabase URL/key from $envPath"
+        break
+      }
+    }
+  }
+}
+
+if (-not $supabaseUrl -or -not $supabaseAnonKey) {
+  throw "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Add them to deployments/digitalocean/.env.deploy or to your project .env / scanner-app/.env"
+}
 $doAccessToken = Get-Setting $config 'DO_ACCESS_TOKEN' $null -Required
-$aftershipKey = Get-Setting $config 'VITE_AFTERSHIP_API_KEY' $null -Required
-$supabaseUrl = Get-Setting $config 'VITE_SUPABASE_URL' $null -Required
-$supabaseAnonKey = Get-Setting $config 'VITE_SUPABASE_ANON_KEY' $null -Required
+$aftershipKey = Get-Setting $config 'VITE_AFTERSHIP_API_KEY' ''
 $metabaseSiteUrl = Get-Setting $config 'VITE_METABASE_SITE_URL' $null
 $metabaseSecretKey = Get-Setting $config 'VITE_METABASE_SECRET_KEY' $null
 $metabaseQuestionId = Get-Setting $config 'VITE_METABASE_QUESTION_ID' $null
-$appName = Get-Setting $config 'DO_APP_NAME' 'cursor-test-project'
+$appName = Get-Setting $config 'DO_APP_NAME' 'cursor-test-project-app'
 $region = Get-Setting $config 'DO_REGION' 'nyc'
-$githubRepo = Get-Setting $config 'DO_GITHUB_REPO' $null -Required
+$githubRepo = Get-Setting $config 'DO_GITHUB_REPO' 'Paeddle/CursorTestProjectApp'
 $githubBranch = Get-Setting $config 'DO_GITHUB_BRANCH' 'main'
 
 $env:DIGITALOCEAN_ACCESS_TOKEN = $doAccessToken
@@ -152,9 +171,10 @@ if (Test-Path $appIdFile) {
   & $doctlPath apps create-deployment $appId --force-rebuild | Out-Null
 } else {
   Write-Info "Creating new DigitalOcean App ($appName in $region)"
-  $appId = (& $doctlPath apps create --spec $specGenerated --format ID --no-header).Trim()
+  $createOut = & $doctlPath apps create --spec $specGenerated --format ID --no-header 2>&1
+  $appId = if ($createOut) { $createOut.ToString().Trim() } else { $null }
   if (-not $appId) {
-    throw "Failed to create DigitalOcean App. Check the output above for errors."
+    throw "Failed to create DigitalOcean App. Add DO_ACCESS_TOKEN to deployments/digitalocean/.env.deploy (get one at https://cloud.digitalocean.com/account/api/tokens) and run this script again."
   }
   Set-Content -Path $appIdFile -Value $appId
   Write-Info "Created App with ID $appId (stored in $appIdFile)"

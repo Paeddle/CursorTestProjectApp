@@ -1,5 +1,9 @@
 # DigitalOcean Deployment Guide
 
+**Short version:** See **`deployments/digitalocean/DEPLOY_SIMPLE.md`** — add your DO token to `.env.deploy` and run one PowerShell command.
+
+---
+
 This guide will help you deploy your Vite React app to DigitalOcean App Platform.
 
 ## Prerequisites
