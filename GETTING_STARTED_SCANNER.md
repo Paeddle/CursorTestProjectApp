@@ -96,3 +96,17 @@ Then go back to the Order Tracker → **PO Info** tab → click **Refresh**. You
 | Scanner          | http://localhost:5174 | `cd scanner-app && npm run dev` |
 
 Both use the same Supabase project and the same `.env` Supabase values (root for Order Tracker, `scanner-app/.env` for the scanner).
+
+---
+
+## Deploy to DigitalOcean (main app + scanner)
+
+The whole project (Order Tracker and scanner) is deployed to **DigitalOcean App Platform**.
+
+1. **One-time:** Get a DigitalOcean token from https://cloud.digitalocean.com/account/api/tokens (Write scope).
+2. **One-time:** Create `deployments/digitalocean/.env.deploy` and set `DO_ACCESS_TOKEN=<your-token>`. Put your GitHub repo as `DO_GITHUB_REPO=Paeddle/CursorTestProjectApp`. Leave `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` empty if your project root `.env` already has them — the script will use those.
+3. From the **project root** run:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1
+   ```
+4. When it finishes, your app is live at the URL shown (e.g. `https://cursor-test-project-app-xxxxx.ondigitalocean.app`). Order Tracker at `/`, scanner at `/scanner`. Pushing to `main` triggers an automatic redeploy.

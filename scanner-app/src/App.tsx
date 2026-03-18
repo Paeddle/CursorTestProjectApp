@@ -166,7 +166,7 @@ function App() {
               This deployment is missing Supabase configuration. Add environment variables{' '}
               <strong>VITE_SUPABASE_URL</strong> and <strong>VITE_SUPABASE_ANON_KEY</strong> in your host&apos;s
               settings (e.g. <strong>DigitalOcean</strong> App → Settings → App-Level Environment Variables, or{' '}
-              <strong>Netlify</strong> Environment Variables), then trigger a new deploy. Without these, barcode and
+              <strong>DigitalOcean</strong> App → Settings → Environment Variables), then trigger a new deploy. Without these, barcode and
               document scanning cannot save data.
             </div>
           </section>
@@ -215,7 +215,7 @@ function App() {
               className="btn btn-secondary"
               onClick={async () => {
                 if (!isSupabaseConfigured || !supabase) {
-                  showError('Configure Supabase first: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s environment variables (e.g. DigitalOcean or Netlify) and redeploy.')
+                  showError('Configure Supabase first: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s environment variables (e.g. DigitalOcean App env vars) and redeploy.')
                   return
                 }
                 if (!poNumber.trim()) {
@@ -277,7 +277,7 @@ function App() {
               className="btn btn-secondary"
               onClick={async () => {
                 if (!isSupabaseConfigured || !supabase) {
-                  showError('Configure Supabase first: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s environment variables (e.g. DigitalOcean or Netlify) and redeploy.')
+                  showError('Configure Supabase first: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s environment variables (e.g. DigitalOcean App env vars) and redeploy.')
                   return
                 }
                 if (!poNumber.trim()) {

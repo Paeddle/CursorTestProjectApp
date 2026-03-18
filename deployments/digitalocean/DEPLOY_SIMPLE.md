@@ -18,7 +18,7 @@ Your repo is already set up. You only need to add your **DigitalOcean token** an
    ```
    (paste your token after the `=`)
 
-**Supabase:** If your project already has a `.env` or `scanner-app/.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, leave those two lines in `.env.deploy` empty — the script will use the values from your project `.env`. Otherwise paste the same URL and anon key you use on Netlify. (The scanner app at `/scanner` needs these to open the barcode/document camera and save data.)
+**Supabase:** If your project already has a `.env` or `scanner-app/.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`, leave those two lines in `.env.deploy` empty — the script will use the values from your project `.env`. Otherwise paste your Supabase project URL and anon key. (The scanner app at `/scanner` needs these to open the barcode/document camera and save data.)
 
 ## 3. Run the deploy
 

@@ -2,7 +2,9 @@
 
 Standalone web app for checking in packages: scan barcodes and add documents (packing slips, paperwork) to a PO. Data is sent to the same Supabase project used by the Order Tracker **PO Info** tab.
 
-**Dev note:** After making code changes, restart the app (`npm run dev` or `npm run dev:phone`) to pick them up. For Netlify redeploys, see **NETLIFY_DEPLOY.md**.
+**Deploy:** This app is deployed with the rest of the project to **DigitalOcean**. From the repo root run `powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1`. The scanner is live at **`/scanner`** on your DigitalOcean app URL (e.g. `https://cursor-test-project-app-xxxxx.ondigitalocean.app/scanner`).
+
+**Dev note:** After making code changes, restart the app (`npm run dev` or `npm run dev:phone`) to pick them up. Redeploy to DigitalOcean by pushing to `main` (auto-deploy) or running the deploy script again.
 
 ## Setup
 
@@ -30,23 +32,12 @@ Standalone web app for checking in packages: scan barcodes and add documents (pa
    ```bash
    npm run dev:phone
    ```
-2. In the terminal you’ll see something like:
-   ```
-   ➜  Local:   http://localhost:5174/
-   ➜  Network: http://192.168.1.xxx:5174/
-   ```
-3. On your phone (connected to the **same Wi‑Fi**), open the **Network** URL in the browser (e.g. `http://192.168.1.xxx:5174`).
-4. Use the scanner: enter PO, scan barcodes or add documents. Camera works best on the phone.
+2. On your phone (same Wi‑Fi), open the **Network** URL shown in the terminal (e.g. `http://192.168.1.xxx:5174`).
+3. Use the scanner: enter PO, scan barcodes or add documents. Camera works best on the phone.
 
-### Option B: Public URL (use anywhere)
+### Option B: Use the live app (anywhere)
 
-Deploy the scanner so you can open it from any network (e.g. at the warehouse).
-
-1. **Build:** `npm run build` (output in `dist/`).
-2. **Deploy** the `dist/` folder to [Vercel](https://vercel.com), [Netlify](https://netlify.com), or similar:
-   - **Vercel:** Drag the `dist` folder onto [vercel.com/new](https://vercel.com/new), or connect your repo and set **Root Directory** to `scanner-app`, **Build command** to `npm run build`, **Output directory** to `dist`. Add env vars `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Project Settings.
-   - **Netlify:** Connect repo, set **Base directory** to `scanner-app`, **Build command** `npm run build`, **Publish directory** `dist`. Add the same env vars in Site settings → Environment variables.
-3. After deploy you’ll get a URL like `https://your-scanner.vercel.app`. Open it on your phone (or any device) to use the scanner.
+Deploy to DigitalOcean (see **Deploy** above). Then open your DigitalOcean app URL + `/scanner` on any device (e.g. `https://cursor-test-project-app-xxxxx.ondigitalocean.app/scanner`). Camera requires HTTPS, which DigitalOcean provides.
 
 ## Usage
 
@@ -56,7 +47,7 @@ Deploy the scanner so you can open it from any network (e.g. at the warehouse).
    - Click **Scan with camera** to use the device camera (grant permission when prompted).
 3. **Document**
    - Choose type: Packing slip / Paperwork / Other.
-   - Click **Choose file or capture** to pick an image or PDF, or use the device camera on mobile.
+   - Click **Choose file** or **Scan with camera** to pick an image/PDF or capture with the camera.
 
 Each barcode and document is stored in Supabase under the current PO and appears in the Order Tracker **PO Info** tab after you refresh.
 
@@ -66,7 +57,7 @@ Each barcode and document is stored in Supabase under the current PO and appears
 npm run build
 ```
 
-Output is in `dist/`. Deploy that folder to any static host (e.g. Vercel, Netlify, or the same domain as the Order Tracker on a path like `/scanner`).
+Output is in `dist/`. The DigitalOcean deploy script builds both the main app and the scanner from this repo and serves the scanner at `/scanner`.
 
 ## Tech
 

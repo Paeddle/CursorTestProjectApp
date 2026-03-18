@@ -85,7 +85,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     }
   }, [stream])
 
-  // Ensure OpenCV + jscanify are loaded in production (Netlify) before we start detecting/cropping.
+  // Ensure OpenCV + jscanify are loaded in production before we start detecting/cropping.
   useEffect(() => {
     let cancelled = false
     setScannerReady(false)
