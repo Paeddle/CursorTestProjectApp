@@ -112,10 +112,11 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     }
   }, [])
 
-  // Live detection + blue outline overlay
+  // Live detection + blue outline overlay (re-run when returning from preview so refs are fresh)
   useEffect(() => {
     if (!hasVideo) return
     if (!scannerReady) return
+    if (capturedBlob !== null) return
     const video = videoRef.current
     const overlay = overlayCanvasRef.current
     const detectCanvas = detectCanvasRef.current
@@ -241,7 +242,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       clearOverlay()
       setCornerPoints(null)
     }
-  }, [hasVideo, processing, scannerReady])
+  }, [hasVideo, processing, scannerReady, capturedBlob])
 
   const handleCapture = async () => {
     const video = videoRef.current
