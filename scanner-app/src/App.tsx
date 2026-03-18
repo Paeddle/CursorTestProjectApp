@@ -30,7 +30,7 @@ function App() {
   const submitBarcode = useCallback(
     async (value: string) => {
       if (!supabase) {
-        showError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify.')
+        showError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s env vars and redeploy.')
         return
       }
       const po = (poNumber || '').trim()
@@ -61,7 +61,7 @@ function App() {
   const uploadDocumentBlob = useCallback(
     async (blob: Blob, fileName: string, ext: string) => {
       if (!supabase) {
-        showError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify.')
+        showError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s env vars and redeploy.')
         return
       }
       const po = (poNumber || '').trim()
@@ -163,8 +163,11 @@ function App() {
           <section className="section">
             <h2 className="section-title">Setup required</h2>
             <div className="status status-error">
-              This deployment is missing Supabase configuration. In Netlify, add environment variables
-              <strong> VITE_SUPABASE_URL</strong> and <strong> VITE_SUPABASE_ANON_KEY</strong>, then redeploy.
+              This deployment is missing Supabase configuration. Add environment variables{' '}
+              <strong>VITE_SUPABASE_URL</strong> and <strong>VITE_SUPABASE_ANON_KEY</strong> in your host&apos;s
+              settings (e.g. <strong>DigitalOcean</strong> App → Settings → App-Level Environment Variables, or{' '}
+              <strong>Netlify</strong> Environment Variables), then trigger a new deploy. Without these, barcode and
+              document scanning cannot save data.
             </div>
           </section>
         ) : null}
@@ -211,6 +214,10 @@ function App() {
               type="button"
               className="btn btn-secondary"
               onClick={async () => {
+                if (!isSupabaseConfigured || !supabase) {
+                  showError('Configure Supabase first: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s environment variables (e.g. DigitalOcean or Netlify) and redeploy.')
+                  return
+                }
                 if (!poNumber.trim()) {
                   showError('Enter a PO number first')
                   return
@@ -269,6 +276,10 @@ function App() {
               type="button"
               className="btn btn-secondary"
               onClick={async () => {
+                if (!isSupabaseConfigured || !supabase) {
+                  showError('Configure Supabase first: add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your host\'s environment variables (e.g. DigitalOcean or Netlify) and redeploy.')
+                  return
+                }
                 if (!poNumber.trim()) {
                   showError('Enter a PO number first')
                   return
