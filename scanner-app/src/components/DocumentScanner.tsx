@@ -85,6 +85,15 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     }
   }, [stream])
 
+  // When returning from preview (Retake), re-attach stream to the video element and resume playback
+  useEffect(() => {
+    if (capturedBlob !== null || !stream) return
+    const video = videoRef.current
+    if (!video) return
+    video.srcObject = stream
+    video.play().catch(() => {})
+  }, [capturedBlob, stream])
+
   // Ensure OpenCV + jscanify are loaded in production before we start detecting/cropping.
   useEffect(() => {
     let cancelled = false
