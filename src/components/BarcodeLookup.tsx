@@ -439,7 +439,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                 {selectedBarcode && (
                   <a
                     className="barcode-lookup-link"
-                    href={googleSearchUrl(`${selectedBarcode} barcode product`)}
+                    href={googleSearchUrl(selectedBarcode)}
                     target="_blank"
                     rel="noreferrer"
                   >
