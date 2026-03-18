@@ -13,6 +13,8 @@ Choose the PowerShell script on Windows or the Bash script on macOS/Linux. Both 
    ```
    DO_ACCESS_TOKEN=pat_XXXXXXXXXXXXXXXXXXXXXXXX
    VITE_AFTERSHIP_API_KEY=your-aftership-key
+   VITE_SUPABASE_URL=https://xxxx.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
     DO_GITHUB_REPO=your-github-username/your-repo
     DO_GITHUB_BRANCH=main                  # optional (default shown)
    DO_APP_NAME=cursor-test-project        # optional (default shown)

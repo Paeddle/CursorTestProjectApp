@@ -100,6 +100,8 @@ Set-Location $repoRoot
 $config = Load-Config $ConfigPath
 $doAccessToken = Get-Setting $config 'DO_ACCESS_TOKEN' $null -Required
 $aftershipKey = Get-Setting $config 'VITE_AFTERSHIP_API_KEY' $null -Required
+$supabaseUrl = Get-Setting $config 'VITE_SUPABASE_URL' $null -Required
+$supabaseAnonKey = Get-Setting $config 'VITE_SUPABASE_ANON_KEY' $null -Required
 $metabaseSiteUrl = Get-Setting $config 'VITE_METABASE_SITE_URL' $null
 $metabaseSecretKey = Get-Setting $config 'VITE_METABASE_SECRET_KEY' $null
 $metabaseQuestionId = Get-Setting $config 'VITE_METABASE_QUESTION_ID' $null
@@ -125,6 +127,8 @@ $replacements = @{
   '__APP_NAME__' = $appName
   '__REGION__' = $region
   '__VITE_AFTERSHIP_API_KEY__' = $aftershipKey
+  '__VITE_SUPABASE_URL__' = $supabaseUrl
+  '__VITE_SUPABASE_ANON_KEY__' = $supabaseAnonKey
   '__VITE_METABASE_SITE_URL__' = if ($metabaseSiteUrl) { $metabaseSiteUrl } else { '' }
   '__VITE_METABASE_SECRET_KEY__' = if ($metabaseSecretKey) { $metabaseSecretKey } else { '' }
   '__VITE_METABASE_QUESTION_ID__' = if ($metabaseQuestionId) { $metabaseQuestionId } else { '' }
