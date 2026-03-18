@@ -185,7 +185,8 @@ Write-Info "Waiting for deployment to finish..."
 
 $defaultIngress = (& $doctlPath apps get $appId --format DefaultIngress --no-header).Trim()
 if ($defaultIngress) {
-  Write-Info "Deployment complete. Live URL: https://$defaultIngress"
+  if ($defaultIngress -notmatch '^https?://') { $defaultIngress = "https://$defaultIngress" }
+  Write-Info "Deployment complete. Live URL: $defaultIngress"
 } else {
   Write-Warn "Deployment finished, but the live URL could not be retrieved. Check the DigitalOcean dashboard."
 }
