@@ -1,0 +1,30 @@
+{
+  "name": "web-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "prebuild": "node -e \"const fs = require('fs'); console.log('=== BUILD DEBUG ==='); console.log('CWD:', process.cwd()); try { console.log('Root files:', fs.readdirSync('.').join(', ')); } catch(e) { console.log('Error reading root:', e.message); } try { console.log('src exists:', fs.existsSync('src')); if (fs.existsSync('src')) console.log('src files:', fs.readdirSync('src').join(', ')); } catch(e) { console.log('Error checking src:', e.message); } console.log('index.html exists:', fs.existsSync('index.html')); console.log('==================');\"",
+    "build": "npm run prebuild && tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.2",
+    "@types/papaparse": "^5.3.16",
+    "jose": "^6.1.2",
+    "papaparse": "^5.5.3",
+    "react": "^18.2.0",
+    "react-barcode": "^1.6.1",
+    "react-dom": "^18.2.0",
+    "recharts": "^3.8.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "pdf-parse": "^2.4.5",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8"
+  }
+}

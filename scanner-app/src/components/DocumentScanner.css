@@ -1,0 +1,130 @@
+.document-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.document-scanner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+.document-scanner-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #e2e8f0;
+}
+
+.document-scanner-close {
+  padding: 0.5rem 1rem;
+  background: #475569;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.document-scanner-close:hover {
+  background: #64748b;
+}
+
+.document-scanner-error {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: #fecaca;
+}
+
+.document-scanner-camera {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #000;
+  padding: 0.5rem;
+  position: relative;
+}
+
+.document-scanner-camera video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.document-scanner-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.document-scanner-capture-error {
+  padding: 0.5rem 1rem;
+  margin: 0;
+  text-align: center;
+  color: #fecaca;
+  font-size: 0.9rem;
+  background: #7f1d1d;
+}
+
+.document-scanner-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  padding: 1rem;
+  background: #1e293b;
+  border-top: 1px solid #334155;
+}
+
+.document-scanner-actions-bottom {
+  border-top: 1px solid #334155;
+}
+
+.document-scanner-actions .btn {
+  min-width: 120px;
+}
+
+.btn-capture {
+  font-size: 1rem;
+  padding: 0.75rem 1.5rem;
+}
+
+.document-scanner-preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.document-scanner-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.document-scanner-hidden-canvas {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}

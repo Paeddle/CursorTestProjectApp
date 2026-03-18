@@ -1,0 +1,260 @@
+.po-info-page {
+  padding: 1.5rem 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.po-info-header {
+  margin-bottom: 1.25rem;
+}
+
+.po-info-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.25rem 0;
+}
+
+.po-info-subtitle {
+  color: #334155;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.po-info-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.po-info-search {
+  flex: 1;
+  max-width: 320px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.po-info-search::placeholder {
+  color: #64748b;
+}
+
+.po-info-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.po-info-refresh {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.po-info-refresh:hover:not(:disabled) {
+  background: #334155;
+  border-color: #64748b;
+}
+
+.po-info-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.po-info-error {
+  padding: 0.75rem 1rem;
+  background: #7f1d1d;
+  color: #fecaca;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.po-info-loading,
+.po-info-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #94a3b8;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 1px solid #334155;
+}
+
+.po-info-setup {
+  padding: 1.5rem;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+}
+
+.po-info-setup p {
+  margin: 0 0 0.5rem 0;
+}
+
+.po-info-setup code {
+  background: #0f172a;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.po-info-setup pre {
+  margin: 0.75rem 0 1rem 0;
+  padding: 1rem;
+  background: #0f172a;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+.po-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.po-info-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.po-info-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.po-info-card-header:hover {
+  background: #334155;
+}
+
+.po-info-card-title {
+  font-weight: 600;
+}
+
+.po-info-card-badge {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.po-info-card-chevron {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.po-info-card-body {
+  padding: 0 1rem 1rem 1rem;
+  border-top: 1px solid #334155;
+}
+
+.po-info-section {
+  margin-top: 1rem;
+}
+
+.po-info-section:first-child {
+  margin-top: 0.75rem;
+}
+
+.po-info-section h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 0.5rem 0;
+}
+
+.po-info-scan-list,
+.po-info-doc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.po-info-scan-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #334155;
+  align-items: flex-start;
+}
+
+.po-info-barcode-wrap {
+  background: #fff;
+  padding: 0.5rem;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.po-info-barcode-wrap svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.po-info-scan-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.po-info-scan-list li:last-child,
+.po-info-doc-list li:last-child {
+  border-bottom: none;
+}
+
+.po-info-doc-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #334155;
+  flex-wrap: wrap;
+}
+
+.po-info-scan-list code {
+  background: #0f172a;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+}
+
+.po-info-meta {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.po-info-doc-link {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.po-info-doc-link:hover {
+  text-decoration: underline;
+}
+
+.po-info-no-items {
+  margin: 0.75rem 0 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}

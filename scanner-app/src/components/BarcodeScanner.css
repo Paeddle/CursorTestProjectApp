@@ -1,0 +1,102 @@
+.barcode-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.barcode-scanner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+}
+
+.barcode-scanner-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.barcode-scanner-close {
+  padding: 0.5rem 1rem;
+  background: #475569;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.barcode-scanner-close:hover {
+  background: #64748b;
+}
+
+.barcode-scanner-reader {
+  flex: 1;
+  min-height: 280px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  background: #000;
+}
+
+/* Ensure the library's scan region has size so video can render */
+#barcode-reader {
+  width: 100% !important;
+  min-width: 260px;
+  max-width: 100%;
+  min-height: 260px !important;
+  height: 100% !important;
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  background: #000;
+}
+
+#barcode-reader__scan_region {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 240px !important;
+  background: #000 !important;
+  position: relative;
+}
+
+#barcode-reader__scan_region video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 70vh !important;
+  object-fit: contain !important;
+  display: block !important;
+  background: #000;
+}
+
+#barcode-reader__dashboard {
+  display: none;
+}
+
+.barcode-scanner-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: #fecaca;
+  background: #1e293b;
+}
+
+.barcode-scanner-error p {
+  margin: 0 0 0.5rem 0;
+}
+
+.barcode-scanner-error-hint {
+  font-size: 0.9rem;
+  color: #94a3b8 !important;
+}

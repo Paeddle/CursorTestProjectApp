@@ -1,0 +1,139 @@
+.analytics-page {
+  padding: 1.5rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.analytics-header {
+  margin-bottom: 1.5rem;
+}
+
+.analytics-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.25rem 0;
+}
+
+.analytics-subtitle {
+  color: #334155;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.analytics-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 1px solid #334155;
+}
+
+.analytics-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.analytics-control span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.analytics-control select {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  min-width: 140px;
+}
+
+.analytics-control select:hover,
+.analytics-control select:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+.analytics-chart-wrap {
+  background: #1e293b;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  padding: 1rem;
+  margin-bottom: 2rem;
+}
+
+.analytics-empty {
+  text-align: center;
+  padding: 3rem 2rem;
+  background: #1e293b;
+  border-radius: 10px;
+  border: 1px dashed #475569;
+  color: #94a3b8;
+}
+
+.analytics-tooltip {
+  padding: 0.5rem 0.75rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.analytics-table-wrap {
+  margin-top: 1rem;
+}
+
+.analytics-table-wrap h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #000;
+  margin: 0 0 0.75rem 0;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.analytics-table th,
+.analytics-table td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #334155;
+}
+
+.analytics-table-wrap .table-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.analytics-table th {
+  background: #e2e8f0;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.analytics-table td {
+  color: #000;
+}
+
+.analytics-table tbody tr:hover {
+  background: #f1f5f9;
+}
+
+.analytics-table td:first-child {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
