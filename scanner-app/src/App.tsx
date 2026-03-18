@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { supabase, STORAGE_BUCKET } from './lib/supabase'
+import { isSupabaseConfigured, supabase, STORAGE_BUCKET } from './lib/supabase'
 import { cropDocumentToBlob } from './lib/documentScanner'
 import BarcodeScanner from './components/BarcodeScanner'
 import DocumentScanner from './components/DocumentScanner'
@@ -29,6 +29,10 @@ function App() {
 
   const submitBarcode = useCallback(
     async (value: string) => {
+      if (!supabase) {
+        showError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify.')
+        return
+      }
       const po = (poNumber || '').trim()
       if (!po) {
         showError('Enter a PO number first')
@@ -56,6 +60,10 @@ function App() {
 
   const uploadDocumentBlob = useCallback(
     async (blob: Blob, fileName: string, ext: string) => {
+      if (!supabase) {
+        showError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify.')
+        return
+      }
       const po = (poNumber || '').trim()
       if (!po) {
         showError('Enter a PO number first')
@@ -151,6 +159,16 @@ function App() {
       </header>
 
       <main className="app-main">
+        {!isSupabaseConfigured || !supabase ? (
+          <section className="section">
+            <h2 className="section-title">Setup required</h2>
+            <div className="status status-error">
+              This deployment is missing Supabase configuration. In Netlify, add environment variables
+              <strong> VITE_SUPABASE_URL</strong> and <strong> VITE_SUPABASE_ANON_KEY</strong>, then redeploy.
+            </div>
+          </section>
+        ) : null}
+
         <section className="section po-section">
           <label className="label">Current PO number</label>
           <input
