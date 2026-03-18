@@ -70,28 +70,6 @@ async function lookupOpenFoodFacts(barcode: string): Promise<LookupResult | null
   }
 }
 
-async function lookupGoUpc(barcode: string, apiKey: string): Promise<LookupResult | null> {
-  // Optional provider (requires key). Docs: https://go-upc.com/
-  const url = `https://go-upc.com/api/v1/code/${encodeURIComponent(barcode)}?key=${encodeURIComponent(apiKey)}`
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
-  if (!res.ok) return null
-  const data = (await res.json()) as any
-  const product = data?.product
-  if (!product) return null
-
-  const name = (product.name as string | undefined) || (product.title as string | undefined) || null
-  const imageUrl = (product.imageUrl as string | undefined) || (product.image as string | undefined) || null
-  const sourceUrl = `https://go-upc.com/search?q=${encodeURIComponent(barcode)}`
-
-  return {
-    barcode,
-    name,
-    imageUrl,
-    sourceUrl,
-    sourceLabel: 'Go-UPC',
-  }
-}
-
 function jinaFetchUrl(targetUrl: string): string {
   // Jina "r.jina.ai" proxy is used to fetch HTML as text in-browser (avoids CORS for many sites).
   // If this ever stops working, we can switch to a server-side proxy.
@@ -270,7 +248,6 @@ export default function BarcodeLookup() {
       if (meta.looksLikeUpcEan) candidates.push(meta.digits)
       if (meta.normalized !== meta.digits && meta.normalized) candidates.push(meta.normalized)
 
-      const goUpcKey = import.meta.env.VITE_GO_UPC_API_KEY as string | undefined
       const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
 
       for (const c of candidates) {
@@ -278,16 +255,6 @@ export default function BarcodeLookup() {
         if (off) {
           setResult(off)
           return
-        }
-      }
-
-      if (goUpcKey && candidates.length > 0) {
-        for (const c of candidates) {
-          const r = await lookupGoUpc(c, goUpcKey)
-          if (r) {
-            setResult(r)
-            return
-          }
         }
       }
 
@@ -450,10 +417,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                   <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
                     Add to your Catalog
                   </button>
-                </div>
-                <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
-                  Optional: set <code>VITE_GO_UPC_API_KEY</code> to enable a second lookup source. For ADI matches via web search, set{' '}
-                  <code>VITE_SERPER_API_KEY</code>.
                 </div>
               </div>
             ) : result ? (

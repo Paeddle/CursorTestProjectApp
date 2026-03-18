@@ -37,6 +37,10 @@ static_sites:
         scope: BUILD_TIME
         type: SECRET
         value: "__VITE_METABASE_QUESTION_ID__"
+      - key: VITE_SERPER_API_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SERPER_API_KEY__"
 
   - name: scanner
     github:
