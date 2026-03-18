@@ -2,6 +2,12 @@
 
 Scans QR codes on wire boxes (e.g. `bx-1234`), then records **job name** and **current footage** into Supabase.
 
+**URL auto-fill:** Put a QR code on each box that links to the app with the box ID in the URL. When someone scans it, the app opens with the box ID pre-filled. Use this URL shape (replace with your app URL and box ID):
+
+`https://your-app.ondigitalocean.app/wire-scanner/?box=bx-1234`
+
+Example for this project: `https://cursor-test-project-app-4w9pp.ondigitalocean.app/wire-scanner/?box=bx-1234`
+
 - **Same Supabase project** as the main Order Tracker and PO scanner.
 - Run `supabase/add-wire-box-scans.sql` in the Supabase SQL Editor to create the `wire_box_scans` table.
 

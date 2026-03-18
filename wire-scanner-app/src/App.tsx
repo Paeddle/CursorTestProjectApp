@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import QRScanner from './components/QRScanner'
 import './App.css'
@@ -13,6 +13,13 @@ function isValidBoxIdFormat(id: string): boolean {
   return /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/.test(id) || /^[a-zA-Z][a-zA-Z0-9-]*\d+$/.test(id)
 }
 
+// If the scanned/landed URL has ?box=xxx, return the box id; otherwise null
+function getBoxIdFromUrl(search: string): string | null {
+  const params = new URLSearchParams(search)
+  const box = params.get('box')
+  return box ? normalizeBoxId(box) : null
+}
+
 function App() {
   const [showScanner, setShowScanner] = useState(false)
   const [boxId, setBoxId] = useState('')
@@ -20,6 +27,12 @@ function App() {
   const [currentFootage, setCurrentFootage] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  // Pre-fill box ID from URL when opening e.g. /wire-scanner/?box=bx-1234 (QR on box opens this)
+  useEffect(() => {
+    const fromUrl = getBoxIdFromUrl(window.location.search)
+    if (fromUrl) setBoxId(fromUrl)
+  }, [])
 
   const clearStatus = useCallback(() => setStatus(null), [])
 
@@ -33,10 +46,24 @@ function App() {
   }
 
   const handleQRScanned = useCallback((value: string) => {
-    const id = normalizeBoxId(value)
-    if (!id) return
-    setBoxId(id)
-    setShowScanner(false)
+    const raw = (value || '').trim()
+    if (!raw) return
+    // If the QR contains a URL with ?box=, parse it; otherwise use as box ID
+    let id: string | null = null
+    if (/^https?:\/\//i.test(raw)) {
+      try {
+        const url = new URL(raw)
+        id = getBoxIdFromUrl(url.search)
+      } catch {
+        id = normalizeBoxId(raw)
+      }
+    } else {
+      id = normalizeBoxId(raw)
+    }
+    if (id) {
+      setBoxId(id)
+      setShowScanner(false)
+    }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,7 +137,9 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Wire Box Scanner</h1>
-        <p className="app-subtitle">Scan the QR code on the wire box, then enter job name and current footage.</p>
+        <p className="app-subtitle">
+          Scan the QR code on the wire box, or open a link like <code>/wire-scanner/?box=bx-1234</code> to auto-fill the box ID. Then enter job name and current footage.
+        </p>
       </header>
 
       {status && (
