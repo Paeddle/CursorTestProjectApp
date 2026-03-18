@@ -22,12 +22,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
 
     scanner
       .start(
-        {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 3840 },
-          height: { ideal: 2160 },
-          frameRate: { ideal: 30 },
-        },
+        { facingMode: 'environment' },
         {
           fps: 10,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
