@@ -92,6 +92,64 @@ async function lookupGoUpc(barcode: string, apiKey: string): Promise<LookupResul
   }
 }
 
+function jinaFetchUrl(targetUrl: string): string {
+  // Jina "r.jina.ai" proxy is used to fetch HTML as text in-browser (avoids CORS for many sites).
+  // If this ever stops working, we can switch to a server-side proxy.
+  const trimmed = targetUrl.trim()
+  if (trimmed.startsWith('http://')) return `https://r.jina.ai/http://${trimmed.slice('http://'.length)}`
+  if (trimmed.startsWith('https://')) return `https://r.jina.ai/http://${trimmed.slice('https://'.length)}`
+  return `https://r.jina.ai/http://${trimmed}`
+}
+
+function extractMetaContent(htmlText: string, key: 'og:title' | 'og:image'): string | null {
+  const re = new RegExp(`<meta\\s+[^>]*property=[\"']${key}[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>`, 'i')
+  const m = htmlText.match(re)
+  if (!m) return null
+  return m[1]?.trim() || null
+}
+
+function extractTitle(htmlText: string): string | null {
+  const m = htmlText.match(/<title[^>]*>([^<]+)<\/title>/i)
+  if (!m) return null
+  return m[1]?.trim() || null
+}
+
+async function lookupAdiViaSerper(barcode: string, serperApiKey: string): Promise<LookupResult | null> {
+  // Uses Serper (Google Search API) to find an ADI product page, then fetches OG metadata via Jina proxy.
+  // Requires VITE_SERPER_API_KEY.
+  const q = `${barcode} site:adiglobaldistribution`
+  const res = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-KEY': serperApiKey,
+    },
+    body: JSON.stringify({ q, num: 5 }),
+  })
+  if (!res.ok) return null
+  const data = (await res.json()) as any
+  const organic: Array<{ link?: string; title?: string }> = data?.organic ?? []
+  const adi = organic.find((r) => typeof r.link === 'string' && r.link.toLowerCase().includes('adiglobaldistribution'))
+  const link = adi?.link
+  if (!link) return null
+
+  const htmlRes = await fetch(jinaFetchUrl(link), { headers: { Accept: 'text/plain' } })
+  if (!htmlRes.ok) return null
+  const text = await htmlRes.text()
+
+  const ogTitle = extractMetaContent(text, 'og:title')
+  const ogImage = extractMetaContent(text, 'og:image')
+  const title = ogTitle || extractTitle(text) || adi?.title || null
+
+  return {
+    barcode,
+    name: title,
+    imageUrl: ogImage,
+    sourceUrl: link,
+    sourceLabel: 'ADI (search)',
+  }
+}
+
 export default function BarcodeLookup() {
   const [barcodes, setBarcodes] = useState<POBarcode[]>([])
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
@@ -213,6 +271,7 @@ export default function BarcodeLookup() {
       if (meta.normalized !== meta.digits && meta.normalized) candidates.push(meta.normalized)
 
       const goUpcKey = import.meta.env.VITE_GO_UPC_API_KEY as string | undefined
+      const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
 
       for (const c of candidates) {
         const off = await lookupOpenFoodFacts(c)
@@ -229,6 +288,16 @@ export default function BarcodeLookup() {
             setResult(r)
             return
           }
+        }
+      }
+
+      if (serperKey && candidates.length > 0) {
+        // Use a digits-only candidate when possible for search.
+        const preferred = meta.looksLikeUpcEan ? meta.digits : candidates[0]
+        const r = await lookupAdiViaSerper(preferred, serperKey)
+        if (r) {
+          setResult(r)
+          return
         }
       }
 
@@ -383,7 +452,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                   </button>
                 </div>
                 <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
-                  Optional: set <code>VITE_GO_UPC_API_KEY</code> to enable a second lookup source.
+                  Optional: set <code>VITE_GO_UPC_API_KEY</code> to enable a second lookup source. For ADI matches via web search, set{' '}
+                  <code>VITE_SERPER_API_KEY</code>.
                 </div>
               </div>
             ) : result ? (
