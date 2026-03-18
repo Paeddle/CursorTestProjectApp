@@ -10,6 +10,7 @@ function Sidebar({ activePage, onNavigate }: SidebarProps) {
     { id: 'tracking', label: 'Order Tracking', icon: '📦' },
     { id: 'order-history', label: 'Order History', icon: '📋' },
     { id: 'po-info', label: 'PO Info', icon: '📥' },
+    { id: 'wire', label: 'Wire', icon: '🔌' },
     { id: 'analytics', label: 'Analytics', icon: '📊' },
   ]
 

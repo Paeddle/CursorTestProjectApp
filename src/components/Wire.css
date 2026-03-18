@@ -1,0 +1,179 @@
+.wire-page {
+  padding: 1.5rem 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.wire-header {
+  margin-bottom: 1.25rem;
+}
+
+.wire-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.25rem 0;
+}
+
+.wire-subtitle {
+  color: #94a3b8;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.wire-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.wire-search {
+  flex: 1;
+  max-width: 320px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.wire-search::placeholder {
+  color: #64748b;
+}
+
+.wire-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.wire-refresh {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.wire-refresh:hover:not(:disabled) {
+  background: #334155;
+  border-color: #64748b;
+}
+
+.wire-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wire-error {
+  padding: 0.75rem 1rem;
+  background: #7f1d1d;
+  color: #fecaca;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.wire-loading,
+.wire-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #94a3b8;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 1px solid #334155;
+}
+
+.wire-setup {
+  padding: 1.5rem;
+  background: #1e293b;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+}
+
+.wire-setup code {
+  background: #0f172a;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.wire-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wire-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.wire-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wire-card-header:hover {
+  background: #334155;
+}
+
+.wire-card-title {
+  font-weight: 600;
+}
+
+.wire-card-badge {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.wire-card-chevron {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.wire-card-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid #334155;
+}
+
+.wire-scans-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.wire-scans-table th,
+.wire-scans-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #334155;
+  color: #e2e8f0;
+}
+
+.wire-scans-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wire-scans-table tbody tr:last-child td {
+  border-bottom: none;
+}
