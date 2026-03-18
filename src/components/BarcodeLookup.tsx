@@ -11,6 +11,12 @@ type LookupResult = {
   sourceLabel: string
 }
 
+type LookupMeta = {
+  normalized: string
+  digits: string
+  looksLikeUpcEan: boolean
+}
+
 function isConfigured(): boolean {
   const url = import.meta.env.VITE_SUPABASE_URL
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -19,6 +25,17 @@ function isConfigured(): boolean {
 
 function normalizeBarcode(v: string): string {
   return (v || '').trim()
+}
+
+function getLookupMeta(raw: string): LookupMeta {
+  const normalized = normalizeBarcode(raw)
+  const digits = normalized.replace(/[^\d]/g, '')
+  const looksLikeUpcEan = digits.length === 8 || digits.length === 12 || digits.length === 13 || digits.length === 14
+  return { normalized, digits, looksLikeUpcEan }
+}
+
+function googleSearchUrl(query: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`
 }
 
 async function lookupOpenFoodFacts(barcode: string): Promise<LookupResult | null> {
@@ -53,6 +70,28 @@ async function lookupOpenFoodFacts(barcode: string): Promise<LookupResult | null
   }
 }
 
+async function lookupGoUpc(barcode: string, apiKey: string): Promise<LookupResult | null> {
+  // Optional provider (requires key). Docs: https://go-upc.com/
+  const url = `https://go-upc.com/api/v1/code/${encodeURIComponent(barcode)}?key=${encodeURIComponent(apiKey)}`
+  const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  if (!res.ok) return null
+  const data = (await res.json()) as any
+  const product = data?.product
+  if (!product) return null
+
+  const name = (product.name as string | undefined) || (product.title as string | undefined) || null
+  const imageUrl = (product.imageUrl as string | undefined) || (product.image as string | undefined) || null
+  const sourceUrl = `https://go-upc.com/search?q=${encodeURIComponent(barcode)}`
+
+  return {
+    barcode,
+    name,
+    imageUrl,
+    sourceUrl,
+    sourceLabel: 'Go-UPC',
+  }
+}
+
 export default function BarcodeLookup() {
   const [barcodes, setBarcodes] = useState<POBarcode[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,6 +104,7 @@ export default function BarcodeLookup() {
   const [lookupLoading, setLookupLoading] = useState(false)
   const [result, setResult] = useState<LookupResult | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
+  const [lookupHint, setLookupHint] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isConfigured()) {
@@ -120,19 +160,45 @@ export default function BarcodeLookup() {
   }, [barcodes, filterPo, filterBarcode])
 
   const doLookup = async (barcode: string) => {
-    const code = normalizeBarcode(barcode)
-    if (!code) return
-    setSelectedBarcode(code)
+    const meta = getLookupMeta(barcode)
+    if (!meta.normalized) return
+    setSelectedBarcode(meta.normalized)
     setLookupLoading(true)
     setLookupError(null)
+    setLookupHint(null)
     setResult(null)
     try {
-      const off = await lookupOpenFoodFacts(code)
-      if (off) {
-        setResult(off)
-        return
+      if (!meta.looksLikeUpcEan) {
+        setLookupHint(
+          'This barcode does not look like a standard UPC/EAN (8/12/13/14 digits). It may be an internal/Code128 label, so public product databases often won’t have a match.'
+        )
       }
-      setLookupError('No match found (try another barcode).')
+
+      const candidates: string[] = []
+      if (meta.looksLikeUpcEan) candidates.push(meta.digits)
+      if (meta.normalized !== meta.digits && meta.normalized) candidates.push(meta.normalized)
+
+      const goUpcKey = import.meta.env.VITE_GO_UPC_API_KEY as string | undefined
+
+      for (const c of candidates) {
+        const off = await lookupOpenFoodFacts(c)
+        if (off) {
+          setResult(off)
+          return
+        }
+      }
+
+      if (goUpcKey && candidates.length > 0) {
+        for (const c of candidates) {
+          const r = await lookupGoUpc(c, goUpcKey)
+          if (r) {
+            setResult(r)
+            return
+          }
+        }
+      }
+
+      setLookupError('No match found in available sources.')
     } catch (e: unknown) {
       setLookupError(e instanceof Error ? e.message : 'Lookup failed')
     } finally {
@@ -216,7 +282,23 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             {lookupLoading ? (
               <div className="barcode-lookup-loading">Looking up {selectedBarcode}…</div>
             ) : lookupError ? (
-              <div className="barcode-lookup-error">{lookupError}</div>
+              <div>
+                {lookupHint && <div className="barcode-lookup-hint">{lookupHint}</div>}
+                <div className="barcode-lookup-error">{lookupError}</div>
+                {selectedBarcode && (
+                  <a
+                    className="barcode-lookup-link"
+                    href={googleSearchUrl(`${selectedBarcode} barcode product`)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Search the web for this barcode
+                  </a>
+                )}
+                <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
+                  Optional: set <code>VITE_GO_UPC_API_KEY</code> to enable a second lookup source.
+                </div>
+              </div>
             ) : result ? (
               <div className="barcode-lookup-card">
                 <div className="barcode-lookup-card-top">
