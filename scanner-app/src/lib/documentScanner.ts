@@ -1,22 +1,17 @@
 /**
  * Load OpenCV.js from CDN (required by jscanify). Resolves when cv is ready.
+ * Uses jsDelivr (CORS-friendly) to avoid "NetworkError when attempting to fetch resource"
+ * when loading from deployed origins (e.g. DigitalOcean). opencv.js-webassembly is a
+ * single-file build so no separate WASM fetch.
  */
 function loadOpenCV(): Promise<void> {
   if (typeof (window as unknown as { cv?: unknown }).cv !== 'undefined') {
     return Promise.resolve()
   }
   return new Promise((resolve, reject) => {
-    // OpenCV loads a separate WASM file; ensure it fetches from the CDN, not this site.
-    const baseUrl = 'https://docs.opencv.org/4.7.0/'
-    const w = window as unknown as { Module?: any }
-    w.Module = w.Module ?? {}
-    if (typeof w.Module.locateFile !== 'function') {
-      w.Module.locateFile = (file: string) => `${baseUrl}${file}`
-    }
-
     const script = document.createElement('script')
     script.async = true
-    script.src = `${baseUrl}opencv.js`
+    script.src = 'https://cdn.jsdelivr.net/npm/opencv.js-webassembly@4.2.0/opencv.js'
     script.onload = () => {
       let attempts = 0
       const maxAttempts = 300
@@ -28,7 +23,7 @@ function loadOpenCV(): Promise<void> {
         }
         attempts++
         if (attempts >= maxAttempts) {
-          reject(new Error('OpenCV failed to initialize (WASM may be blocked or unreachable)'))
+          reject(new Error('OpenCV failed to initialize'))
           return
         }
         setTimeout(check, 100)
