@@ -63,3 +63,24 @@ static_sites:
         type: SECRET
         value: "__VITE_SUPABASE_ANON_KEY__"
 
+  - name: wire-scanner
+    github:
+      repo: __GITHUB_REPO__
+      branch: __GITHUB_BRANCH__
+      deploy_on_push: true
+    environment_slug: node-js
+    source_dir: wire-scanner-app
+    output_dir: dist
+    build_command: npm install && npm run build
+    routes:
+      - path: /wire-scanner
+    envs:
+      - key: VITE_SUPABASE_URL
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_URL__"
+      - key: VITE_SUPABASE_ANON_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_ANON_KEY__"
+

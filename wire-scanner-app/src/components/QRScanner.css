@@ -1,0 +1,71 @@
+.qr-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  background: #0f172a;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.qr-scanner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid #334155;
+  flex-shrink: 0;
+}
+
+.qr-scanner-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #e2e8f0;
+}
+
+.qr-scanner-close {
+  padding: 0.5rem 1rem;
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.qr-scanner-close:hover {
+  background: #475569;
+}
+
+.qr-scanner-error {
+  padding: 1.5rem;
+  color: #fecaca;
+  text-align: center;
+}
+
+.qr-scanner-error-hint {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.qr-scanner-reader {
+  flex: 1;
+  min-height: 200px;
+  position: relative;
+}
+
+#qr-reader {
+  width: 100%;
+  min-height: 280px;
+}
+
+#qr-reader__scan_region {
+  background: #000;
+}
+
+#qr-reader__scan_region video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+  background: #000;
+}
