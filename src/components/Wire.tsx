@@ -37,7 +37,7 @@ async function loadSummaries(): Promise<WireBoxSummary[]> {
     byBox.get(key)!.push(row)
   }
   return Array.from(byBox.entries())
-    .map(([key, scans]) => ({
+    .map(([, scans]) => ({
       box_id: scans[0]!.box_id,
       scans: scans.sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime()),
     }))
