@@ -13,24 +13,40 @@ function isValidBoxIdFormat(id: string): boolean {
   return /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/.test(id) || /^[a-zA-Z][a-zA-Z0-9-]*\d+$/.test(id)
 }
 
-// If the scanned/landed URL has ?box=xxx, return the box id; otherwise null
-function getBoxIdFromUrl(search: string): string | null {
-  const params = new URLSearchParams(search)
+// Parse ?box=xxx or #box=xxx (or #xxx) from a query/hash string
+function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
+  if (!searchOrHash || !searchOrHash.trim()) return null
+  const s = searchOrHash.trim()
+  const query = s.startsWith('?') || s.startsWith('#') ? '?' + s.slice(1) : '?' + s
+  const params = new URLSearchParams(query)
   const box = params.get('box')
-  return box ? normalizeBoxId(box) : null
+  if (box) return normalizeBoxId(box)
+  // Hash might be just #bx-1234 (no param name)
+  if (s.startsWith('#') && s.length > 1 && !s.includes('=')) return normalizeBoxId(s.slice(1))
+  return null
+}
+
+// Read box ID from current page URL (query or hash) on load
+function getInitialBoxIdFromWindow(): string {
+  if (typeof window === 'undefined') return ''
+  const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
+  if (fromSearch) return fromSearch
+  const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
+  if (fromHash) return fromHash
+  return ''
 }
 
 function App() {
   const [showScanner, setShowScanner] = useState(false)
-  const [boxId, setBoxId] = useState('')
+  const [boxId, setBoxId] = useState(getInitialBoxIdFromWindow)
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Pre-fill box ID from URL when opening e.g. /wire-scanner/?box=bx-1234 (QR on box opens this)
+  // Ensure box ID from URL is applied after mount (in case initial state ran before location was ready)
   useEffect(() => {
-    const fromUrl = getBoxIdFromUrl(window.location.search)
+    const fromUrl = getInitialBoxIdFromWindow()
     if (fromUrl) setBoxId(fromUrl)
   }, [])
 
@@ -48,12 +64,13 @@ function App() {
   const handleQRScanned = useCallback((value: string) => {
     const raw = (value || '').trim()
     if (!raw) return
-    // If the QR contains a URL with ?box=, parse it; otherwise use as box ID
+    // If the QR contains a URL with ?box= or #box=, parse it; otherwise use as box ID
     let id: string | null = null
     if (/^https?:\/\//i.test(raw)) {
       try {
         const url = new URL(raw)
-        id = getBoxIdFromUrl(url.search)
+        id = getBoxIdFromQueryOrHash(url.search) || getBoxIdFromQueryOrHash(url.hash)
+        if (!id) id = normalizeBoxId(raw)
       } catch {
         id = normalizeBoxId(raw)
       }
