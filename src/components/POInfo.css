@@ -233,6 +233,21 @@
   min-width: 0;
 }
 
+.po-info-scan-item-clickable {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.po-info-scan-item-clickable:hover {
+  opacity: 0.9;
+}
+
 .po-info-delete-item {
   flex-shrink: 0;
   width: 28px;

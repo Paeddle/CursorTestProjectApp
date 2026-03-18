@@ -4,7 +4,6 @@ import { csvService, TrackingInfo, POItem } from './services/csvService'
 import Sidebar from './components/Sidebar'
 import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
-import BarcodeLookup from './components/BarcodeLookup'
 type SortDirection = 'asc' | 'desc' | null
 type ItemSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
 type OrderSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
@@ -530,8 +529,6 @@ function App() {
           <Analytics poItemsMap={poItemsMap} trackings={trackings} />
         ) : activePage === 'po-info' ? (
           <POInfo />
-        ) : activePage === 'barcode-lookup' ? (
-          <BarcodeLookup />
         ) : (
         <>
         <header className="header">

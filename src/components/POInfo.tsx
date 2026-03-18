@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Barcode from 'react-barcode'
 import { supabase } from '../lib/supabase'
 import type { POBarcode, PODocument, POCheckinSummary } from '../types/poCheckin'
+import BarcodeLookupModal from './BarcodeLookupModal'
 import './POInfo.css'
 
 const STORAGE_BUCKET = 'po-documents'
@@ -74,6 +75,7 @@ function POInfo() {
   const [searchPo, setSearchPo] = useState('')
   const [expandedPo, setExpandedPo] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [lookupBarcode, setLookupBarcode] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -282,7 +284,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         <ul className="po-info-scan-list">
                           {summary.barcodes.map((b) => (
                             <li key={b.id} className="po-info-scan-item">
-                              <div className="po-info-scan-item-main">
+                              <button
+                                type="button"
+                                className="po-info-scan-item-main po-info-scan-item-clickable"
+                                onClick={() => setLookupBarcode(b.barcode_value || '')}
+                                title="Look up this barcode"
+                              >
                                 <div className="po-info-barcode-wrap">
                                   <Barcode
                                     value={b.barcode_value || ''}
@@ -300,11 +307,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                   <code>{b.barcode_value}</code>
                                   <span className="po-info-meta">{formatDateTime(b.scanned_at)}</span>
                                 </div>
-                              </div>
+                              </button>
                               <button
                                 type="button"
                                 className="po-info-delete-item"
-                                onClick={() => handleDeleteBarcode(b.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteBarcode(b.id)
+                                }}
                                 disabled={!!deletingId}
                                 title="Delete barcode"
                               >
@@ -355,6 +365,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             )
           })}
         </div>
+      )}
+
+      {lookupBarcode && (
+        <BarcodeLookupModal
+          barcodeValue={lookupBarcode}
+          onClose={() => setLookupBarcode(null)}
+        />
       )}
     </div>
   )
