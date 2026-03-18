@@ -5,7 +5,7 @@ This folder contains the database schema used by the **PO Info** tab to show bar
 ## 1. Run the schema
 
 1. Open [Supabase Dashboard](https://app.supabase.com) → your project → **SQL Editor**.
-2. Copy the contents of `schema.sql` and run it.
+2. Copy the contents of `schema.sql` and run it. To allow the PO Info tab to delete barcodes/documents/entire POs, also run `add-delete-policies.sql`.
 
 If you already ran an older version without the insert policies, run only the two “Allow anonymous insert” policy blocks at the end of `schema.sql`.
 

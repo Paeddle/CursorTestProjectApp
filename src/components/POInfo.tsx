@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Barcode from 'react-barcode'
 import { supabase } from '../lib/supabase'
 import type { POBarcode, PODocument, POCheckinSummary } from '../types/poCheckin'
 import './POInfo.css'
+
+const STORAGE_BUCKET = 'po-documents'
 
 function isConfigured(): boolean {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -29,12 +31,62 @@ function documentTypeLabel(type: string) {
   return type || 'Document'
 }
 
+async function loadSummaries(): Promise<POCheckinSummary[]> {
+  const [barcodesRes, docsRes] = await Promise.all([
+    supabase.from('po_barcodes').select('*').order('scanned_at', { ascending: false }),
+    supabase.from('po_documents').select('*').order('scanned_at', { ascending: false }),
+  ])
+  if (barcodesRes.error) throw new Error(barcodesRes.error.message)
+  if (docsRes.error) throw new Error(docsRes.error.message)
+  const barcodes = (barcodesRes.data ?? []) as POBarcode[]
+  const documents = (docsRes.data ?? []) as PODocument[]
+  const byPo = new Map<string, POCheckinSummary>()
+  for (const b of barcodes) {
+    const po = (b.po_number || '').trim()
+    if (!po) continue
+    const key = po.toLowerCase()
+    if (!byPo.has(key)) byPo.set(key, { po_number: po, barcodes: [], documents: [] })
+    byPo.get(key)!.barcodes.push(b)
+  }
+  for (const d of documents) {
+    const po = (d.po_number || '').trim()
+    if (!po) continue
+    const key = po.toLowerCase()
+    if (!byPo.has(key)) byPo.set(key, { po_number: po, barcodes: [], documents: [] })
+    byPo.get(key)!.documents.push(d)
+  }
+  return Array.from(byPo.values()).sort((a, b) =>
+    a.po_number.localeCompare(b.po_number, undefined, { numeric: true })
+  )
+}
+
+function pathFromStorageUrl(fileUrl: string, bucketId: string): string | null {
+  const marker = `/object/public/${bucketId}/`
+  const i = fileUrl.indexOf(marker)
+  if (i === -1) return null
+  return fileUrl.slice(i + marker.length)
+}
+
 function POInfo() {
   const [summaries, setSummaries] = useState<POCheckinSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchPo, setSearchPo] = useState('')
   const [expandedPo, setExpandedPo] = useState<Set<string>>(new Set())
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const list = await loadSummaries()
+      setSummaries(list)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isConfigured()) {
@@ -42,66 +94,8 @@ function POInfo() {
       setLoading(false)
       return
     }
-
-    let cancelled = false
-
-    async function load() {
-      setLoading(true)
-      setError(null)
-      try {
-        const [barcodesRes, docsRes] = await Promise.all([
-          supabase.from('po_barcodes').select('*').order('scanned_at', { ascending: false }),
-          supabase.from('po_documents').select('*').order('scanned_at', { ascending: false }),
-        ])
-
-        if (cancelled) return
-
-        if (barcodesRes.error) throw new Error(barcodesRes.error.message)
-        if (docsRes.error) throw new Error(docsRes.error.message)
-
-        const barcodes = (barcodesRes.data ?? []) as POBarcode[]
-        const documents = (docsRes.data ?? []) as PODocument[]
-
-        const byPo = new Map<string, POCheckinSummary>()
-
-        for (const b of barcodes) {
-          const po = (b.po_number || '').trim()
-          if (!po) continue
-          const key = po.toLowerCase()
-          if (!byPo.has(key)) {
-            byPo.set(key, { po_number: po, barcodes: [], documents: [] })
-          }
-          byPo.get(key)!.barcodes.push(b)
-        }
-
-        for (const d of documents) {
-          const po = (d.po_number || '').trim()
-          if (!po) continue
-          const key = po.toLowerCase()
-          if (!byPo.has(key)) {
-            byPo.set(key, { po_number: po, barcodes: [], documents: [] })
-          }
-          byPo.get(key)!.documents.push(d)
-        }
-
-        const list = Array.from(byPo.values()).sort((a, b) =>
-          a.po_number.localeCompare(b.po_number, undefined, { numeric: true })
-        )
-        setSummaries(list)
-      } catch (e: unknown) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
     load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  }, [load])
 
   const filtered = searchPo.trim()
     ? summaries.filter(
@@ -118,6 +112,67 @@ function POInfo() {
       else next.add(key)
       return next
     })
+  }
+
+  const handleDeleteBarcode = async (id: string) => {
+    if (deletingId) return
+    setDeletingId(id)
+    try {
+      const { error: e } = await supabase.from('po_barcodes').delete().eq('id', id)
+      if (e) throw new Error(e.message)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete barcode')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleDeleteDocument = async (doc: PODocument) => {
+    if (deletingId) return
+    setDeletingId(doc.id)
+    try {
+      const path = pathFromStorageUrl(doc.file_url, STORAGE_BUCKET)
+      if (path) {
+        await supabase.storage.from(STORAGE_BUCKET).remove([path])
+      }
+      const { error: e } = await supabase.from('po_documents').delete().eq('id', doc.id)
+      if (e) throw new Error(e.message)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete document')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleDeleteEntirePo = async (poNumber: string) => {
+    if (deletingId || !window.confirm(`Delete all barcodes and documents for PO ${poNumber}? This cannot be undone.`)) return
+    const key = poNumber.toLowerCase()
+    setDeletingId(key)
+    try {
+      const { error: eb } = await supabase.from('po_barcodes').delete().eq('po_number', poNumber)
+      if (eb) throw new Error(eb.message)
+      const summary = summaries.find((s) => s.po_number.toLowerCase() === key)
+      if (summary) {
+        for (const doc of summary.documents) {
+          const path = pathFromStorageUrl(doc.file_url, STORAGE_BUCKET)
+          if (path) await supabase.storage.from(STORAGE_BUCKET).remove([path])
+        }
+      }
+      const { error: ed } = await supabase.from('po_documents').delete().eq('po_number', poNumber)
+      if (ed) throw new Error(ed.message)
+      await load()
+      setExpandedPo((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete PO')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   if (!isConfigured()) {
@@ -157,7 +212,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
         <button
           type="button"
           className="po-info-refresh"
-          onClick={() => window.location.reload()}
+          onClick={() => load()}
           disabled={loading}
         >
           Refresh
@@ -189,21 +244,35 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
 
             return (
               <div key={key} className="po-info-card">
-                <button
-                  type="button"
-                  className="po-info-card-header"
-                  onClick={() => toggleExpanded(summary.po_number)}
-                  aria-expanded={isExpanded}
-                >
-                  <span className="po-info-card-title">PO {summary.po_number}</span>
-                  <span className="po-info-card-badge">
-                    {summary.barcodes.length} barcode{summary.barcodes.length !== 1 ? 's' : ''}
-                    {summary.documents.length > 0 && (
-                      <> · {summary.documents.length} doc{summary.documents.length !== 1 ? 's' : ''}</>
-                    )}
-                  </span>
-                  <span className="po-info-card-chevron">{isExpanded ? '▾' : '▸'}</span>
-                </button>
+                <div className="po-info-card-header-row">
+                  <button
+                    type="button"
+                    className="po-info-card-header"
+                    onClick={() => toggleExpanded(summary.po_number)}
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="po-info-card-title">PO {summary.po_number}</span>
+                    <span className="po-info-card-badge">
+                      {summary.barcodes.length} barcode{summary.barcodes.length !== 1 ? 's' : ''}
+                      {summary.documents.length > 0 && (
+                        <> · {summary.documents.length} doc{summary.documents.length !== 1 ? 's' : ''}</>
+                      )}
+                    </span>
+                    <span className="po-info-card-chevron">{isExpanded ? '▾' : '▸'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="po-info-delete-po"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteEntirePo(summary.po_number)
+                    }}
+                    disabled={!!deletingId}
+                    title="Delete entire PO"
+                  >
+                    {deletingId === key ? '…' : 'Delete PO'}
+                  </button>
+                </div>
 
                 {isExpanded && (
                   <div className="po-info-card-body">
@@ -213,23 +282,34 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         <ul className="po-info-scan-list">
                           {summary.barcodes.map((b) => (
                             <li key={b.id} className="po-info-scan-item">
-                              <div className="po-info-barcode-wrap">
-                                <Barcode
-                                  value={b.barcode_value || ''}
-                                  format="CODE128"
-                                  displayValue={true}
-                                  width={1.2}
-                                  height={40}
-                                  margin={0}
-                                  fontSize={12}
-                                  background="#fff"
-                                  lineColor="#000"
-                                />
+                              <div className="po-info-scan-item-main">
+                                <div className="po-info-barcode-wrap">
+                                  <Barcode
+                                    value={b.barcode_value || ''}
+                                    format="CODE128"
+                                    displayValue={true}
+                                    width={1.2}
+                                    height={40}
+                                    margin={0}
+                                    fontSize={12}
+                                    background="#fff"
+                                    lineColor="#000"
+                                  />
+                                </div>
+                                <div className="po-info-scan-meta">
+                                  <code>{b.barcode_value}</code>
+                                  <span className="po-info-meta">{formatDateTime(b.scanned_at)}</span>
+                                </div>
                               </div>
-                              <div className="po-info-scan-meta">
-                                <code>{b.barcode_value}</code>
-                                <span className="po-info-meta">{formatDateTime(b.scanned_at)}</span>
-                              </div>
+                              <button
+                                type="button"
+                                className="po-info-delete-item"
+                                onClick={() => handleDeleteBarcode(b.id)}
+                                disabled={!!deletingId}
+                                title="Delete barcode"
+                              >
+                                {deletingId === b.id ? '…' : '✕'}
+                              </button>
                             </li>
                           ))}
                         </ul>
@@ -240,7 +320,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         <h4>Documents</h4>
                         <ul className="po-info-doc-list">
                           {summary.documents.map((d) => (
-                            <li key={d.id}>
+                            <li key={d.id} className="po-info-doc-item">
                               <a
                                 href={d.file_url}
                                 target="_blank"
@@ -252,6 +332,15 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                               <span className="po-info-meta">
                                 {documentTypeLabel(d.document_type)} · {formatDateTime(d.scanned_at)}
                               </span>
+                              <button
+                                type="button"
+                                className="po-info-delete-item"
+                                onClick={() => handleDeleteDocument(d)}
+                                disabled={!!deletingId}
+                                title="Delete document"
+                              >
+                                {deletingId === d.id ? '…' : '✕'}
+                              </button>
                             </li>
                           ))}
                         </ul>

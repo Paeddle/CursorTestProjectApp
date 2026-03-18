@@ -15,6 +15,7 @@ deployments/digitalocean/bin/
 deployments/digitalocean/digitalocean-app-spec.generated.yaml
 deployments/digitalocean/.do-app-id
 deployments/digitalocean/.env.deploy
+deployments/digitalocean/deployments/digitalocean/.env.deploy
 
 # Environment variables
 .env

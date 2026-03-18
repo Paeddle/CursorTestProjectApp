@@ -1,0 +1,201 @@
+.barcode-lookup-page {
+  padding: 1.5rem 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.barcode-lookup-header {
+  margin-bottom: 1.25rem;
+}
+
+.barcode-lookup-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.25rem 0;
+}
+
+.barcode-lookup-subtitle {
+  color: #94a3b8;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.barcode-lookup-controls {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.barcode-lookup-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.barcode-lookup-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.barcode-lookup-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 960px) {
+  .barcode-lookup-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.barcode-lookup-list,
+.barcode-lookup-result {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.barcode-lookup-list-header,
+.barcode-lookup-result-header {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #334155;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.barcode-lookup-count {
+  color: #94a3b8;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.barcode-lookup-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 560px;
+  overflow: auto;
+}
+
+.barcode-lookup-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 0.9rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #334155;
+  cursor: pointer;
+  color: #e2e8f0;
+}
+
+.barcode-lookup-item:hover:not(:disabled) {
+  background: #334155;
+}
+
+.barcode-lookup-item.active {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.barcode-lookup-item:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.barcode-lookup-item-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.95rem;
+}
+
+.barcode-lookup-item-meta {
+  margin-top: 0.15rem;
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.barcode-lookup-card {
+  padding: 0.9rem;
+}
+
+.barcode-lookup-card-top {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.barcode-lookup-card-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.barcode-lookup-card-sub {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+}
+
+.barcode-lookup-link {
+  display: inline-block;
+  margin-top: 0.6rem;
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.barcode-lookup-link:hover {
+  text-decoration: underline;
+}
+
+.barcode-lookup-image {
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+}
+
+.barcode-lookup-error {
+  padding: 0.75rem 1rem;
+  background: #7f1d1d;
+  color: #fecaca;
+  border-radius: 8px;
+  margin: 0.75rem 0;
+}
+
+.barcode-lookup-loading,
+.barcode-lookup-empty,
+.barcode-lookup-hint {
+  padding: 1rem;
+  color: #94a3b8;
+}
+
+.barcode-lookup-setup {
+  padding: 1.5rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  color: #e2e8f0;
+}
+
+.barcode-lookup-setup pre {
+  margin: 0.75rem 0 0 0;
+  padding: 1rem;
+  background: #0f172a;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
