@@ -182,6 +182,102 @@
   color: #94a3b8;
 }
 
+.barcode-lookup-add-btn,
+.barcode-lookup-primary-btn,
+.barcode-lookup-secondary-btn {
+  padding: 0.55rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.barcode-lookup-add-btn:hover,
+.barcode-lookup-secondary-btn:hover {
+  background: #1f2a44;
+}
+
+.barcode-lookup-primary-btn {
+  border-color: #1d4ed8;
+  background: #2563eb;
+}
+
+.barcode-lookup-primary-btn:hover {
+  background: #1d4ed8;
+}
+
+.barcode-lookup-primary-btn:disabled,
+.barcode-lookup-secondary-btn:disabled,
+.barcode-lookup-add-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.barcode-lookup-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.barcode-lookup-modal-card {
+  width: 100%;
+  max-width: 560px;
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.barcode-lookup-modal-title {
+  color: #e2e8f0;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.barcode-lookup-modal-sub {
+  margin-top: 0.35rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.barcode-lookup-form {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.barcode-lookup-form label {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.barcode-lookup-form input {
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.barcode-lookup-form input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.barcode-lookup-modal-actions {
+  margin-top: 0.9rem;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
 .barcode-lookup-setup {
   padding: 1.5rem;
   background: #1e293b;

@@ -21,3 +21,15 @@ export interface POCheckinSummary {
   barcodes: POBarcode[]
   documents: PODocument[]
 }
+
+export interface BarcodeCatalogItem {
+  id: string
+  barcode_value: string
+  manufacturer: string | null
+  item_name: string
+  image_url: string | null
+  product_url: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}

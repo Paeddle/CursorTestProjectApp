@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { POBarcode } from '../types/poCheckin'
+import type { BarcodeCatalogItem, POBarcode } from '../types/poCheckin'
 import './BarcodeLookup.css'
 
 type LookupResult = {
@@ -94,6 +94,7 @@ async function lookupGoUpc(barcode: string, apiKey: string): Promise<LookupResul
 
 export default function BarcodeLookup() {
   const [barcodes, setBarcodes] = useState<POBarcode[]>([])
+  const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -105,6 +106,14 @@ export default function BarcodeLookup() {
   const [result, setResult] = useState<LookupResult | null>(null)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookupHint, setLookupHint] = useState<string | null>(null)
+
+  const [showAdd, setShowAdd] = useState(false)
+  const [addManufacturer, setAddManufacturer] = useState('')
+  const [addItemName, setAddItemName] = useState('')
+  const [addImageUrl, setAddImageUrl] = useState('')
+  const [addProductUrl, setAddProductUrl] = useState('')
+  const [addNotes, setAddNotes] = useState('')
+  const [addSaving, setAddSaving] = useState(false)
 
   useEffect(() => {
     if (!isConfigured()) {
@@ -118,9 +127,16 @@ export default function BarcodeLookup() {
       setLoading(true)
       setError(null)
       try {
-        const res = await supabase.from('po_barcodes').select('*').order('scanned_at', { ascending: false })
-        if (res.error) throw new Error(res.error.message)
-        if (!cancelled) setBarcodes((res.data ?? []) as POBarcode[])
+        const [barcodesRes, catalogRes] = await Promise.all([
+          supabase.from('po_barcodes').select('*').order('scanned_at', { ascending: false }),
+          supabase.from('barcode_catalog').select('*').order('updated_at', { ascending: false }),
+        ])
+        if (barcodesRes.error) throw new Error(barcodesRes.error.message)
+        if (catalogRes.error) throw new Error(catalogRes.error.message)
+        if (!cancelled) {
+          setBarcodes((barcodesRes.data ?? []) as POBarcode[])
+          setCatalog((catalogRes.data ?? []) as BarcodeCatalogItem[])
+        }
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load barcodes')
       } finally {
@@ -167,7 +183,25 @@ export default function BarcodeLookup() {
     setLookupError(null)
     setLookupHint(null)
     setResult(null)
+    setShowAdd(false)
     try {
+      // 1) Internal catalog match first (best for Lutron/ADI/internal labels)
+      const candidatesForCatalog: string[] = []
+      if (meta.digits) candidatesForCatalog.push(meta.digits)
+      if (meta.normalized && meta.normalized !== meta.digits) candidatesForCatalog.push(meta.normalized)
+
+      const match = catalog.find((c) => candidatesForCatalog.includes((c.barcode_value || '').trim()))
+      if (match) {
+        setResult({
+          barcode: match.barcode_value,
+          name: match.item_name,
+          imageUrl: match.image_url,
+          sourceUrl: match.product_url,
+          sourceLabel: match.manufacturer ? `Catalog (${match.manufacturer})` : 'Catalog',
+        })
+        return
+      }
+
       if (!meta.looksLikeUpcEan) {
         setLookupHint(
           'This barcode does not look like a standard UPC/EAN (8/12/13/14 digits). It may be an internal/Code128 label, so public product databases often won’t have a match.'
@@ -203,6 +237,54 @@ export default function BarcodeLookup() {
       setLookupError(e instanceof Error ? e.message : 'Lookup failed')
     } finally {
       setLookupLoading(false)
+    }
+  }
+
+  const openAdd = () => {
+    const meta = getLookupMeta(selectedBarcode)
+    setAddManufacturer('')
+    setAddItemName('')
+    setAddImageUrl('')
+    setAddProductUrl('')
+    setAddNotes('')
+    setLookupHint((prev) => prev ?? (meta.looksLikeUpcEan ? null : 'Tip: internal labels are best handled by saving them to your catalog.'))
+    setShowAdd(true)
+  }
+
+  const saveAdd = async () => {
+    const meta = getLookupMeta(selectedBarcode)
+    const barcodeValue = meta.looksLikeUpcEan ? meta.digits : meta.normalized
+    if (!barcodeValue || !addItemName.trim()) {
+      setLookupError('Please enter at least an Item name.')
+      return
+    }
+    setAddSaving(true)
+    setLookupError(null)
+    try {
+      const insert = {
+        barcode_value: barcodeValue,
+        manufacturer: addManufacturer.trim() || null,
+        item_name: addItemName.trim(),
+        image_url: addImageUrl.trim() || null,
+        product_url: addProductUrl.trim() || null,
+        notes: addNotes.trim() || null,
+      }
+      const res = await supabase.from('barcode_catalog').insert(insert).select('*').single()
+      if (res.error) throw new Error(res.error.message)
+      const row = res.data as BarcodeCatalogItem
+      setCatalog((prev) => [row, ...prev.filter((c) => c.id !== row.id)])
+      setResult({
+        barcode: row.barcode_value,
+        name: row.item_name,
+        imageUrl: row.image_url,
+        sourceUrl: row.product_url,
+        sourceLabel: row.manufacturer ? `Catalog (${row.manufacturer})` : 'Catalog',
+      })
+      setShowAdd(false)
+    } catch (e: unknown) {
+      setLookupError(e instanceof Error ? e.message : 'Failed to save to catalog')
+    } finally {
+      setAddSaving(false)
     }
   }
 
@@ -295,6 +377,11 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     Search the web for this barcode
                   </a>
                 )}
+                <div style={{ marginTop: '0.75rem' }}>
+                  <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
+                    Add to your Catalog
+                  </button>
+                </div>
                 <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
                   Optional: set <code>VITE_GO_UPC_API_KEY</code> to enable a second lookup source.
                 </div>
@@ -311,6 +398,11 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         View source
                       </a>
                     )}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
+                        Add / Edit in your Catalog
+                      </button>
+                    </div>
                   </div>
                   {result.imageUrl && (
                     <img className="barcode-lookup-image" src={result.imageUrl} alt={result.name ?? result.barcode} />
@@ -319,6 +411,55 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
               </div>
             ) : (
               <div className="barcode-lookup-hint">Pick a barcode on the left to look it up.</div>
+            )}
+
+            {showAdd && (
+              <div className="barcode-lookup-modal">
+                <div className="barcode-lookup-modal-card">
+                  <div className="barcode-lookup-modal-title">Save to Catalog</div>
+                  <div className="barcode-lookup-modal-sub">
+                    Barcode: <code>{selectedBarcode}</code>
+                  </div>
+                  <div className="barcode-lookup-form">
+                    <label>
+                      Manufacturer (optional)
+                      <input value={addManufacturer} onChange={(e) => setAddManufacturer(e.target.value)} />
+                    </label>
+                    <label>
+                      Item name *
+                      <input value={addItemName} onChange={(e) => setAddItemName(e.target.value)} />
+                    </label>
+                    <label>
+                      Image URL (optional)
+                      <input value={addImageUrl} onChange={(e) => setAddImageUrl(e.target.value)} />
+                    </label>
+                    <label>
+                      Product URL (optional)
+                      <input value={addProductUrl} onChange={(e) => setAddProductUrl(e.target.value)} />
+                    </label>
+                    <label>
+                      Notes (optional)
+                      <input value={addNotes} onChange={(e) => setAddNotes(e.target.value)} />
+                    </label>
+                  </div>
+                  <div className="barcode-lookup-modal-actions">
+                    <button
+                      type="button"
+                      className="barcode-lookup-secondary-btn"
+                      onClick={() => setShowAdd(false)}
+                      disabled={addSaving}
+                    >
+                      Cancel
+                    </button>
+                    <button type="button" className="barcode-lookup-primary-btn" onClick={() => void saveAdd()} disabled={addSaving}>
+                      {addSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                  <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
+                    If you haven’t created the table yet, run <code>supabase/add-barcode-catalog.sql</code> in Supabase.
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
