@@ -6,9 +6,17 @@ function loadOpenCV(): Promise<void> {
     return Promise.resolve()
   }
   return new Promise((resolve, reject) => {
+    // OpenCV loads a separate WASM file; ensure it fetches from the CDN, not this site.
+    const baseUrl = 'https://docs.opencv.org/4.7.0/'
+    const w = window as unknown as { Module?: any }
+    w.Module = w.Module ?? {}
+    if (typeof w.Module.locateFile !== 'function') {
+      w.Module.locateFile = (file: string) => `${baseUrl}${file}`
+    }
+
     const script = document.createElement('script')
     script.async = true
-    script.src = 'https://docs.opencv.org/4.7.0/opencv.js'
+    script.src = `${baseUrl}opencv.js`
     script.onload = () => {
       let attempts = 0
       const maxAttempts = 300
@@ -20,7 +28,7 @@ function loadOpenCV(): Promise<void> {
         }
         attempts++
         if (attempts >= maxAttempts) {
-          reject(new Error('OpenCV failed to initialize'))
+          reject(new Error('OpenCV failed to initialize (WASM may be blocked or unreachable)'))
           return
         }
         setTimeout(check, 100)
@@ -52,6 +60,11 @@ async function getScanner(): Promise<InstanceType<JScanifyClass>> {
     jscanifyClass = mod.default as JScanifyClass
   }
   return new jscanifyClass()
+}
+
+// Preload OpenCV + jscanify so the first capture/detection doesn't fail.
+export async function warmupDocumentScanner(): Promise<void> {
+  await getScanner()
 }
 
 const PAPER_WIDTH = 800

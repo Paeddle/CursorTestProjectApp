@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CornerPoints, cropDocumentFromCanvas, detectCornersFromCanvas } from '../lib/documentScanner'
+import {
+  CornerPoints,
+  cropDocumentFromCanvas,
+  detectCornersFromCanvas,
+  warmupDocumentScanner,
+} from '../lib/documentScanner'
 import './DocumentScanner.css'
 
 interface DocumentScannerProps {
@@ -18,6 +23,8 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
   const [processing, setProcessing] = useState(false)
   const [captureError, setCaptureError] = useState<string | null>(null)
   const [cornerPoints, setCornerPoints] = useState<CornerPoints | null>(null)
+  const [scannerReady, setScannerReady] = useState(false)
+  const [scannerError, setScannerError] = useState<string | null>(null)
 
   const hasVideo = useMemo(() => Boolean(stream), [stream])
 
@@ -78,9 +85,28 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     }
   }, [stream])
 
+  // Ensure OpenCV + jscanify are loaded in production (Netlify) before we start detecting/cropping.
+  useEffect(() => {
+    let cancelled = false
+    setScannerReady(false)
+    setScannerError(null)
+    warmupDocumentScanner()
+      .then(() => {
+        if (!cancelled) setScannerReady(true)
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!cancelled) setScannerError(msg || 'Failed to initialize scanner')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Live detection + blue outline overlay
   useEffect(() => {
     if (!hasVideo) return
+    if (!scannerReady) return
     const video = videoRef.current
     const overlay = overlayCanvasRef.current
     const detectCanvas = detectCanvasRef.current
@@ -206,7 +232,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       clearOverlay()
       setCornerPoints(null)
     }
-  }, [hasVideo, processing])
+  }, [hasVideo, processing, scannerReady])
 
   const handleCapture = async () => {
     const video = videoRef.current
@@ -214,6 +240,10 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     if (!video || !captureCanvas || !stream || video.readyState < 2) return
 
     setCaptureError(null)
+    if (!scannerReady) {
+      setCaptureError(scannerError ? `Scanner not ready: ${scannerError}` : 'Loading scanner… try again in a moment.')
+      return
+    }
     setProcessing(true)
 
     try {
@@ -231,8 +261,9 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       } else {
         setCaptureError('No document detected. Point the camera at the paper and try again.')
       }
-    } catch (_) {
-      setCaptureError('Could not process image. Try again.')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setCaptureError(msg ? `Could not process image: ${msg}` : 'Could not process image. Try again.')
     } finally {
       setProcessing(false)
     }
@@ -292,6 +323,11 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
           <div className="document-scanner-camera">
             <video ref={videoRef} autoPlay playsInline muted />
             <canvas ref={overlayCanvasRef} className="document-scanner-outline" />
+            {!scannerReady && (
+              <div className="document-scanner-loading">
+                <p>{scannerError ? `Scanner init failed: ${scannerError}` : 'Loading scanner…'}</p>
+              </div>
+            )}
           </div>
           {captureError && (
             <p className="document-scanner-capture-error">{captureError}</p>
@@ -301,7 +337,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
               type="button"
               className="btn btn-primary btn-capture"
               onClick={handleCapture}
-              disabled={processing || !stream}
+              disabled={processing || !stream || !scannerReady}
             >
               {processing ? 'Processing…' : 'Capture'}
             </button>

@@ -72,6 +72,19 @@
   pointer-events: none;
 }
 
+.document-scanner-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  text-align: center;
+  color: #e2e8f0;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
 .document-scanner-capture-error {
   padding: 0.5rem 1rem;
   margin: 0;
