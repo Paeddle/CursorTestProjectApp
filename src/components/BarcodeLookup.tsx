@@ -95,20 +95,43 @@ function extractTitle(htmlText: string): string | null {
 async function lookupAdiViaSerper(barcode: string, serperApiKey: string): Promise<LookupResult | null> {
   // Uses Serper (Google Search API) to find an ADI product page, then fetches OG metadata via Jina proxy.
   // Requires VITE_SERPER_API_KEY.
-  const q = `${barcode} site:adiglobaldistribution`
-  const res = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': serperApiKey,
-    },
-    body: JSON.stringify({ q, num: 5 }),
-  })
-  if (!res.ok) return null
-  const data = (await res.json()) as any
-  const organic: Array<{ link?: string; title?: string }> = data?.organic ?? []
-  const adi = organic.find((r) => typeof r.link === 'string' && r.link.toLowerCase().includes('adiglobaldistribution'))
-  const link = adi?.link
+  const queries = [
+    `${barcode} site:adiglobaldistribution.com`,
+    `${barcode} site:adiglobaldistribution.us`,
+    `${barcode} \"ADI\"`,
+  ]
+
+  let chosen: { link: string; title?: string } | null = null
+  for (const q of queries) {
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': serperApiKey,
+      },
+      body: JSON.stringify({ q, num: 8 }),
+    })
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '')
+      throw new Error(`Serper search failed (${res.status}). ${msg}`.trim())
+    }
+    const data = (await res.json()) as any
+    const organic: Array<{ link?: string; title?: string }> = data?.organic ?? []
+    const pick = organic.find((r) => {
+      const link = (r.link || '').toLowerCase()
+      return (
+        link.includes('adiglobaldistribution.com') ||
+        link.includes('adiglobaldistribution.us') ||
+        link.includes('adiglobaldistribution')
+      )
+    })
+    if (pick?.link) {
+      chosen = { link: pick.link, title: pick.title }
+      break
+    }
+  }
+
+  const link = chosen?.link
   if (!link) return null
 
   const htmlRes = await fetch(jinaFetchUrl(link), { headers: { Accept: 'text/plain' } })
@@ -117,7 +140,7 @@ async function lookupAdiViaSerper(barcode: string, serperApiKey: string): Promis
 
   const ogTitle = extractMetaContent(text, 'og:title')
   const ogImage = extractMetaContent(text, 'og:image')
-  const title = ogTitle || extractTitle(text) || adi?.title || null
+  const title = ogTitle || extractTitle(text) || chosen?.title || null
 
   return {
     barcode,
@@ -150,6 +173,7 @@ export default function BarcodeLookup() {
   const [addProductUrl, setAddProductUrl] = useState('')
   const [addNotes, setAddNotes] = useState('')
   const [addSaving, setAddSaving] = useState(false)
+  const serperEnabled = Boolean(import.meta.env.VITE_SERPER_API_KEY)
 
   useEffect(() => {
     if (!isConfigured()) {
@@ -413,6 +437,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     Search the web for this barcode
                   </a>
                 )}
+                <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
+                  Serper (ADI search) enabled: <strong>{serperEnabled ? 'Yes' : 'No'}</strong>
+                </div>
                 <div style={{ marginTop: '0.75rem' }}>
                   <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
                     Add to your Catalog
