@@ -21,6 +21,19 @@ function isMoney(s: string): boolean {
   return /^\$/.test(s.trim())
 }
 
+function isJobLikeToken(tok: string): boolean {
+  const t = tok.trim()
+  if (!t) return false
+  if (isMoney(t)) return false
+  if (DATE_ANYWHERE.test(t)) return false
+  if (DATE_LINE.test(t)) return false
+  if (t === '+' || t === '-') return false
+  if (t.includes('/') || t.includes(':')) return true
+  if (/ref#|ref\b/i.test(t)) return true
+  if (/\bwo\b/i.test(t)) return true
+  return false
+}
+
 /**
  * Parse lines produced by extractPdfLinesFromArrayBuffer (tab-separated cells).
  * Heuristic: rows with "+", "-" in fixed columns and a numeric Required in the next cell.
@@ -80,6 +93,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     if (moneyIndices.length > 0) {
       let parsedAtLeastOne = false
 
+      let prevMoneyIndex = -1
       for (const mi of moneyIndices) {
         const intsAfter: number[] = []
         for (let k = mi + 1; k < parts.length; k++) {
@@ -90,7 +104,6 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         // Look for nearest part-like token to the left of this money token.
         let partCandidate: string | null = null
-        let partIndex: number | null = null
         for (let k = mi - 1; k >= 0; k--) {
           const tok = (parts[k] ?? '').trim()
           if (!tok || tok === '+' || tok === '-') continue
@@ -100,12 +113,10 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
           if (/[0-9]/.test(tok) && !/^\\d+$/.test(tok) && !isMoney(tok) && tok !== currentContext) {
             partCandidate = tok
-            partIndex = k
             break
           }
           if (/[0-9\\-]/.test(tok) && !isMoney(tok) && !/^\\d+$/.test(tok) && tok.includes('-')) {
             partCandidate = tok
-            partIndex = k
             break
           }
         }
@@ -114,18 +125,15 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
           const cleanedPart = partCandidate.replace(/^\\d+\\s*\\|\\s*/, '').trim()
           if (cleanedPart && !/\\s/.test(cleanedPart) && !isMoney(cleanedPart)) {
-            // Pick job context near this specific part/$ token.
-            // This helps when the same extracted line contains multiple jobs.
+            // Pick the nearest job-like token immediately to the left of this $cost,
+            // but do not cross over into the previous $cost "segment".
             let rowJob: string | null = currentJob
-            if (partIndex != null) {
-              for (let j = partIndex - 1; j >= 0; j--) {
-                const jt = (parts[j] ?? '').trim()
-                if (!jt || jt === '+' || jt === '-' || jt === currentContext) continue
-                if (DATE_ANYWHERE.test(jt)) continue
-                if (jt.includes('/') || jt.includes(':') || /ref#|ref\\b/i.test(jt) || /\\bwo\\b/i.test(jt)) {
-                  rowJob = jt
-                  break
-                }
+            for (let j = mi - 1; j > prevMoneyIndex; j--) {
+              const jt = (parts[j] ?? '').trim()
+              if (!jt || jt === '+' || jt === '-' || jt === currentContext) continue
+              if (isJobLikeToken(jt)) {
+                rowJob = jt
+                break
               }
             }
 
@@ -147,6 +155,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             parsedAtLeastOne = true
           }
         }
+        prevMoneyIndex = mi
       }
 
       if (parsedAtLeastOne) continue
