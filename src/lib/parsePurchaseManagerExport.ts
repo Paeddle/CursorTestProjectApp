@@ -49,6 +49,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   let currentVendor: string | null = null
   let currentContext: string | null = null
   let currentJob: string | null = null
+  let currentPartContext: { part: string; vendor: string | null; cost: string | null } | null = null
+  let pendingSummaryIndex: number | null = null
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -175,6 +177,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               context_line: currentContext,
               raw_line: line,
             })
+            currentPartContext = { part: cleanedPart, vendor: currentVendor, cost: parts[mi] ?? null }
+            pendingSummaryIndex = out.length - 1
             parsedAtLeastOne = true
           }
         }
@@ -193,6 +197,59 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         currentVendor = vendor
       }
       continue
+    }
+
+    // Detail-row parsing (no cost on row):
+    // Many exports place one summary line (with cost/total required) followed by
+    // multiple date+job lines with per-job requested qty. We prefer those per-job rows.
+    if (currentPartContext && DATE_ANYWHERE.test(line)) {
+      let detailJob: string | null = null
+      const dateTokenIndex = parts.findIndex((p) => DATE_ANYWHERE.test(p))
+      if (dateTokenIndex >= 0) {
+        for (let j = dateTokenIndex + 1; j < parts.length; j++) {
+          const jt = (parts[j] ?? '').trim()
+          if (!jt || jt === '+' || jt === '-') continue
+          if (isMoney(jt)) break
+          if (isJobTokenAfterDate(jt)) {
+            detailJob = jt
+            break
+          }
+        }
+      }
+
+      // Qty on detail rows is usually the last int token.
+      let detailRequired: number | null = null
+      for (let j = parts.length - 1; j >= 0; j--) {
+        const t = (parts[j] ?? '').trim()
+        if (isInt(t)) {
+          const n = Number.parseInt(t, 10)
+          if (Number.isFinite(n) && n > 0) {
+            detailRequired = n
+            break
+          }
+        }
+      }
+
+      if (detailJob && detailRequired != null) {
+        // If this item had a summary row, remove it once detail rows appear.
+        if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+          out.splice(pendingSummaryIndex, 1)
+          pendingSummaryIndex = null
+        }
+
+        out.push({
+          vendor: currentPartContext.vendor,
+          job: detailJob,
+          part: currentPartContext.part,
+          required: detailRequired,
+          received: null,
+          ordered: null,
+          cost: currentPartContext.cost,
+          context_line: currentContext,
+          raw_line: line,
+        })
+        continue
+      }
     }
 
     // Fallback for older layouts: try to parse <part> + - <requiredInt> ...
