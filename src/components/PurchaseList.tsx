@@ -15,6 +15,19 @@ function isConfigured(): boolean {
 }
 
 const CHUNK = 250
+type ParsedDebugRow = {
+  source_file: string
+  row_index: number
+  vendor: string
+  job: string
+  part: string
+  required: number
+  received: string
+  ordered: string
+  cost: string
+  context_line: string
+  raw_line: string
+}
 
 async function insertInChunks<T extends Record<string, unknown>>(
   table: string,
@@ -47,6 +60,7 @@ function PurchaseList() {
   const [batchItems, setBatchItems] = useState<PurchaseListItemRow[]>([])
   const [inventoryCount, setInventoryCount] = useState(0)
   const [suggestions, setSuggestions] = useState<PullSuggestion[]>([])
+  const [parsedDebugRows, setParsedDebugRows] = useState<ParsedDebugRow[]>([])
 
   const loadBatches = useCallback(async () => {
     const { data, error: e } = await supabase
@@ -140,6 +154,7 @@ function PurchaseList() {
     }
     setBusy(true)
     try {
+      const debugRows: ParsedDebugRow[] = []
       // Full refresh requested: clear old purchase list data before importing new PDF(s).
       // Delete child rows first to satisfy FK constraints.
       const { error: delItemsErr } = await supabase
@@ -158,6 +173,21 @@ function PurchaseList() {
         const buf = await file.arrayBuffer()
         const lines = await extractPdfLinesFromArrayBuffer(buf)
         const parsed = parsePurchaseManagerLines(lines)
+        parsed.forEach((p, idx) => {
+          debugRows.push({
+            source_file: file.name,
+            row_index: idx + 1,
+            vendor: p.vendor ?? '',
+            job: p.job ?? '',
+            part: p.part ?? '',
+            required: p.required ?? 0,
+            received: p.received == null ? '' : String(p.received),
+            ordered: p.ordered == null ? '' : String(p.ordered),
+            cost: p.cost ?? '',
+            context_line: p.context_line ?? '',
+            raw_line: p.raw_line ?? '',
+          })
+        })
         if (parsed.length === 0) {
           const preview = lines.slice(0, 8).join(' || ')
           throw new Error(
@@ -190,6 +220,7 @@ function PurchaseList() {
       }
 
       setSuccess(`Imported ${pdfFiles.length} PDF file(s) into purchase list.`)
+      setParsedDebugRows(debugRows)
       setPdfFiles(null)
       await loadBatches()
       const { data: latest } = await supabase
@@ -263,6 +294,17 @@ function PurchaseList() {
     URL.revokeObjectURL(a.href)
   }
 
+  const downloadParsedDebugCsv = () => {
+    if (parsedDebugRows.length === 0) return
+    const csv = Papa.unparse(parsedDebugRows, { header: true })
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `purchase-parse-debug-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   if (!isConfigured()) {
     return (
       <div className="purchase-list-page">
@@ -306,6 +348,9 @@ function PurchaseList() {
           <div className="purchase-list-actions">
             <button type="button" className="primary" disabled={busy} onClick={() => void handleUploadPdfs()}>
               Parse &amp; save to Supabase
+            </button>
+            <button type="button" disabled={parsedDebugRows.length === 0} onClick={downloadParsedDebugCsv}>
+              Download parsed debug CSV
             </button>
           </div>
         </div>
