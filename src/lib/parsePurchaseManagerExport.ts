@@ -52,6 +52,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   let currentPartContext: { part: string; vendor: string | null; cost: string | null } | null = null
   let pendingSummaryIndex: number | null = null
   let lastDetailSignature: string | null = null
+  let pendingDetailJob: string | null = null
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -129,6 +130,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // to the left of that $cost.
     const moneyIndices = parts.map((p, idx) => (isMoney(p) ? idx : -1)).filter((i) => i >= 0)
     if (moneyIndices.length > 0) {
+      // New item context started; pending detail job belongs to previous non-money detail section.
+      pendingDetailJob = null
       let parsedAtLeastOne = false
 
       let prevMoneyIndex = -1
@@ -279,6 +282,53 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           raw_line: line,
         })
         lastDetailSignature = `${currentPartContext.part}|${detailJob}|${detailRequired}|${currentContext || ''}`
+        pendingDetailJob = null
+        continue
+      }
+
+      // Date/job line without an obvious quantity on the same row:
+      // hold job and consume quantity from the next non-money row.
+      if (detailJob && detailRequired == null) {
+        pendingDetailJob = detailJob
+        continue
+      }
+    }
+
+    // Pending detail qty line:
+    // Some PDFs put date/job on one line and qty on the next line.
+    if (currentPartContext && pendingDetailJob && moneyIndices.length === 0) {
+      let qty: number | null = null
+      for (let j = 0; j < parts.length; j++) {
+        const t = (parts[j] ?? '').trim()
+        if (isInt(t)) {
+          const n = Number.parseInt(t, 10)
+          if (Number.isFinite(n) && n > 0) {
+            qty = n
+            break
+          }
+        }
+      }
+      if (qty != null) {
+        if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+          out.splice(pendingSummaryIndex, 1)
+          pendingSummaryIndex = null
+        }
+        const sig = `${currentPartContext.part}|${pendingDetailJob}|${qty}|${currentContext || ''}`
+        if (sig !== lastDetailSignature) {
+          out.push({
+            vendor: currentPartContext.vendor,
+            job: pendingDetailJob,
+            part: currentPartContext.part,
+            required: qty,
+            received: null,
+            ordered: null,
+            cost: currentPartContext.cost,
+            context_line: currentContext,
+            raw_line: line,
+          })
+          lastDetailSignature = sig
+        }
+        pendingDetailJob = null
         continue
       }
     }
