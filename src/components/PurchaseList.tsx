@@ -140,6 +140,20 @@ function PurchaseList() {
     }
     setBusy(true)
     try {
+      // Full refresh requested: clear old purchase list data before importing new PDF(s).
+      // Delete child rows first to satisfy FK constraints.
+      const { error: delItemsErr } = await supabase
+        .from('purchase_list_items')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000')
+      if (delItemsErr) throw new Error(delItemsErr.message)
+
+      const { error: delBatchesErr } = await supabase
+        .from('purchase_list_batches')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000')
+      if (delBatchesErr) throw new Error(delBatchesErr.message)
+
       for (const file of Array.from(pdfFiles)) {
         const buf = await file.arrayBuffer()
         const lines = await extractPdfLinesFromArrayBuffer(buf)

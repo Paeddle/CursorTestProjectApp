@@ -51,6 +51,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   let currentJob: string | null = null
   let currentPartContext: { part: string; vendor: string | null; cost: string | null } | null = null
   let pendingSummaryIndex: number | null = null
+  let lastDetailSignature: string | null = null
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -74,8 +75,37 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       }
     }
 
-    // Single lone integer lines (noise between wrapped rows)
+    // Lone integer lines are usually noise, but when we have active part+job context
+    // they often represent per-job request quantities (e.g. detail row quantity only).
     if (/^\d+$/.test(line) && line.length <= 4) {
+      const qty = Number.parseInt(line, 10)
+      if (
+        currentPartContext &&
+        currentJob &&
+        Number.isFinite(qty) &&
+        qty > 0
+      ) {
+        // If this item had a summary row, remove it once detail rows appear.
+        if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+          out.splice(pendingSummaryIndex, 1)
+          pendingSummaryIndex = null
+        }
+        const sig = `${currentPartContext.part}|${currentJob}|${qty}|${currentContext || ''}`
+        if (sig !== lastDetailSignature) {
+          out.push({
+            vendor: currentPartContext.vendor,
+            job: currentJob,
+            part: currentPartContext.part,
+            required: qty,
+            received: null,
+            ordered: null,
+            cost: currentPartContext.cost,
+            context_line: currentContext,
+            raw_line: line,
+          })
+          lastDetailSignature = sig
+        }
+      }
       continue
     }
 
@@ -248,6 +278,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           context_line: currentContext,
           raw_line: line,
         })
+        lastDetailSignature = `${currentPartContext.part}|${detailJob}|${detailRequired}|${currentContext || ''}`
         continue
       }
     }
