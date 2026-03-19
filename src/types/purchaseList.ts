@@ -7,6 +7,7 @@ export interface PurchaseListBatch {
 export interface PurchaseListItemRow {
   batch_id: string
   vendor: string | null
+  job: string | null
   part: string
   required: number
   received: number | null
@@ -40,6 +41,7 @@ export interface InventoryRow {
 export interface PullSuggestion {
   part: string
   required: number
+  job: string | null
   stock_available: number | null
   can_pull: number
   match_type: 'part_number' | 'item' | 'none'

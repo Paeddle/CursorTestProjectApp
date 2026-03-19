@@ -49,7 +49,7 @@ export function inventoryLookups(rows: InvRow[]): {
 }
 
 export function comparePurchaseToInventory(
-  purchaseParts: { part: string; required: number }[],
+  purchaseParts: { part: string; required: number; job: string | null }[],
   inventoryRows: InvRow[]
 ): PullSuggestion[] {
   const { byPart, byItem } = inventoryLookups(inventoryRows)
@@ -62,6 +62,7 @@ export function comparePurchaseToInventory(
     return {
       part: p.part,
       required: p.required,
+      job: p.job,
       stock_available: stock,
       can_pull: can,
       match_type: hit ? hit.via : 'none',

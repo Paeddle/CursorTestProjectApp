@@ -73,7 +73,7 @@ function PurchaseList() {
     }
     const { data, error: e } = await supabase
       .from('purchase_list_items')
-      .select('batch_id, vendor, part, required, received, ordered, cost, context_line, raw_line')
+      .select('batch_id, vendor, job, part, required, received, ordered, cost, context_line, raw_line')
       .eq('batch_id', batchId)
       .order('part', { ascending: true })
     if (e) throw new Error(e.message)
@@ -95,6 +95,7 @@ function PurchaseList() {
       const purchaseRows = batchItems.map((r) => ({
         part: r.part,
         required: r.required,
+        job: r.job,
       }))
       setSuggestions(comparePurchaseToInventory(purchaseRows, invRows))
     } catch (err) {
@@ -162,6 +163,7 @@ function PurchaseList() {
         const inserts: PurchaseListItemRow[] = parsed.map((p) => ({
           batch_id: batchId,
           vendor: p.vendor,
+          job: p.job,
           part: p.part,
           required: p.required,
           received: p.received,
@@ -230,6 +232,7 @@ function PurchaseList() {
     if (batchItems.length === 0) return
     const flat = batchItems.map((r) => ({
       vendor: r.vendor ?? '',
+      job: r.job ?? '',
       part: r.part,
       required: r.required,
       received: r.received ?? '',
@@ -350,6 +353,7 @@ function PurchaseList() {
           <table className="purchase-list-table">
             <thead>
               <tr>
+                <th>Job</th>
                 <th>Part (from PDF)</th>
                 <th>Required</th>
                 <th>stock_available</th>
@@ -360,7 +364,7 @@ function PurchaseList() {
             <tbody>
               {suggestions.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     {selectedBatchId ? 'No rows or inventory empty — import an XLSX first.' : 'Select a batch.'}
                   </td>
                 </tr>
@@ -370,6 +374,7 @@ function PurchaseList() {
                   const partial = s.stock_available != null && s.can_pull > 0 && s.can_pull < s.required
                   return (
                     <tr key={`${s.part}-${i}`}>
+                      <td>{s.job ?? '—'}</td>
                       <td>{s.part}</td>
                       <td>{s.required}</td>
                       <td>{s.stock_available ?? '—'}</td>

@@ -46,7 +46,8 @@ export async function extractPdfLinesFromArrayBuffer(data: ArrayBuffer): Promise
     items.sort((a, b) => (b.y - a.y) || (a.x - b.x))
 
     // Group rows by Y proximity.
-    const tolerance = 2.5
+    // Kept fairly small so separate table rows don't get merged.
+    const tolerance = 1.5
     const rows: { y: number; cells: { x: number; str: string }[] }[] = []
 
     for (const it of items) {

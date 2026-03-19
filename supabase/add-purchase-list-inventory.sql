@@ -13,6 +13,7 @@ create table if not exists public.purchase_list_items (
   id uuid primary key default gen_random_uuid(),
   batch_id uuid not null references public.purchase_list_batches (id) on delete cascade,
   vendor text,
+  job text,
   part text not null,
   required integer not null default 0,
   received integer,
@@ -22,6 +23,9 @@ create table if not exists public.purchase_list_items (
   raw_line text,
   created_at timestamptz not null default now()
 );
+
+-- If you previously created the table without `job`, add it now.
+alter table public.purchase_list_items add column if not exists job text;
 
 create index if not exists idx_purchase_list_items_batch_id on public.purchase_list_items (batch_id);
 create index if not exists idx_purchase_list_items_part on public.purchase_list_items (part);

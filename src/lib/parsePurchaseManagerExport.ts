@@ -1,5 +1,6 @@
 export interface ParsedPurchaseLine {
   vendor: string | null
+  job: string | null
   part: string
   required: number
   received: number | null
@@ -27,6 +28,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   const out: ParsedPurchaseLine[] = []
   let currentVendor: string | null = null
   let currentContext: string | null = null
+  let currentJob: string | null = null
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -39,6 +41,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
     if (DATE_LINE.test(line)) {
       currentContext = line
+      currentJob = line.replace(DATE_LINE, '').trim() || null
       continue
     }
 
@@ -58,69 +61,77 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     }
 
     // New robust parsing:
-    // - Most data rows contain a $cost token, and then a sequence of integers:
+    // - Most purchase rows contain a $cost token, and then a sequence of integers:
     //   + - <part> $<cost> <required> <received> <ordered> <on_hand> <available>
-    // - Vendor subtotal rows also contain $cost but do NOT have a "part-like" token (digits+letters).
-    // We parse by finding `$...`, extracting integers after it, then finding the nearest token to the left that looks like a part.
-    const moneyIndex = parts.findIndex((p) => isMoney(p))
-    if (moneyIndex >= 0) {
-      const intsAfter: number[] = []
-      for (let k = moneyIndex + 1; k < parts.length; k++) {
-        const t = parts[k]!
-        if (isInt(t)) intsAfter.push(Number.parseInt(t, 10))
-        else break
+    // - Vendor subtotal rows also contain $cost but do NOT have a "part-like" token.
+    //
+    // We parse by iterating ALL $cost tokens in the extracted text line, extracting
+    // the integer sequence after each, and taking the nearest part-like token
+    // to the left of that $cost.
+    const moneyIndices = parts.map((p, idx) => (isMoney(p) ? idx : -1)).filter((i) => i >= 0)
+    if (moneyIndices.length > 0) {
+      let parsedAtLeastOne = false
+
+      for (const mi of moneyIndices) {
+        const intsAfter: number[] = []
+        for (let k = mi + 1; k < parts.length; k++) {
+          const t = parts[k]!
+          if (isInt(t)) intsAfter.push(Number.parseInt(t, 10))
+          else break
+        }
+
+        // Look for nearest part-like token to the left of this money token.
+        let partCandidate: string | null = null
+        for (let k = mi - 1; k >= 0; k--) {
+          const tok = (parts[k] ?? '').trim()
+          if (!tok || tok === '+' || tok === '-') continue
+          if (DATE_LINE.test(tok)) continue
+          if (tok.includes('/')) continue
+          if (tok.includes(':')) continue
+
+          if (/[0-9]/.test(tok) && !/^\\d+$/.test(tok) && !isMoney(tok) && tok !== currentContext) {
+            partCandidate = tok
+            break
+          }
+          if (/[0-9\\-]/.test(tok) && !isMoney(tok) && !/^\\d+$/.test(tok) && tok.includes('-')) {
+            partCandidate = tok
+            break
+          }
+        }
+
+        if (partCandidate && intsAfter.length >= 1) {
+          // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
+          const cleanedPart = partCandidate.replace(/^\\d+\\s*\\|\\s*/, '').trim()
+          if (cleanedPart && !/\\s/.test(cleanedPart) && !isMoney(cleanedPart)) {
+            const required = intsAfter[0] ?? 0
+            const received = intsAfter.length >= 2 ? intsAfter[1]! : null
+            const ordered = intsAfter.length >= 3 ? intsAfter[2]! : null
+
+            out.push({
+              vendor: currentVendor,
+              job: currentJob,
+              part: cleanedPart,
+              required: Number.isFinite(required) ? required : 0,
+              received,
+              ordered,
+              cost: parts[mi] ?? null,
+              context_line: currentContext,
+              raw_line: line,
+            })
+            parsedAtLeastOne = true
+          }
+        }
       }
 
-      // Look for nearest part-like token to the left of money.
-      let partCandidate: string | null = null
-      for (let k = moneyIndex - 1; k >= 0; k--) {
-        const tok = (parts[k] ?? '').trim()
-        if (!tok || tok === '+' || tok === '-') continue
-        // Don't accidentally treat dates / debug tokens as part numbers.
-        if (DATE_LINE.test(tok)) continue
-        if (tok.includes('/')) continue
-        if (tok.includes(':')) continue
-        // Part tokens usually contain digits and are not pure integers.
-        if (/[0-9]/.test(tok) && !/^\\d+$/.test(tok) && !isMoney(tok) && tok !== currentContext) {
-          partCandidate = tok
-          break
-        }
-        // Sometimes Part can be numeric-like (e.g. "60-763" includes digits + dash) -> we still accept if not pure int.
-        if (/[0-9\\-]/.test(tok) && !isMoney(tok) && !/^\\d+$/.test(tok) && tok.includes('-')) {
-          partCandidate = tok
-          break
-        }
-      }
+      if (parsedAtLeastOne) continue
 
-      if (partCandidate && intsAfter.length >= 1) {
-        // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
-        const cleanedPart = partCandidate.replace(/^\\d+\\s*\\|\\s*/, '').trim()
-        if (cleanedPart && !/\\s/.test(cleanedPart) && !isMoney(cleanedPart)) {
-          const required = intsAfter[0] ?? 0
-          const received = intsAfter.length >= 2 ? intsAfter[1]! : null
-          const ordered = intsAfter.length >= 3 ? intsAfter[2]! : null
-
-          out.push({
-            vendor: currentVendor,
-            part: cleanedPart,
-            required: Number.isFinite(required) ? required : 0,
-            received,
-            ordered,
-            cost: parts[moneyIndex] ?? null,
-            context_line: currentContext,
-            raw_line: line,
-          })
-          continue
-        }
-      }
-
-      // Otherwise treat it as a vendor subtotal: extract vendor name between the last '-' and the money token.
+      // If we didn't parse any purchase rows, treat it as a vendor subtotal:
+      // extract vendor name between the last '-' and the first money token.
+      const vendorMoneyIndex = moneyIndices[0]!
       const dashIndex = parts.lastIndexOf('-')
-      const vendorTokens = parts.slice(dashIndex + 1, moneyIndex).filter(Boolean)
+      const vendorTokens = parts.slice(dashIndex + 1, vendorMoneyIndex).filter(Boolean)
       const vendor = vendorTokens.join(' ').trim()
       if (vendor && !isMoney(vendor) && !DATE_LINE.test(vendor) && !/^\\d+$/.test(vendor)) {
-        // Only update vendor if this line doesn't obviously contain a part-like token.
-        // (e.g. "Group One $45.10" => vendorTokens = ["Group","One"])
         currentVendor = vendor
       }
       continue
@@ -143,6 +154,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         out.push({
           vendor: currentVendor,
+          job: currentJob,
           part: cleanedPart,
           required: Number.isFinite(required) ? required : 0,
           received: null,
