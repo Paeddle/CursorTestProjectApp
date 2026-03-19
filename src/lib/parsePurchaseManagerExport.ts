@@ -11,6 +11,7 @@ export interface ParsedPurchaseLine {
 }
 
 const DATE_LINE = /^\d{1,2}\/\d{1,2}\/\d{4}/
+const DATE_ANYWHERE = /\d{1,2}\/\d{1,2}\/\d{4}/
 
 function isInt(s: string): boolean {
   return /^\d+$/.test(s.trim())
@@ -39,10 +40,17 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     if (line === 'Cost' || line === 'Options' || line === 'On-Hand') continue
     if (/^Group\s+One$/i.test(line)) continue
 
-    if (DATE_LINE.test(line)) {
+    // Date can appear at the start OR embedded in the row.
+    // Treat the remainder after the date as job context, but don't `continue`
+    // so we can still parse purchase rows on the same extracted line.
+    if (DATE_ANYWHERE.test(line)) {
+      const m = line.match(DATE_ANYWHERE)
+      const idx = m?.index ?? 0
       currentContext = line
-      currentJob = line.replace(DATE_LINE, '').trim() || null
-      continue
+      const after = line.slice(idx + m![0].length).replace(/^\s*\|\s*/g, '').trim()
+      if (after && (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))) {
+        currentJob = after
+      }
     }
 
     // Single lone integer lines (noise between wrapped rows)
@@ -82,6 +90,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         // Look for nearest part-like token to the left of this money token.
         let partCandidate: string | null = null
+        let partIndex: number | null = null
         for (let k = mi - 1; k >= 0; k--) {
           const tok = (parts[k] ?? '').trim()
           if (!tok || tok === '+' || tok === '-') continue
@@ -91,10 +100,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
           if (/[0-9]/.test(tok) && !/^\\d+$/.test(tok) && !isMoney(tok) && tok !== currentContext) {
             partCandidate = tok
+            partIndex = k
             break
           }
           if (/[0-9\\-]/.test(tok) && !isMoney(tok) && !/^\\d+$/.test(tok) && tok.includes('-')) {
             partCandidate = tok
+            partIndex = k
             break
           }
         }
@@ -103,13 +114,28 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
           const cleanedPart = partCandidate.replace(/^\\d+\\s*\\|\\s*/, '').trim()
           if (cleanedPart && !/\\s/.test(cleanedPart) && !isMoney(cleanedPart)) {
+            // Pick job context near this specific part/$ token.
+            // This helps when the same extracted line contains multiple jobs.
+            let rowJob: string | null = currentJob
+            if (partIndex != null) {
+              for (let j = partIndex - 1; j >= 0; j--) {
+                const jt = (parts[j] ?? '').trim()
+                if (!jt || jt === '+' || jt === '-' || jt === currentContext) continue
+                if (DATE_ANYWHERE.test(jt)) continue
+                if (jt.includes('/') || jt.includes(':') || /ref#|ref\\b/i.test(jt) || /\\bwo\\b/i.test(jt)) {
+                  rowJob = jt
+                  break
+                }
+              }
+            }
+
             const required = intsAfter[0] ?? 0
             const received = intsAfter.length >= 2 ? intsAfter[1]! : null
             const ordered = intsAfter.length >= 3 ? intsAfter[2]! : null
 
             out.push({
               vendor: currentVendor,
-              job: currentJob,
+              job: rowJob,
               part: cleanedPart,
               required: Number.isFinite(required) ? required : 0,
               received,
