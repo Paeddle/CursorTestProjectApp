@@ -281,9 +281,10 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         }
       }
 
-      // Qty on detail rows is usually the last int token.
+      // Qty on detail rows is usually the first standalone int token after
+      // the context text, while later ints may be received/ordered/on-hand.
       let detailRequired: number | null = null
-      for (let j = parts.length - 1; j >= 0; j--) {
+      for (let j = 0; j < parts.length; j++) {
         const t = (parts[j] ?? '').trim()
         if (isInt(t)) {
           const n = Number.parseInt(t, 10)
