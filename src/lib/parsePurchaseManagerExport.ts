@@ -282,5 +282,47 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     }
   }
 
-  return out
+  // Final cleanup:
+  // If a part has both (a) one summary-like row and (b) multiple per-job rows whose
+  // required values add up to that summary, remove the summary row so compare shows
+  // each job separately.
+  const byPart = new Map<string, { idx: number; row: ParsedPurchaseLine }[]>()
+  for (let i = 0; i < out.length; i++) {
+    const r = out[i]!
+    const key = r.part.trim().toLowerCase()
+    if (!key) continue
+    if (!byPart.has(key)) byPart.set(key, [])
+    byPart.get(key)!.push({ idx: i, row: r })
+  }
+
+  const removeIdx = new Set<number>()
+  for (const entries of byPart.values()) {
+    if (entries.length < 2) continue
+
+    // Prefer rows that have an actual job token.
+    const withJob = entries.filter((e) => (e.row.job || '').trim().length > 0)
+    if (withJob.length < 2) continue
+
+    // Identify potential summary rows: required >= 2 and job is missing OR looks too generic.
+    for (const candidate of entries) {
+      const cJob = (candidate.row.job || '').trim()
+      const cReq = candidate.row.required
+      if (!Number.isFinite(cReq) || cReq <= 1) continue
+
+      // Other rows for same part with specific jobs.
+      const others = withJob.filter((e) => e.idx !== candidate.idx)
+      if (others.length < 2) continue
+
+      const otherSum = others.reduce((s, e) => s + (Number.isFinite(e.row.required) ? e.row.required : 0), 0)
+      if (otherSum === cReq) {
+        // If candidate has no job, or has the same job as one of the detail rows, treat as summary.
+        if (!cJob || others.some((e) => (e.row.job || '').trim() === cJob)) {
+          removeIdx.add(candidate.idx)
+        }
+      }
+    }
+  }
+
+  if (removeIdx.size === 0) return out
+  return out.filter((_, idx) => !removeIdx.has(idx))
 }
