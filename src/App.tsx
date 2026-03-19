@@ -8,7 +8,7 @@ import Wire from './components/Wire'
 import PurchaseList from './components/PurchaseList'
 type SortDirection = 'asc' | 'desc' | null
 type ItemSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
-type OrderSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
+type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
 
 function App() {
   const [activePage, setActivePage] = useState('tracking')
@@ -435,31 +435,12 @@ function App() {
     const key = (poNumber || '').toLowerCase()
     const items = key ? poItemsMap.get(key) || [] : []
 
-    const itemNames = items
-      .map(i => (i.item_name || '').trim())
-      .filter(Boolean)
-
-    const distinctNames: string[] = []
-    const seen = new Set<string>()
-    for (const n of itemNames) {
-      const k = n.toLowerCase()
-      if (!seen.has(k)) {
-        seen.add(k)
-        distinctNames.push(n)
-      }
-    }
-
-    let itemNameDisplay = 'N/A'
-    if (distinctNames.length === 1) itemNameDisplay = distinctNames[0]
-    else if (distinctNames.length > 1) itemNameDisplay = `${distinctNames[0]} +${distinctNames.length - 1} more`
-
     const totalQuantity = items.reduce((sum, i) => sum + getQuantityNumeric(i.quantity), 0)
-
-    return { itemNameDisplay, totalQuantity }
+    return { totalQuantity }
   }
 
   const sortOrders = (
-    rows: Array<{ tracking: TrackingInfo; poNumber: string; customer: string; itemNameDisplay: string; totalQuantity: number }>,
+    rows: Array<{ tracking: TrackingInfo; poNumber: string; customer: string; totalQuantity: number }>,
     column: OrderSortColumn | null,
     direction: SortDirection
   ) => {
@@ -476,11 +457,10 @@ function App() {
         return direction === 'asc' ? a.totalQuantity - b.totalQuantity : b.totalQuantity - a.totalQuantity
       }
 
-      const aVal = column === 'job_or_customer' ? a.customer : a.itemNameDisplay
-      const bVal = column === 'job_or_customer' ? b.customer : b.itemNameDisplay
+      // column === 'job_or_customer'
       return direction === 'asc'
-        ? aVal.localeCompare(bVal, undefined, { sensitivity: 'base' })
-        : bVal.localeCompare(aVal, undefined, { sensitivity: 'base' })
+        ? a.customer.localeCompare(b.customer, undefined, { sensitivity: 'base' })
+        : b.customer.localeCompare(a.customer, undefined, { sensitivity: 'base' })
     })
   }
 
@@ -505,7 +485,7 @@ function App() {
   // Group Orders view by PO Number (one row per PO)
   const groupedOrdersMap = new Map<
     string,
-    { tracking: TrackingInfo; poNumber: string; customer: string; itemNameDisplay: string; totalQuantity: number }
+    { tracking: TrackingInfo; poNumber: string; customer: string; totalQuantity: number }
   >()
 
   for (const tracking of filteredTrackings) {
@@ -516,8 +496,8 @@ function App() {
     if (groupedOrdersMap.has(key)) continue
 
     const customer = (tracking.job_or_customer || '').trim()
-    const { itemNameDisplay, totalQuantity } = getOrderItemSummary(poNumber)
-    groupedOrdersMap.set(key, { tracking, poNumber, customer, itemNameDisplay, totalQuantity })
+    const { totalQuantity } = getOrderItemSummary(poNumber)
+    groupedOrdersMap.set(key, { tracking, poNumber, customer, totalQuantity })
   }
 
   const groupedOrders = Array.from(groupedOrdersMap.values())
@@ -774,14 +754,6 @@ function App() {
                         </span>
                       )}
                     </th>
-                    <th onClick={() => handleOrderSort('item_name')} className="sortable">
-                      Item Name
-                      {orderSortColumn === 'item_name' && (
-                        <span className="sort-indicator">
-                          {orderSortDirection === 'asc' ? ' ↑' : orderSortDirection === 'desc' ? ' ↓' : ''}
-                        </span>
-                      )}
-                    </th>
                     <th onClick={() => handleOrderSort('quantity')} className="sortable">
                       Quantity
                       {orderSortColumn === 'quantity' && (
@@ -793,7 +765,7 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedOrders.map(({ tracking, poNumber, customer, itemNameDisplay, totalQuantity }) => (
+                  {sortedOrders.map(({ tracking, poNumber, customer, totalQuantity }) => (
                     <tr
                       key={tracking.id}
                       onClick={() => setSelectedTracking(tracking)}
@@ -802,7 +774,6 @@ function App() {
                     >
                       <td>{poNumber || 'N/A'}</td>
                       <td>{customer || 'N/A'}</td>
-                      <td>{itemNameDisplay}</td>
                       <td>{totalQuantity || 0}</td>
                     </tr>
                   ))}
