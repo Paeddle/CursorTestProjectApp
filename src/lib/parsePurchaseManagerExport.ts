@@ -40,7 +40,22 @@ function isJobTokenAfterDate(tok: string): boolean {
   return /^[a-zA-Z]+(?:\/[a-zA-Z]+)*$/.test(t)
 }
 
+function extractFullJobContextFromLine(line: string): string | null {
+  const m = line.match(DATE_ANYWHERE)
+  if (!m || m.index == null) return null
+  const after = line
+    .slice(m.index + m[0].length)
+    .replace(/^\s*\|\s*/g, '')
+    .trim()
+  if (!after) return null
+  return after
+}
+
 function extractJobFromLine(line: string): string | null {
+  // Prefer full context so the UI shows full job name row.
+  const full = extractFullJobContextFromLine(line)
+  if (full) return full
+
   const m = line.match(DATE_ANYWHERE)
   if (!m || m.index == null) return null
   const afterDate = line.slice(m.index + m[0].length).trim()
