@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar'
 import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
 import Wire from './components/Wire'
+import PurchaseList from './components/PurchaseList'
 type SortDirection = 'asc' | 'desc' | null
 type ItemSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
 type OrderSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
@@ -532,6 +533,8 @@ function App() {
           <POInfo />
         ) : activePage === 'wire' ? (
           <Wire />
+        ) : activePage === 'purchase-list' ? (
+          <PurchaseList />
         ) : (
         <>
         <header className="header">
