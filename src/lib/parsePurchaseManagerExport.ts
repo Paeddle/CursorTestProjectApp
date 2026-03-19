@@ -21,6 +21,35 @@ function isMoney(s: string): boolean {
   return /^\$/.test(s.trim())
 }
 
+/** Single-token “job hints” after a date — never treat connective/common PDF words as jobs. */
+const JOB_TOKEN_STOPWORDS = new Set(
+  [
+    'and',
+    'or',
+    'the',
+    'a',
+    'an',
+    'of',
+    'for',
+    'to',
+    'in',
+    'on',
+    'at',
+    'by',
+    'with',
+    'from',
+    'av',
+    'security',
+    'systems',
+    'network',
+    'wiring',
+    'standalone',
+    'update',
+    'rev',
+    'wo',
+  ].map((s) => s.toLowerCase())
+)
+
 function isJobTokenAfterDate(tok: string): boolean {
   // Jobs in your screenshots tend to be lowercase names like:
   // "zalupski" and "pugliese/berezin"
@@ -29,6 +58,7 @@ function isJobTokenAfterDate(tok: string): boolean {
     .replace(/[,:;]$/g, '')
     .replace(/[,:;]/g, '')
   if (!t) return false
+  if (JOB_TOKEN_STOPWORDS.has(t.toLowerCase())) return false
   if (isMoney(t)) return false
   if (DATE_ANYWHERE.test(t) || DATE_LINE.test(t)) return false
   if (t === '+' || t === '-') return false
@@ -94,7 +124,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   let currentPartContext: { part: string; vendor: string | null; cost: string | null } | null = null
   let pendingSummaryIndex: number | null = null
   let lastDetailSignature: string | null = null
-  let pendingDetailJob: string | null = null
+  /** Date/job lines waiting for a following qty row (`+ - 2 2`, lone `3`, etc.). FIFO when several jobs stack up. */
+  let pendingDetailJobs: { job: string; sourceLine: string }[] = []
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -124,31 +155,32 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // they often represent per-job request quantities (e.g. detail row quantity only).
     if (/^\d+$/.test(line) && line.length <= 4) {
       const qty = Number.parseInt(line, 10)
-      if (
-        currentPartContext &&
-        currentJob &&
-        Number.isFinite(qty) &&
-        qty > 0
-      ) {
-        // If this item had a summary row, remove it once detail rows appear.
-        if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
-          out.splice(pendingSummaryIndex, 1)
-          pendingSummaryIndex = null
-        }
-        const sig = `${currentPartContext.part}|${currentJob}|${qty}|${currentContext || ''}`
-        if (sig !== lastDetailSignature) {
-          out.push({
-            vendor: currentPartContext.vendor,
-            job: currentJob,
-            part: currentPartContext.part,
-            required: qty,
-            received: null,
-            ordered: null,
-            cost: currentPartContext.cost,
-            context_line: currentContext,
-            raw_line: line,
-          })
-          lastDetailSignature = sig
+      if (currentPartContext && Number.isFinite(qty) && qty > 0) {
+        const queued = pendingDetailJobs.length > 0 ? pendingDetailJobs.shift()! : null
+        const useJob = queued?.job ?? currentJob
+        if (useJob) {
+          // If this item had a summary row, remove it once detail rows appear.
+          if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+            out.splice(pendingSummaryIndex, 1)
+            pendingSummaryIndex = null
+          }
+          const sig = `${currentPartContext.part}|${useJob}|${qty}|${queued?.sourceLine ?? ''}|${line}`
+          if (sig !== lastDetailSignature) {
+            out.push({
+              vendor: currentPartContext.vendor,
+              job: useJob,
+              part: currentPartContext.part,
+              required: qty,
+              received: null,
+              ordered: null,
+              cost: currentPartContext.cost,
+              context_line: currentContext,
+              raw_line: line,
+            })
+            lastDetailSignature = sig
+          }
+        } else if (queued) {
+          pendingDetailJobs.unshift(queued)
         }
       }
       continue
@@ -174,8 +206,6 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // to the left of that $cost.
     const moneyIndices = parts.map((p, idx) => (isMoney(p) ? idx : -1)).filter((i) => i >= 0)
     if (moneyIndices.length > 0) {
-      // New item context started; pending detail job belongs to previous non-money detail section.
-      pendingDetailJob = null
       let parsedAtLeastOne = false
 
       let prevMoneyIndex = -1
@@ -196,11 +226,11 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           if (tok.includes('/')) continue
           if (tok.includes(':')) continue
 
-          if (/[0-9]/.test(tok) && !/^\\d+$/.test(tok) && !isMoney(tok) && tok !== currentContext) {
+          if (/[0-9]/.test(tok) && !/^\d+$/.test(tok) && !isMoney(tok) && tok !== currentContext) {
             partCandidate = tok
             break
           }
-          if (/[0-9\\-]/.test(tok) && !isMoney(tok) && !/^\\d+$/.test(tok) && tok.includes('-')) {
+          if (/[0-9\-]/.test(tok) && !isMoney(tok) && !/^\d+$/.test(tok) && tok.includes('-')) {
             partCandidate = tok
             break
           }
@@ -208,8 +238,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         if (partCandidate && intsAfter.length >= 1) {
           // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
-          const cleanedPart = partCandidate.replace(/^\\d+\\s*\\|\\s*/, '').trim()
-          if (cleanedPart && !/\\s/.test(cleanedPart) && !isMoney(cleanedPart)) {
+          const cleanedPart = partCandidate.replace(/^\d+\s*\|\s*/, '').trim()
+          // Allow multi-word descriptions (e.g. "16 GB Micro SD") from a single PDF cell.
+          if (cleanedPart && !isMoney(cleanedPart)) {
             // Pick the nearest job-like token immediately to the left of this $cost,
             // but do not cross over into the previous $cost "segment".
             let rowJob: string | null = currentJob
@@ -243,6 +274,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             const received = intsAfter.length >= 2 ? intsAfter[1]! : null
             const ordered = intsAfter.length >= 3 ? intsAfter[2]! : null
 
+            // Starting a new purchase row from a $ line: drop queued date/job lines from the *previous* item
+            // that never received a qty line. (Do not clear on vendor-only $ rows with no part.)
+            if (!parsedAtLeastOne && pendingDetailJobs.length > 0) {
+              pendingDetailJobs = []
+            }
+
             out.push({
               vendor: currentVendor,
               job: rowJob,
@@ -270,7 +307,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       const dashIndex = parts.lastIndexOf('-')
       const vendorTokens = parts.slice(dashIndex + 1, vendorMoneyIndex).filter(Boolean)
       const vendor = vendorTokens.join(' ').trim()
-      if (vendor && !isMoney(vendor) && !DATE_LINE.test(vendor) && !/^\\d+$/.test(vendor)) {
+      if (vendor && !isMoney(vendor) && !DATE_LINE.test(vendor) && !/^\d+$/.test(vendor)) {
         currentVendor = vendor
       }
       continue
@@ -280,11 +317,11 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // Many exports place one summary line (with cost/total required) followed by
     // multiple date+job lines with per-job requested qty. We prefer those per-job rows.
     if (currentPartContext && DATE_ANYWHERE.test(line)) {
-      let detailJob: string | null = null
-      const lineJob = extractJobFromLine(line)
-      if (lineJob) detailJob = lineJob
+      // Prefer full job line (after the date). Do not overwrite with a single token like "and"
+      // from phrases such as "AV and Security".
+      let detailJob: string | null = extractJobFromLine(line)
       const dateTokenIndex = parts.findIndex((p) => DATE_ANYWHERE.test(p))
-      if (dateTokenIndex >= 0) {
+      if (!detailJob && dateTokenIndex >= 0) {
         for (let j = dateTokenIndex + 1; j < parts.length; j++) {
           const jt = (parts[j] ?? '').trim()
           if (!jt || jt === '+' || jt === '-') continue
@@ -302,6 +339,10 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       for (let j = 0; j < parts.length; j++) {
         const t = (parts[j] ?? '').trim()
         if (isInt(t)) {
+          const prevRaw = (parts[j - 1] ?? '').trim()
+          const prevNorm = prevRaw.replace(/\.$/, '')
+          // Avoid "Rev. 3" / "Rev 2" being treated as requested qty on a job context line.
+          if (/^rev$/i.test(prevNorm)) continue
           const n = Number.parseInt(t, 10)
           if (Number.isFinite(n) && n > 0) {
             detailRequired = n
@@ -328,22 +369,21 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           context_line: currentContext,
           raw_line: line,
         })
-        lastDetailSignature = `${currentPartContext.part}|${detailJob}|${detailRequired}|${currentContext || ''}`
-        pendingDetailJob = null
+        lastDetailSignature = `${currentPartContext.part}|${detailJob}|${detailRequired}|${line}`
         continue
       }
 
       // Date/job line without an obvious quantity on the same row:
       // hold job and consume quantity from the next non-money row.
       if (detailJob && detailRequired == null) {
-        pendingDetailJob = detailJob
+        pendingDetailJobs.push({ job: detailJob, sourceLine: line })
         continue
       }
     }
 
     // Pending detail qty line:
     // Some PDFs put date/job on one line and qty on the next line.
-    if (currentPartContext && pendingDetailJob && moneyIndices.length === 0) {
+    if (currentPartContext && pendingDetailJobs.length > 0 && moneyIndices.length === 0) {
       let qty: number | null = null
       for (let j = 0; j < parts.length; j++) {
         const t = (parts[j] ?? '').trim()
@@ -356,15 +396,16 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         }
       }
       if (qty != null) {
+        const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
         if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
           out.splice(pendingSummaryIndex, 1)
           pendingSummaryIndex = null
         }
-        const sig = `${currentPartContext.part}|${pendingDetailJob}|${qty}|${currentContext || ''}`
+        const sig = `${currentPartContext.part}|${dj}|${qty}|${src}|${line}`
         if (sig !== lastDetailSignature) {
           out.push({
             vendor: currentPartContext.vendor,
-            job: pendingDetailJob,
+            job: dj,
             part: currentPartContext.part,
             required: qty,
             received: null,
@@ -375,7 +416,6 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           })
           lastDetailSignature = sig
         }
-        pendingDetailJob = null
         continue
       }
     }
@@ -392,8 +432,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         const rawPart = parts.slice(0, i).join(' ').trim()
         const required = Number.parseInt(requiredToken, 10)
-        const cleanedPart = rawPart.replace(/^\\d+\\s*\\|\\s*/, '').trim()
-        if (!cleanedPart || /^\\d+$/.test(cleanedPart) || isMoney(cleanedPart)) continue
+        const cleanedPart = rawPart.replace(/^\d+\s*\|\s*/, '').trim()
+        if (!cleanedPart || /^\d+$/.test(cleanedPart) || isMoney(cleanedPart)) continue
 
         out.push({
           vendor: currentVendor,
