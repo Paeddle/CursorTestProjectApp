@@ -21,17 +21,23 @@ function isMoney(s: string): boolean {
   return /^\$/.test(s.trim())
 }
 
-function isJobLikeToken(tok: string): boolean {
-  const t = tok.trim()
+function isJobTokenAfterDate(tok: string): boolean {
+  // Jobs in your screenshots tend to be lowercase names like:
+  // "zalupski" and "pugliese/berezin"
+  const t = tok
+    .trim()
+    .replace(/[,:;]$/g, '')
+    .replace(/[,:;]/g, '')
   if (!t) return false
   if (isMoney(t)) return false
-  if (DATE_ANYWHERE.test(t)) return false
-  if (DATE_LINE.test(t)) return false
+  if (DATE_ANYWHERE.test(t) || DATE_LINE.test(t)) return false
   if (t === '+' || t === '-') return false
-  if (t.includes('/') || t.includes(':')) return true
-  if (/ref#|ref\b/i.test(t)) return true
-  if (/\bwo\b/i.test(t)) return true
-  return false
+  // Exclude anything with digits (part names and quantities contain digits).
+  if (/\d/.test(t)) return false
+  // Prefer lowercase tokens to avoid picking manufacturer names like "Sandisk".
+  if (!/^[a-z]/.test(t)) return false
+  // Allow letters plus optional slash-separated words.
+  return /^[a-zA-Z]+(?:\/[a-zA-Z]+)*$/.test(t)
 }
 
 /**
@@ -128,12 +134,29 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             // Pick the nearest job-like token immediately to the left of this $cost,
             // but do not cross over into the previous $cost "segment".
             let rowJob: string | null = currentJob
+
+            // Anchored job selection:
+            // 1) find the nearest date token in this segment (between prevMoneyIndex and mi)
+            // 2) choose the first job-like token after the date and before $cost/ints
+            let dateIdx: number | null = null
             for (let j = mi - 1; j > prevMoneyIndex; j--) {
               const jt = (parts[j] ?? '').trim()
-              if (!jt || jt === '+' || jt === '-' || jt === currentContext) continue
-              if (isJobLikeToken(jt)) {
-                rowJob = jt
+              if (DATE_ANYWHERE.test(jt)) {
+                dateIdx = j
                 break
+              }
+            }
+
+            if (dateIdx != null) {
+              for (let j = dateIdx + 1; j < mi; j++) {
+                const jt = (parts[j] ?? '').trim()
+                if (!jt || jt === '+' || jt === '-' || jt === currentContext) continue
+                if (isMoney(jt)) break
+                if (isInt(jt)) break
+                if (isJobTokenAfterDate(jt)) {
+                  rowJob = jt
+                  break
+                }
               }
             }
 
