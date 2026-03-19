@@ -144,8 +144,10 @@ function PurchaseList() {
         const lines = await extractPdfLinesFromArrayBuffer(buf)
         const parsed = parsePurchaseManagerLines(lines)
         if (parsed.length === 0) {
+          const preview = lines.slice(0, 8).join(' || ')
           throw new Error(
-            `No purchase rows parsed from "${file.name}". If this keeps happening, the PDF text layout may differ — send a sample page.`
+            `No purchase rows parsed from "${file.name}". Extracted ${lines.length} text rows. ` +
+            `First rows: ${preview || '(none)'}`
           )
         }
 

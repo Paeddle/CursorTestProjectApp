@@ -47,55 +47,63 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       continue
     }
 
-    const parts = line.split(/\t/).map((s) => s.trim()).filter((s) => s.length > 0)
+    // Tokenize: prefer tab-separated cells (from extractPdfLines),
+    // but fall back to whitespace splitting when tabs aren't present.
+    const tabParts = line.split('\t').map((s) => s.trim()).filter((s) => s.length > 0)
+    const parts = tabParts.length >= 4 ? tabParts : line.split(/\s{2,}|\s+/).map((s) => s.trim()).filter((s) => s.length > 0)
 
     // Header row
     if (parts.includes('Required') && parts.includes('Part')) {
       continue
     }
 
-    // Vendor / section subtotal: VendorName + - $123.45 (no numeric required in col 3)
-    if (
-      parts.length >= 4 &&
-      parts[1] === '+' &&
-      parts[2] === '-' &&
-      !isInt(parts[3] ?? '')
-    ) {
-      const name = (parts[0] ?? '').trim()
-      // Ignore noise like "10 + - 01/30/2020 ..." where the first cell is just a quantity
-      if (name && !/^\d+$/.test(name) && !isMoney(name)) {
-        currentVendor = name
-      }
-      continue
-    }
+    const plusIndex = parts.findIndex((p) => p === '+' || p === '+ ')
+    const dashIndex = parts.findIndex((p) => p === '-')
 
-    // Data row: Part + - required ...
-    if (parts.length >= 5 && parts[1] === '+' && parts[2] === '-' && isInt(parts[3] ?? '')) {
-      const part = (parts[0] ?? '').trim()
-      if (!part) continue
+    // Try to parse a "data row" anywhere in the line with pattern: <part> + - <requiredInt> ...
+    // (Vendor subtotal rows also have + - but required is NOT an int, so they won't match.)
+    let didParse = false
+    for (let i = 0; i < parts.length - 2; i++) {
+      if (parts[i] !== '+') continue
+      if (parts[i + 1] !== '-') continue
+      const requiredToken = parts[i + 2]
+      if (!isInt(requiredToken)) continue
 
-      const required = Number.parseInt(parts[3]!, 10)
-      let i = 4
+      const rawPart = parts.slice(0, i).join(' ').trim()
+      if (!rawPart) continue
+
+      const required = Number.parseInt(requiredToken, 10)
+
+      // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
+      const cleanedPart = rawPart.replace(/^\d+\s*\|\s*/, '').trim()
+      if (!cleanedPart || /^\d+$/.test(cleanedPart) || isMoney(cleanedPart)) continue
+
+      let j = i + 3
       let received: number | null = null
       let ordered: number | null = null
       let cost: string | null = null
 
-      if (parts[i] && isInt(parts[i]!)) {
-        received = Number.parseInt(parts[i]!, 10)
-        i++
+      // Expected order is: received int, ordered int, then cost ($...)
+      if (parts[j] && isInt(parts[j]!)) {
+        received = Number.parseInt(parts[j]!, 10)
+        j++
       }
-      if (parts[i] && isInt(parts[i]!)) {
-        ordered = Number.parseInt(parts[i]!, 10)
-        i++
+      if (parts[j] && isInt(parts[j]!)) {
+        ordered = Number.parseInt(parts[j]!, 10)
+        j++
       }
-      if (parts[i] && isMoney(parts[i]!)) {
-        cost = parts[i]!
-        i++
+      if (parts[j] && isMoney(parts[j]!)) {
+        cost = parts[j]!
+      } else {
+        // Sometimes cost can appear later; scan a bit.
+        for (let k = j; k < Math.min(parts.length, j + 4); k++) {
+          if (!cost && isMoney(parts[k]!)) cost = parts[k]!
+        }
       }
 
       out.push({
         vendor: currentVendor,
-        part: part,
+        part: cleanedPart,
         required: Number.isFinite(required) ? required : 0,
         received,
         ordered,
@@ -103,6 +111,25 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         context_line: currentContext,
         raw_line: line,
       })
+
+      didParse = true
+      break
+    }
+    if (didParse) continue
+
+    // Vendor / section subtotal: <VendorName> + - $123.45 (no numeric required in col after '-')
+    if (
+      plusIndex >= 0 &&
+      dashIndex === plusIndex + 1 &&
+      parts.length >= dashIndex + 2 &&
+      !isInt(parts[dashIndex + 1] ?? '')
+    ) {
+      const candidate = parts.slice(0, plusIndex).join(' ').trim()
+      // Ignore noise like "10 + - 01/30/2020 ..." where candidate is just a quantity.
+      if (candidate && !/^\\d+$/.test(candidate) && !isMoney(candidate) && !DATE_LINE.test(candidate)) {
+        currentVendor = candidate
+      }
+      continue
     }
   }
 
