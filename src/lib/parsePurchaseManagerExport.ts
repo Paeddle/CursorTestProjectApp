@@ -40,6 +40,33 @@ function isJobTokenAfterDate(tok: string): boolean {
   return /^[a-zA-Z]+(?:\/[a-zA-Z]+)*$/.test(t)
 }
 
+function extractJobFromLine(line: string): string | null {
+  const m = line.match(DATE_ANYWHERE)
+  if (!m || m.index == null) return null
+  const afterDate = line.slice(m.index + m[0].length).trim()
+  if (!afterDate) return null
+
+  // Best signal in your exports: "...-JobName Ref# ...."
+  const refMatch = afterDate.match(/^(.*?)(?:\s+)?Ref#/i)
+  if (refMatch && refMatch[1]) {
+    const beforeRef = refMatch[1].trim()
+    const afterDash = beforeRef.split('-').pop()?.trim() || ''
+    const candidate = afterDash || beforeRef.split(':').pop()?.trim() || ''
+    if (candidate && /^[a-zA-Z0-9/ .&'-]+$/.test(candidate)) {
+      return candidate
+    }
+  }
+
+  // Fallback: use token after the last dash in the post-date context.
+  const fallbackDash = afterDate.split('-').pop()?.trim() || ''
+  if (fallbackDash && !DATE_ANYWHERE.test(fallbackDash)) {
+    const cleaned = fallbackDash.replace(/Ref#.*$/i, '').trim()
+    if (cleaned && cleaned.length <= 80) return cleaned
+  }
+
+  return null
+}
+
 /**
  * Parse lines produced by extractPdfLinesFromArrayBuffer (tab-separated cells).
  * Heuristic: rows with "+", "-" in fixed columns and a numeric Required in the next cell.
@@ -71,7 +98,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       const idx = m?.index ?? 0
       currentContext = line
       const after = line.slice(idx + m![0].length).replace(/^\s*\|\s*/g, '').trim()
-      if (after && (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))) {
+      const parsedJob = extractJobFromLine(line)
+      if (parsedJob) currentJob = parsedJob
+      else if (after && (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))) {
         currentJob = after
       }
     }
@@ -237,6 +266,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // multiple date+job lines with per-job requested qty. We prefer those per-job rows.
     if (currentPartContext && DATE_ANYWHERE.test(line)) {
       let detailJob: string | null = null
+      const lineJob = extractJobFromLine(line)
+      if (lineJob) detailJob = lineJob
       const dateTokenIndex = parts.findIndex((p) => DATE_ANYWHERE.test(p))
       if (dateTokenIndex >= 0) {
         for (let j = dateTokenIndex + 1; j < parts.length; j++) {
