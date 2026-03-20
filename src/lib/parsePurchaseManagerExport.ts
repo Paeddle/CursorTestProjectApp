@@ -228,7 +228,7 @@ function extractFullJobContextFromLine(line: string): string | null {
 function extractJobFromLine(line: string): string | null {
   // Prefer full context so the UI shows full job name row.
   const full = extractFullJobContextFromLine(line)
-  if (full) return full
+  if (full) return stripJobBlobBeforePlusMinusColumns(full)
 
   const m = line.match(DATE_ANYWHERE)
   if (!m || m.index == null) return null
@@ -401,6 +401,121 @@ function trimTrailingQtyColumnsFromJobBlob(blob: string): string {
   return s
 }
 
+/** Drop purchase columns merged into the job blob (`… SBC:… + - 6290W` → `… SBC:…`). */
+function stripJobBlobBeforePlusMinusColumns(s: string): string {
+  let t = s.replace(/\u00a0/g, ' ').trim()
+  const tabIdx = t.search(/\t\+[\t ]*\t?-[\t ]*/)
+  if (tabIdx >= 0) return t.slice(0, tabIdx).trim()
+  const spIdx = t.search(/\s\+\s+-\s+/)
+  if (spIdx >= 0) return t.slice(0, spIdx).trim()
+  return t
+}
+
+/** `parts[lo..hi)` for one `$` column: cells before the last `+ -` pair (job side only). */
+function splitMoneyRowIntoJobSideAndPurchaseTail(
+  parts: string[],
+  lo: number,
+  hiExclusive: number
+): { jobSide: string[]; purchaseTail: string[] } {
+  const slice = parts.slice(lo, hiExclusive)
+  let p = -1
+  for (let i = slice.length - 2; i >= 0; i--) {
+    if ((slice[i] ?? '').trim() === '+' && (slice[i + 1] ?? '').trim() === '-') {
+      p = i
+      break
+    }
+  }
+  if (p < 0) return { jobSide: slice, purchaseTail: [] }
+  return { jobSide: slice.slice(0, p), purchaseTail: slice.slice(p) }
+}
+
+/** Prefer a prior rich context line when the row job is empty/`date + -` noise. */
+function jobFromRichContextLine(context: string | null, line: string): string | null {
+  if (!context?.trim()) return null
+  const dm = line.match(DATE_ANYWHERE)
+  if (!dm) return null
+  const d = dm[0]
+  if (!context.includes(d)) return null
+  let tail = context.slice(context.indexOf(d)).trim()
+  const afterFirst = tail.slice(d.length)
+  const nextD = afterFirst.match(/\d{1,2}\/\d{1,2}\/\d{4}/)
+  if (nextD && nextD.index != null && nextD.index > 0) {
+    tail = tail.slice(0, d.length + nextD.index).trim()
+  }
+  tail = stripJobBlobBeforePlusMinusColumns(tail)
+  tail = trimTrailingQtyColumnsFromJobBlob(tail).replace(/\s+/g, ' ').trim()
+  const body = tail.slice(d.length).trim()
+  if (!body || isGarbageJobPhrase(body)) return null
+  return tail
+}
+
+function resolveJobForMoneyRow(
+  rowJob: string | null,
+  currentJob: string | null,
+  currentContext: string | null,
+  line: string,
+  parts: string[],
+  mi: number,
+  prevMoneyIndex: number
+): string | null {
+  if (rowJob?.trim() && !isGarbageFullJob(rowJob)) return rowJob.trim()
+  if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
+  const fromCtx = jobFromRichContextLine(currentContext, line)
+  if (fromCtx && !isGarbageFullJob(fromCtx)) return fromCtx
+
+  let dateIdx: number | null = null
+  for (let j = mi - 1; j > prevMoneyIndex; j--) {
+    if (DATE_ANYWHERE.test((parts[j] ?? '').trim())) {
+      dateIdx = j
+      break
+    }
+  }
+  if (dateIdx != null) {
+    const dateCell = (parts[dateIdx] ?? '').trim()
+    let dateStr = dateCell
+    const lead = dateCell.match(LEADING_DATE_IN_CELL)
+    if (lead) {
+      dateStr = lead[1]!
+    } else if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateCell)) {
+      const dmx = dateCell.match(DATE_ANYWHERE)
+      if (dmx) dateStr = dmx[0]
+    }
+    const { jobSide } = splitMoneyRowIntoJobSideAndPurchaseTail(parts, dateIdx, mi)
+    const sliceForJob = jobSide.length > 0 ? jobSide : parts.slice(dateIdx, mi)
+    const dj = detailJobLineFromDatedParts(sliceForJob, line, dateStr, currentContext)
+    if (dj && !isGarbageFullJob(dj)) return dj
+  }
+
+  if (DATE_ANYWHERE.test(line)) {
+    const blob = extractFullJobContextFromLine(line)
+    const cleaned = blob
+      ? trimTrailingQtyColumnsFromJobBlob(stripJobBlobBeforePlusMinusColumns(blob))
+      : null
+    const withDate = cleaned ? detailJobWithLeadingDate(line, cleaned) : null
+    if (withDate && !isGarbageFullJob(withDate)) return withDate
+  }
+  return rowJob?.trim() ? rowJob.trim() : null
+}
+
+function resolveDetailRowJob(
+  dj: string | null,
+  dateStr: string,
+  subparts: string[],
+  line: string,
+  currentContext: string | null,
+  currentJob: string | null
+): string | null {
+  if (dj?.trim() && !isGarbageFullJob(dj)) return dj.trim()
+  if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
+  const { jobSide } = splitMoneyRowIntoJobSideAndPurchaseTail(subparts, 0, subparts.length)
+  const sliceForJob = jobSide.length > 0 ? jobSide : subparts
+  const retry = detailJobLineFromDatedParts(sliceForJob, line, dateStr, currentContext)
+  if (retry && !isGarbageFullJob(retry)) return retry
+  const fromCtx = jobFromRichContextLine(currentContext, `${dateStr}\t`)
+  if (fromCtx && !isGarbageFullJob(fromCtx)) return fromCtx
+  return dj?.trim() ?? null
+}
+
 function isGarbageJobPhrase(phrase: string | null | undefined): boolean {
   if (!phrase?.trim()) return true
   const t = phrase.trim()
@@ -496,7 +611,9 @@ function detailJobLineFromDatedParts(
   }
   if (!phrase?.trim()) {
     const fromLine = extractFullJobContextFromLine(rawLine)
-    phrase = fromLine ? trimTrailingQtyColumnsFromJobBlob(fromLine) : null
+    phrase = fromLine
+      ? trimTrailingQtyColumnsFromJobBlob(stripJobBlobBeforePlusMinusColumns(fromLine))
+      : null
   }
   if (isGarbageJobPhrase(phrase) || !phrase?.trim()) {
     const fromSeg = jobPhraseFromCellsBetweenDateAndPlus(
@@ -520,7 +637,7 @@ function detailJobLineFromDatedParts(
     if (m2 && m2.index != null && m2.index > 0) {
       tail = tail.slice(0, segmentDateStr.length + m2.index).trim()
     }
-    tail = trimTrailingQtyColumnsFromJobBlob(tail)
+    tail = trimTrailingQtyColumnsFromJobBlob(stripJobBlobBeforePlusMinusColumns(tail))
     const afterDate = tail.slice(segmentDateStr.length).trim()
     if (afterDate.length > 4 && !isGarbageJobPhrase(afterDate)) {
       return tail.replace(/\s+/g, ' ').trim()
@@ -889,13 +1006,23 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
                 out.splice(pendingSummaryIndex, 1)
                 pendingSummaryIndex = null
               }
-              for (const dr of detailRows) {
-                const sig = `${cleanedPart}|${dr.job}|${dr.required}|${line}|mi${mi}`
+              for (let ri = 0; ri < detailRows.length; ri++) {
+                const dr = detailRows[ri]!
+                const seg = datedSegs[ri]!
+                const jobOut = resolveDetailRowJob(
+                  dr.job,
+                  seg.dateStr,
+                  seg.subparts,
+                  line,
+                  currentContext,
+                  currentJob
+                )
+                const sig = `${cleanedPart}|${jobOut}|${dr.required}|${line}|mi${mi}`
                 if (sig !== lastDetailSignature) {
                   out.push({
                     vendor: hierarchyVendor,
                     manufacturer: hierarchyManufacturer,
-                    job: dr.job,
+                    job: jobOut,
                     part: cleanedPart,
                     required: dr.required,
                     received: null,
@@ -947,7 +1074,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
                 extraFromCell = dateCell.slice(dm.index + dm[0].length).trim()
               }
             }
-            const dj = detailJobLineFromDatedParts(parts.slice(dateIdx, mi), line, dateStr, currentContext)
+            const { jobSide } = splitMoneyRowIntoJobSideAndPurchaseTail(parts, dateIdx, mi)
+            const sliceForJob = jobSide.length > 0 ? jobSide : parts.slice(dateIdx, mi)
+            const dj = detailJobLineFromDatedParts(sliceForJob, line, dateStr, currentContext)
             if (dj) {
               rowJob = dj
             } else {
@@ -960,16 +1089,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               }
             }
           }
-          if (!rowJob && DATE_ANYWHERE.test(line)) {
-            const blob = extractFullJobContextFromLine(line)
-            const trimmed = blob ? trimTrailingQtyColumnsFromJobBlob(blob) : null
-            if (trimmed) {
-              rowJob = detailJobWithLeadingDate(line, trimmed)
-            }
-          }
-          if (isGarbageFullJob(rowJob)) {
-            rowJob = currentJob && !isGarbageFullJob(currentJob) ? currentJob : null
-          }
+          rowJob = resolveJobForMoneyRow(rowJob, currentJob, currentContext, line, parts, mi, prevMoneyIndex)
 
           const required = intsAfter[0] ?? 0
           const received = intsAfter.length >= 2 ? intsAfter[1]! : null
