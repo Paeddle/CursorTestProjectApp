@@ -28,6 +28,10 @@ export async function extractPdfLinesFromArrayBuffer(data: ArrayBuffer): Promise
   const allLines: string[] = []
 
   for (let p = 1; p <= pdf.numPages; p++) {
+    if (p > 1) {
+      // Lets the purchase parser clear queued jobs / stale job text at page boundaries.
+      allLines.push('__PDF_PAGE_BREAK__')
+    }
     const page = await pdf.getPage(p)
     const content = await page.getTextContent()
     const items: { x: number; y: number; str: string }[] = []

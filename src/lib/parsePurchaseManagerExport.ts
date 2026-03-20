@@ -150,7 +150,7 @@ function splitCompoundJobLineIntoJobs(jobBlob: string): string[] {
 
   const afterFirstRef = full.slice(refM.index + refM.length)
   const nextCo = afterFirstRef.match(
-    /\b(SBC|Dowbuilt|Dovetail|Lohss Construction|Cohutta Lee Builders|Teton Heritage Builders|Blue Ribbon Builders|James Loudspeaker|Samsung|Apple|SanDisk|HP|Sonance|Honeywell|First Alert|AVPro Edge|Crestron|Faradite|GRI|CUSTOM ROMAN|QS PALLADIOM|SIVOIA|Middle Atlantic|LSTU|Sanus|System Sensor|Interlogix|PROSIXHEATV|PROSIXSMOKEV|PROSIX|Lutron|CLOUD GATEWAY|Ubiquiti|Montana Cabin|Smart Home Systems|Friend,|Stanley,|Young,|Perry,|Langlas & Assoc\.)\s*:\s*/i
+    /\b(SBC|Dowbuilt|Dovetail|Lohss Construction|Cohutta Lee Builders|Teton Heritage Builders|Blue Ribbon Builders|James Loudspeaker|Samsung|Apple|SanDisk|HP|Sonance|Honeywell|First Alert|AVPro Edge|Crestron|Faradite|GRI|CUSTOM ROMAN|QS PALLADIOM|SIVOIA|Middle Atlantic|LSTU|Sanus|System Sensor|Interlogix|Lutron|CLOUD GATEWAY|Ubiquiti|Montana Cabin|Smart Home Systems|Friend,|Stanley,|Young,|Perry,|Langlas & Assoc\.)\s*:\s*/i
   )
   if (!nextCo || nextCo.index == null) return [full]
 
@@ -231,17 +231,57 @@ function normalizeManufacturerLabel(v: string | null): string | null {
   return v.trim() || null
 }
 
+function normalizePartTypo(part: string): string {
+  return part.replace(/Miscro/gi, 'Micro').trim()
+}
+
+/** Honeywell / alarm product families — never vendor/manufacturer subtotal rows. */
+function isLikelyHoneywellStylePartFamily(s: string): boolean {
+  const u = s.trim().toUpperCase().replace(/\s+/g, '')
+  if (/^PRO(SIX|LTE|A)/.test(u)) return true
+  if (/^VISTA/.test(u) || /^LYNX/.test(u)) return true
+  if (/^CAMWE/.test(u) || /^PROA7/.test(u)) return true
+  return false
+}
+
 /** Model / part tokens mis-read as vendor when a $ row fails line-item parsing. */
 function isLikelySkuOrPartLabel(s: string): boolean {
   const t = s.trim()
   if (!t) return false
+  if (isLikelyHoneywellStylePartFamily(t)) return true
   if (/\s/.test(t) && t.length < 40) return false
+  // All-caps run (no spaces), typical PDF part codes — exclude real OEM subtotal names.
+  if (
+    /^[A-Z0-9][A-Z0-9-]{5,}$/.test(t) &&
+    !/\s/.test(t) &&
+    t.length <= 22 &&
+    !/^(HONEYWELL|CRESTRON|SAMSUNG|INTERLOGIX|LUTRON|UBIQUITI|SONANCE|SANUS|FARADITE)$/i.test(t)
+  ) {
+    return true
+  }
   if (/[0-9]/.test(t) && /[A-Za-z]/.test(t) && !/^\d+$/.test(t)) {
     if (!/\s/.test(t) && t.length >= 4) return true
     if (/^[A-Z]{2,}\d/i.test(t.replace(/[\s\-_/]/g, ''))) return true
   }
   if (t.length >= 12 && !/\s/.test(t)) return true
   return false
+}
+
+/** Distributor (black row) — next blue row should be manufacturer, not a new vendor. */
+function looksLikeDistributorName(s: string | null): boolean {
+  if (!s?.trim()) return false
+  return /\b(CDW|ADI|INGRAM|ANIXTER|SCANSOURCE|WESCO|TD\s*SYNNEX|AVB|BLACKBOX)\b/i.test(s)
+}
+
+/**
+ * Brand-style subtotal (blue) — if we already have a distributor, keep vendor and set this as mfg.
+ */
+function looksLikeOemBrandSubtotalLabel(s: string): boolean {
+  const t = s.trim()
+  if (t.length < 3 || t.length > 40) return false
+  return /\b(SANDISK|SAMSUNG|APPLE|HONEYWELL|CRESTRON|LUTRON|UBIQUITI|SONANCE|HP|LENOVO|DELL|MICROSOFT)\b/i.test(
+    t
+  )
 }
 
 /** Black/blue subtotal rows use short distributor or brand names, not part numbers. */
@@ -356,6 +396,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00a0/g, ' ').trim()
+    if (line === '__PDF_PAGE_BREAK__') {
+      pendingDetailJobs = []
+      currentJob = null
+      lastDetailSignature = null
+      continue
+    }
     if (!line || line.startsWith('--')) continue
     if (/page\s+\d+\s+of\s+\d+/i.test(line)) continue
     if (line.includes('Purchase Request Manager')) continue
@@ -389,14 +435,16 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       const qty = Number.parseInt(line, 10)
       if (currentPartContext && Number.isFinite(qty) && qty > 0) {
         const queued = pendingDetailJobs.length > 0 ? pendingDetailJobs.shift()! : null
-        const useJob = queued?.job ?? currentJob
+        // Do not bind a bare qty line to stale currentJob — causes duplicate PROLTE-V / phantom rows.
+        if (!queued) continue
+        const useJob = queued.job
         if (useJob) {
           // If this item had a summary row, remove it once detail rows appear.
           if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
             out.splice(pendingSummaryIndex, 1)
             pendingSummaryIndex = null
           }
-          const sig = `${currentPartContext.part}|${useJob}|${qty}|${queued?.sourceLine ?? ''}|${line}`
+          const sig = `${currentPartContext.part}|${useJob}|${qty}|${queued.sourceLine}|${line}`
           if (sig !== lastDetailSignature) {
             out.push({
               vendor: currentPartContext.vendor,
@@ -412,8 +460,6 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             })
             lastDetailSignature = sig
           }
-        } else if (queued) {
-          pendingDetailJobs.unshift(queued)
         }
       }
       continue
@@ -471,7 +517,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         if (partCandidate && intsAfter.length >= 1) {
           // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
-          const cleanedPart = partCandidate.replace(/^\d+\s*\|\s*/, '').trim()
+          const cleanedPart = normalizePartTypo(partCandidate.replace(/^\d+\s*\|\s*/, '').trim())
           // Allow multi-word descriptions (e.g. "16 GB Micro SD") from a single PDF cell.
           if (cleanedPart && !isMoney(cleanedPart)) {
             awaitingManufacturerSubtotal = false
@@ -574,6 +620,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         if (awaitingManufacturerSubtotal && hierarchyVendor != null) {
           hierarchyManufacturer = normalizeManufacturerLabel(label)
           awaitingManufacturerSubtotal = false
+        } else if (
+          !awaitingManufacturerSubtotal &&
+          looksLikeDistributorName(hierarchyVendor) &&
+          looksLikeOemBrandSubtotalLabel(label)
+        ) {
+          hierarchyManufacturer = normalizeManufacturerLabel(label)
         } else {
           hierarchyVendor = label.trim() || null
           hierarchyManufacturer = null
@@ -780,6 +832,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         }
       }
       if (qty != null) {
+        if (pendingDetailJobs.length === 0) continue
         const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
         if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
           out.splice(pendingSummaryIndex, 1)
@@ -805,11 +858,11 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       }
     }
 
-    // Fallback for older layouts: try to parse <part> + - <requiredInt> ...
+    // Fallback for older layouts: rightmost `+ - <int>` wins (avoids double rows when PDF has multiple + - runs).
     const plusIndex = parts.findIndex((p) => p === '+' || p === '+ ')
     const dashIndex = parts.findIndex((p) => p === '-')
     if (plusIndex >= 0 && dashIndex === plusIndex + 1) {
-      for (let i = 0; i < parts.length - 2; i++) {
+      for (let i = parts.length - 3; i >= 0; i--) {
         if (parts[i] !== '+') continue
         if (parts[i + 1] !== '-') continue
         const requiredToken = parts[i + 2]
@@ -817,8 +870,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         const rawPart = parts.slice(0, i).join(' ').trim()
         const required = Number.parseInt(requiredToken, 10)
-        const cleanedPart = rawPart.replace(/^\d+\s*\|\s*/, '').trim()
+        const cleanedPart = normalizePartTypo(rawPart.replace(/^\d+\s*\|\s*/, '').trim())
         if (!cleanedPart || /^\d+$/.test(cleanedPart) || isMoney(cleanedPart)) continue
+        if (DATE_LINE.test(cleanedPart) && !/[A-Za-z]{4,}/.test(cleanedPart)) continue
 
         out.push({
           vendor: hierarchyVendor,
@@ -832,6 +886,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           context_line: currentContext,
           raw_line: line,
         })
+        break
       }
     }
   }
