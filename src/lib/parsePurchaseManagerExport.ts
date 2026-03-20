@@ -397,7 +397,9 @@ function jobPhraseFromParts(parts: string[], dateIdx: number, endExclusive: numb
 function trimTrailingQtyColumnsFromJobBlob(blob: string): string {
   let s = blob.replace(/\u00a0/g, ' ').trim()
   s = s.replace(/(?:[\t ]|\|)+\+[\t ]*\-[\t ]*\d+[\t ]*$/g, '').trim()
-  s = s.replace(/(?:[\t ]|\|)+\d{1,4}[\t ]*$/g, '').trim()
+  // Only strip trailing integers when separated by TAB or pipe from job text.
+  // `\s+\d+$` incorrectly removes revision suffixes like "Rev. 3".
+  s = s.replace(/(?:\t|\|)+\d{1,4}[\t ]*$/g, '').trim()
   return s
 }
 
@@ -533,7 +535,7 @@ function resolveJobForMoneyRow(
   mi: number,
   prevMoneyIndex: number,
   richJobContextByDateKey: Map<string, string>,
-  peekNextLine: string | null = null
+  peekForwardLines: string[] = []
 ): string | null {
   if (rowJob?.trim() && !isGarbageFullJob(rowJob)) return rowJob.trim()
 
@@ -541,19 +543,9 @@ function resolveJobForMoneyRow(
   const fromKey = jobFromDateKeyCache(richJobContextByDateKey, rowDateTok, line)
   if (fromKey) return fromKey
 
-  // PDF often puts the rich job line *after* `+ - part $` — use next line before stale currentContext.
-  const peek = peekNextLine?.trim() ?? ''
-  if (
-    !DATE_ANYWHERE.test(line) &&
-    peek &&
-    DATE_ANYWHERE.test(peek) &&
-    !isMinimalDatePlusMinusQtyLine(peek)
-  ) {
-    for (const tok of allDateTokensInLine(peek)) {
-      const j = jobFromDateKeyCache(richJobContextByDateKey, tok, `${tok}\t${line}`)
-      if (j && !isGarbageFullJob(j)) return j
-    }
-  }
+  // Scan several following lines for a rich date header (skip minimal `MM/DD/YYYY + - n` rows).
+  const peekHit = tryJobFromPeekForwardRichLines(richJobContextByDateKey, peekForwardLines, line)
+  if (peekHit) return peekHit
 
   // Money row often omits the date (`+ - 6290W $…`); try each date in context for cache (rightmost first).
   if (!DATE_ANYWHERE.test(line) && currentContext?.trim()) {
@@ -619,11 +611,14 @@ function resolveDetailRowJob(
   line: string,
   currentContext: string | null,
   currentJob: string | null,
-  richJobContextByDateKey: Map<string, string>
+  richJobContextByDateKey: Map<string, string>,
+  peekForwardLines: string[] = []
 ): string | null {
   if (dj?.trim() && !isGarbageFullJob(dj)) return dj.trim()
   const fromKey = jobFromDateKeyCache(richJobContextByDateKey, dateStr, line)
   if (fromKey) return fromKey
+  const peekHit = tryJobFromPeekForwardRichLines(richJobContextByDateKey, peekForwardLines, line)
+  if (peekHit) return peekHit
   if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
   const { jobSide } = splitMoneyRowIntoJobSideAndPurchaseTail(subparts, 0, subparts.length)
   const sliceForJob = jobSide.length > 0 ? jobSide : subparts
@@ -928,10 +923,13 @@ function legacySingleTokenPartLeftOfMoney(
 function buildRichJobContextMapsByPage(lines: string[]): Map<string, string>[] {
   const pageMaps: Map<string, string>[] = []
   let map = new Map<string, string>()
+  /** Carry date from rich or minimal rows onto following job-only lines (AVPro-style splits). */
+  let lastDateTokForOrphan: string | null = null
 
   const flushPage = () => {
     pageMaps.push(map)
     map = new Map()
+    lastDateTokForOrphan = null
   }
 
   for (const rawLine of lines) {
@@ -948,12 +946,24 @@ function buildRichJobContextMapsByPage(lines: string[]): Map<string, string>[] {
     if (/^Group\s+One$/i.test(line)) continue
 
     if (DATE_ANYWHERE.test(line) && !isMinimalDatePlusMinusQtyLine(line)) {
-      for (const tok of allDateTokensInLine(line)) {
+      const toks = allDateTokensInLine(line)
+      if (toks.length > 0) lastDateTokForOrphan = toks[0]!
+      for (const tok of toks) {
         const k = canonicalDateKey(tok)
         if (!k) continue
         const prev = map.get(k)
         if (!prev || line.length > prev.length) map.set(k, line)
       }
+    } else if (DATE_ANYWHERE.test(line) && isMinimalDatePlusMinusQtyLine(line)) {
+      const dm = line.match(DATE_ANYWHERE)
+      if (dm) lastDateTokForOrphan = dm[0]
+    } else if (
+      lastDateTokForOrphan &&
+      looksLikeOrphanRichJobLine(line) &&
+      !DATE_ANYWHERE.test(line)
+    ) {
+      const synthetic = `${lastDateTokForOrphan}\t${line}`
+      mergeRichLineIntoMap(map, synthetic)
     }
   }
   flushPage()
@@ -967,6 +977,51 @@ function mergeRichLineIntoMap(m: Map<string, string>, line: string): void {
     const prev = m.get(k)
     if (!prev || line.length > prev.length) m.set(k, line)
   }
+}
+
+function partsFromExtractedLine(line: string): string[] {
+  const tabParts = line.split('\t').map((s) => s.trim()).filter((s) => s.length > 0)
+  return tabParts.length >= 2 ? tabParts : line.split(/\s{2,}|\s+/).map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
+/** Job-only line with no leading date (PDF splits date onto previous row). */
+function looksLikeOrphanRichJobLine(line: string): boolean {
+  const t = line.replace(/\u00a0/g, ' ').trim()
+  if (t.length < 18) return false
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(t)) return false
+  if (partsFromExtractedLine(t).some((p) => isMoney(p))) return false
+  return /\bref#/i.test(t) || /\b(SBC|Dovetail|Dowbuilt|Cohutta|AVPro)\s*:/i.test(t)
+}
+
+/** Next few extracted lines for lookahead (skip page breaks / empties). */
+function collectPeekForwardLines(lines: string[], lineIndex: number, maxPick: number): string[] {
+  const out: string[] = []
+  for (let j = lineIndex + 1; j < lines.length && out.length < maxPick; j++) {
+    const t = lines[j]!.replace(/\u00a0/g, ' ').trim()
+    if (!t || t === '__PDF_PAGE_BREAK__' || t.startsWith('--')) continue
+    if (/page\s+\d+\s+of\s+\d+/i.test(t)) continue
+    if (t.includes('Purchase Request Manager')) continue
+    if (t === 'Create PO' || t === 'Add to Existing PO') continue
+    if (t === 'Cost' || t === 'Options' || t === 'On-Hand') continue
+    if (/^Group\s+One$/i.test(t)) continue
+    out.push(t)
+  }
+  return out
+}
+
+function tryJobFromPeekForwardRichLines(
+  richMap: Map<string, string>,
+  peekLines: string[],
+  purchaseLine: string
+): string | null {
+  for (const peek of peekLines) {
+    if (!DATE_ANYWHERE.test(peek) || isMinimalDatePlusMinusQtyLine(peek)) continue
+    for (const tok of allDateTokensInLine(peek)) {
+      const j = jobFromDateKeyCache(richMap, tok, `${tok}\t${purchaseLine}`)
+      if (j && !isGarbageFullJob(j)) return j
+    }
+  }
+  return null
 }
 
 /**
@@ -1004,15 +1059,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   const richPageMaps = buildRichJobContextMapsByPage(lines)
   let pageIdx = 0
   let richJobContextByDateKey: Map<string, string> = richPageMaps[0] ?? new Map()
+  /** Last MM/DD/YYYY on this page for merging orphan job-only lines into the date→job map. */
+  let lastRichDateTokMain: string | null = null
 
   for (let li = 0; li < lines.length; li++) {
     const rawLine = lines[li]!
-    const peekRaw = li + 1 < lines.length ? lines[li + 1]! : null
-    let peekNextLine: string | null = null
-    if (peekRaw != null) {
-      const pt = peekRaw.replace(/\u00a0/g, ' ').trim()
-      if (pt && pt !== '__PDF_PAGE_BREAK__' && !pt.startsWith('--')) peekNextLine = pt
-    }
+    const peekForwardLines = collectPeekForwardLines(lines, li, 12)
 
     let line = rawLine.replace(/\u00a0/g, ' ').trim()
     if (line === '__PDF_PAGE_BREAK__') {
@@ -1021,6 +1073,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       lastDetailSignature = null
       pendingOrphanDateForDetail = null
       pendingStandalonePartLine = null
+      lastRichDateTokMain = null
       pageIdx++
       richJobContextByDateKey = richPageMaps[pageIdx] ?? new Map()
       continue
@@ -1054,6 +1107,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     if (DATE_ANYWHERE.test(line)) {
       if (!isMinimalDatePlusMinusQtyLine(line)) {
         const m = line.match(DATE_ANYWHERE)
+        if (m) lastRichDateTokMain = m[0]
         const idx = m?.index ?? 0
         currentContext = line
         const after = line.slice(idx + m![0].length).replace(/^\s*\|\s*/g, '').trim()
@@ -1075,7 +1129,16 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           if (!isGarbageJobPhrase(aj)) currentJob = aj
         }
         mergeRichLineIntoMap(richJobContextByDateKey, line)
+      } else {
+        const dm = line.match(DATE_ANYWHERE)
+        if (dm) lastRichDateTokMain = dm[0]
       }
+    } else if (
+      lastRichDateTokMain &&
+      looksLikeOrphanRichJobLine(line) &&
+      !DATE_ANYWHERE.test(line)
+    ) {
+      mergeRichLineIntoMap(richJobContextByDateKey, `${lastRichDateTokMain}\t${line}`)
     }
 
     // Lone integer lines are usually noise, but when we have active part+job context
@@ -1207,7 +1270,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
                   line,
                   currentContext,
                   currentJob,
-                  richJobContextByDateKey
+                  richJobContextByDateKey,
+                  peekForwardLines
                 )
                 const sig = `${cleanedPart}|${jobOut}|${dr.required}|${line}|mi${mi}`
                 if (sig !== lastDetailSignature) {
@@ -1290,7 +1354,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             mi,
             prevMoneyIndex,
             richJobContextByDateKey,
-            peekNextLine
+            peekForwardLines
           )
 
           const required = intsAfter[0] ?? 0
@@ -1397,7 +1461,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               subLine,
               currentContext,
               currentJob,
-              richJobContextByDateKey
+              richJobContextByDateKey,
+              peekForwardLines
             )
             out.push({
               vendor: currentPartContext.vendor,
@@ -1456,7 +1521,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           line,
           currentContext,
           currentJob,
-          richJobContextByDateKey
+          richJobContextByDateKey,
+          peekForwardLines
         )
         out.push({
           vendor: currentPartContext.vendor,
