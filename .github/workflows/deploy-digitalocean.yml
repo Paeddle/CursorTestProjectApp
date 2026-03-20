@@ -1,6 +1,6 @@
 # Triggers a new DigitalOcean App Platform deployment (pulls latest commit from GitHub).
-# One-time setup: add repo secrets DIGITALOCEAN_ACCESS_TOKEN and DIGITALOCEAN_APP_ID
-# (see deployments/digitalocean/DEPLOY_SIMPLE.md).
+# Repo secrets: DIGITALOCEAN_ACCESS_TOKEN (Write scope), DIGITALOCEAN_APP_ID (UUID, no quotes).
+# See deployments/digitalocean/DEPLOY_SIMPLE.md
 
 name: Deploy DigitalOcean
 
@@ -13,14 +13,41 @@ concurrency:
   group: digitalocean-deploy
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Install doctl
-        uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          set -e
+          DOCTL_VER=1.111.0
+          curl -fsSL "https://github.com/digitalocean/doctl/releases/download/v${DOCTL_VER}/doctl-${DOCTL_VER}-linux-amd64.tar.gz" | tar -xz
+          sudo install doctl /usr/local/bin
+          doctl version
+
+      - name: Authenticate doctl
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          set -e
+          if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
+            echo "::error::Secret DIGITALOCEAN_ACCESS_TOKEN is empty. Add it under Settings → Secrets → Actions."
+            exit 1
+          fi
+          doctl auth init --access-token "${DIGITALOCEAN_ACCESS_TOKEN}"
 
       - name: Create deployment (force rebuild)
-        run: doctl apps create-deployment "${{ secrets.DIGITALOCEAN_APP_ID }}" --force-rebuild
+        env:
+          DIGITALOCEAN_APP_ID: ${{ secrets.DIGITALOCEAN_APP_ID }}
+        run: |
+          set -e
+          APP_ID=$(printf '%s' "${DIGITALOCEAN_APP_ID}" | tr -d '[:space:]' | tr -d '\r')
+          if [ -z "${APP_ID}" ]; then
+            echo "::error::Secret DIGITALOCEAN_APP_ID is empty. Paste the App UUID from DigitalOcean (deployments/digitalocean/.do-app-id)."
+            exit 1
+          fi
+          echo "Triggering deployment for app ${APP_ID:0:8}…"
+          doctl apps create-deployment "${APP_ID}" --force-rebuild

@@ -49,6 +49,13 @@ Add these **repository secrets** in GitHub → **Settings → Secrets and variab
 
 After both secrets exist, every push to **`main`** runs `.github/workflows/deploy-digitalocean.yml` and triggers a **force rebuild** on the app. You can also run the workflow manually under **Actions → Deploy DigitalOcean → Run workflow**.
 
+**If the workflow is red:** open the failed job log. Common fixes:
+
+- **`DIGITALOCEAN_ACCESS_TOKEN is empty`** — Secret name must match exactly (repo **Settings → Secrets and variables → Actions**). Value = a [DigitalOcean API token](https://cloud.digitalocean.com/account/api/tokens) with **Write** scope (not read-only).
+- **`DIGITALOCEAN_APP_ID is empty`** — Use only the UUID (e.g. `a1b2c3d4-...`), no quotes or extra spaces. Copy from **DigitalOcean → App → URL** or from local `deployments/digitalocean/.do-app-id`.
+- **`Error: Unable to authenticate`** — Regenerate the API token and update the secret.
+- **`Could not find App`** — Wrong `DIGITALOCEAN_APP_ID` for this token’s account.
+
 - **Main app:** `https://your-app-xxxxx.ondigitalocean.app/`
 - **Scanner app:** `https://your-app-xxxxx.ondigitalocean.app/scanner`
 
