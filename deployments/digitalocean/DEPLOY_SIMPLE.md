@@ -44,10 +44,12 @@ Add these **repository secrets** in GitHub → **Settings → Secrets and variab
 
 | Secret | Value |
 |--------|--------|
-| `DIGITALOCEAN_ACCESS_TOKEN` | Same as `DO_ACCESS_TOKEN` in `.env.deploy` (API token with **Write**). |
+| `DIGITALOCEAN_ACCESS_TOKEN` | Same as `DO_ACCESS_TOKEN` in `.env.deploy` (API token with **Write**). **Or** name the secret `DO_ACCESS_TOKEN` instead — the workflow accepts either. |
 | `DIGITALOCEAN_APP_ID` | Your App Platform app UUID (from the app URL on DigitalOcean, or the first line of `deployments/digitalocean/.do-app-id` on a machine that ran deploy once). |
 
 After both secrets exist, every push to **`main`** runs `.github/workflows/deploy-digitalocean.yml` and triggers a **force rebuild** on the app. You can also run the workflow manually under **Actions → Deploy DigitalOcean → Run workflow**.
+
+**If the log mentions `digitalocean/action-doctl@v2` and “Input required and not supplied: token”:** that log is from an **older** workflow run (before the repo switched to curl-based doctl). On GitHub open **Actions → Deploy DigitalOcean → pick the newest run on `main`** — the first step should say *“Using deploy-digitalocean.yml (curl + doctl CLI — no digitalocean/action-doctl).”*
 
 **If the workflow is red:** open the failed job log. Common fixes:
 

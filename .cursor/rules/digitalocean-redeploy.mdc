@@ -14,6 +14,6 @@ When you finish changes that affect the **deployed** app (root `src/`, `scanner-
 
    This updates the App Platform spec if needed and runs `doctl apps create-deployment --force-rebuild`. Requires `deployments/digitalocean/.env.deploy` with `DO_ACCESS_TOKEN` on the machine that runs it.
 
-   Do **not** rely on “push only” unless the user has confirmed GitHub Actions secrets (`DIGITALOCEAN_ACCESS_TOKEN`, `DIGITALOCEAN_APP_ID`) are set — see `deployments/digitalocean/DEPLOY_SIMPLE.md` §4.
+   Do **not** rely on “push only” unless the user has confirmed GitHub Actions secrets (`DIGITALOCEAN_ACCESS_TOKEN` or `DO_ACCESS_TOKEN`, plus `DIGITALOCEAN_APP_ID`) are set — see `deployments/digitalocean/DEPLOY_SIMPLE.md` §4.
 
 Do this **at the end of the same session** after such changes unless the user explicitly opts out. If push or deploy fails, say what failed and fix or retry.

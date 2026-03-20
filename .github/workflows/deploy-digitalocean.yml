@@ -1,6 +1,12 @@
-# Triggers a new DigitalOcean App Platform deployment (pulls latest commit from GitHub).
-# Repo secrets: DIGITALOCEAN_ACCESS_TOKEN (Write scope), DIGITALOCEAN_APP_ID (UUID, no quotes).
-# See deployments/digitalocean/DEPLOY_SIMPLE.md
+# Triggers DigitalOcean App Platform to pull latest commit and rebuild.
+# Does NOT use digitalocean/action-doctl (curl installs doctl instead).
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   - DIGITALOCEAN_ACCESS_TOKEN  (preferred)  OR  DO_ACCESS_TOKEN
+#   - DIGITALOCEAN_APP_ID
+#
+# If you see "Input required and not supplied: token" + action-doctl@v2, you are
+# viewing an OLD workflow run from before this file was updated — open the latest run on main.
 
 name: Deploy DigitalOcean
 
@@ -17,9 +23,14 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  digitalocean-app-platform:
     runs-on: ubuntu-latest
     steps:
+      - name: Workflow info
+        run: |
+          echo "Using deploy-digitalocean.yml (curl + doctl CLI — no digitalocean/action-doctl)."
+          echo "Commit ${{ github.sha }}"
+
       - name: Install doctl
         run: |
           set -e
@@ -31,13 +42,16 @@ jobs:
       - name: Authenticate doctl
         env:
           DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          DO_ACCESS_TOKEN: ${{ secrets.DO_ACCESS_TOKEN }}
         run: |
           set -e
-          if [ -z "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
-            echo "::error::Secret DIGITALOCEAN_ACCESS_TOKEN is empty. Add it under Settings → Secrets → Actions."
+          TOKEN="${DIGITALOCEAN_ACCESS_TOKEN:-}"
+          if [ -z "$TOKEN" ]; then TOKEN="${DO_ACCESS_TOKEN:-}"; fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::No API token found. Add repository secret DIGITALOCEAN_ACCESS_TOKEN (recommended) or DO_ACCESS_TOKEN — Settings → Secrets and variables → Actions."
             exit 1
           fi
-          doctl auth init --access-token "${DIGITALOCEAN_ACCESS_TOKEN}"
+          doctl auth init --access-token "$TOKEN"
 
       - name: Create deployment (force rebuild)
         env:
