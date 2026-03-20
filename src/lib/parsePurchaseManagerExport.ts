@@ -486,9 +486,14 @@ function splitMoneyRowIntoJobSideAndPurchaseTail(
 /** Prefer a prior rich context line when the row job is empty/`date + -` noise. */
 function jobFromRichContextLine(context: string | null, line: string): string | null {
   if (!context?.trim()) return null
+  let d: string | null = null
   const dm = line.match(DATE_ANYWHERE)
-  if (!dm) return null
-  const d = dm[0]
+  if (dm) d = dm[0]
+  else {
+    const cm = context.match(DATE_ANYWHERE)
+    if (cm) d = cm[0]
+  }
+  if (!d) return null
   const hit = indexOfDateAlias(context, d)
   if (!hit) return null
   let tail = context.slice(hit.index).trim()
@@ -531,12 +536,23 @@ function resolveJobForMoneyRow(
 ): string | null {
   if (rowJob?.trim() && !isGarbageFullJob(rowJob)) return rowJob.trim()
   if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
-  const fromCtx = jobFromRichContextLine(currentContext, line)
-  if (fromCtx && !isGarbageFullJob(fromCtx)) return fromCtx
 
   const rowDateTok = firstDateTokenInSlice(parts, prevMoneyIndex + 1, mi)
   const fromKey = jobFromDateKeyCache(richJobContextByDateKey, rowDateTok, line)
   if (fromKey) return fromKey
+
+  // Money row often omits the date (`+ - 6290W $…`); try each date in context for cache (rightmost first).
+  if (!DATE_ANYWHERE.test(line) && currentContext?.trim()) {
+    const ctxDates = allDateTokensInLine(currentContext)
+    for (let ti = ctxDates.length - 1; ti >= 0; ti--) {
+      const tok = ctxDates[ti]!
+      const j = jobFromDateKeyCache(richJobContextByDateKey, tok, `${tok}\t${line}`)
+      if (j && !isGarbageFullJob(j)) return j
+    }
+  }
+
+  const fromCtx = jobFromRichContextLine(currentContext, line)
+  if (fromCtx && !isGarbageFullJob(fromCtx)) return fromCtx
 
   let dateIdx: number | null = null
   for (let j = mi - 1; j > prevMoneyIndex; j--) {
@@ -616,9 +632,13 @@ function isGarbageJobPhrase(phrase: string | null | undefined): boolean {
 
 function isGarbageFullJob(job: string | null | undefined): boolean {
   if (!job?.trim()) return true
-  const m = job.trim().match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s+(.+)$/s)
-  if (m) return isGarbageJobPhrase(m[2])
-  return false
+  const t = job.trim()
+  if (isGarbageJobPhrase(t)) return true
+  const m = t.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*(.*)$/s)
+  if (!m) return false
+  const rest = (m[2] ?? '').trim()
+  if (!rest) return true
+  return isGarbageJobPhrase(rest)
 }
 
 /** Row is only `date TAB + TAB - TAB qty` (maybe repeated) — do not clobber richer currentContext/currentJob. */
@@ -1296,10 +1316,19 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               out.splice(pendingSummaryIndex, 1)
               pendingSummaryIndex = null
             }
+            const jobOut = resolveDetailRowJob(
+              detailJobDisplay,
+              dateStr,
+              subparts,
+              subLine,
+              currentContext,
+              currentJob,
+              richJobContextByDateKey
+            )
             out.push({
               vendor: currentPartContext.vendor,
               manufacturer: currentPartContext.manufacturer,
-              job: detailJobDisplay,
+              job: jobOut,
               part: currentPartContext.part,
               required: detailRequired,
               received: null,
@@ -1308,7 +1337,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               context_line: currentContext,
               raw_line: line,
             })
-            lastDetailSignature = `${currentPartContext.part}|${detailJobDisplay}|${detailRequired}|${line}`
+            lastDetailSignature = `${currentPartContext.part}|${jobOut}|${detailRequired}|${line}`
             handled = true
           } else if (detailJobBody && detailRequired == null) {
             for (const seg of splitCompoundJobLineIntoJobs(detailJobBody)) {
@@ -1346,10 +1375,19 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           pendingSummaryIndex = null
         }
 
+        const jobOut = resolveDetailRowJob(
+          detailJobDisplay,
+          segmentDateStr,
+          parts,
+          line,
+          currentContext,
+          currentJob,
+          richJobContextByDateKey
+        )
         out.push({
           vendor: currentPartContext.vendor,
           manufacturer: currentPartContext.manufacturer,
-          job: detailJobDisplay,
+          job: jobOut,
           part: currentPartContext.part,
           required: detailRequired,
           received: null,
@@ -1358,7 +1396,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           context_line: currentContext,
           raw_line: line,
         })
-        lastDetailSignature = `${currentPartContext.part}|${detailJobDisplay}|${detailRequired}|${line}`
+        lastDetailSignature = `${currentPartContext.part}|${jobOut}|${detailRequired}|${line}`
         continue
       }
 
