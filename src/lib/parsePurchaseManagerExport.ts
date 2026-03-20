@@ -438,6 +438,38 @@ function isMinimalDatePlusMinusQtyLine(line: string): boolean {
   return true
 }
 
+/** Job text in tab cells strictly between the date cell and the `+` column (PDF often omits it from token walks). */
+function jobPhraseFromCellsBetweenDateAndPlus(cells: string[], segmentDateStr: string): string | null {
+  let di = -1
+  for (let i = 0; i < cells.length; i++) {
+    const c = (cells[i] ?? '').trim()
+    if (!c) continue
+    if (c === segmentDateStr || LEADING_DATE_IN_CELL.test(c)) {
+      di = i
+      break
+    }
+  }
+  if (di < 0) return null
+  const plusIdx = cells.findIndex((c, j) => j > di && (c ?? '').trim() === '+')
+  if (plusIdx > di + 1) {
+    const middle = cells
+      .slice(di + 1, plusIdx)
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0)
+      .join(' ')
+      .trim()
+    const candidate = trimTrailingQtyColumnsFromJobBlob(middle)
+    if (candidate && !isGarbageJobPhrase(candidate)) return candidate
+  }
+  const dateCell = (cells[di] ?? '').trim()
+  const lead = dateCell.match(LEADING_DATE_IN_CELL)
+  if (lead) {
+    const rest = dateCell.slice(lead[0].length).trim()
+    if (rest && !isGarbageJobPhrase(rest)) return rest
+  }
+  return null
+}
+
 /** Full job column text `MM/DD/YYYY …` from tab cells after the date (multi-word jobs). */
 function detailJobLineFromDatedParts(
   subparts: string[],
@@ -465,6 +497,20 @@ function detailJobLineFromDatedParts(
   if (!phrase?.trim()) {
     const fromLine = extractFullJobContextFromLine(rawLine)
     phrase = fromLine ? trimTrailingQtyColumnsFromJobBlob(fromLine) : null
+  }
+  if (isGarbageJobPhrase(phrase) || !phrase?.trim()) {
+    const fromSeg = jobPhraseFromCellsBetweenDateAndPlus(
+      subparts.map((s) => s.trim()),
+      segmentDateStr
+    )
+    if (fromSeg) phrase = fromSeg
+    else {
+      const fromRaw = jobPhraseFromCellsBetweenDateAndPlus(
+        rawLine.split('\t').map((s) => s.trim()),
+        segmentDateStr
+      )
+      if (fromRaw) phrase = fromRaw
+    }
   }
   if (isGarbageJobPhrase(phrase) && contextFallback && contextFallback.includes(segmentDateStr)) {
     const idx = contextFallback.indexOf(segmentDateStr)
@@ -500,6 +546,48 @@ function trimTrailingPlusMinusPair(slice: string[]): string[] {
   return s
 }
 
+/** Tokens between `-` and `$` that look like a part column (not bare PDF qty noise). */
+function tokensBetweenMinusAndMoneyLookLikePart(tokens: string[]): boolean {
+  if (tokens.length === 0) return false
+  const joined = tokens.join(' ').trim()
+  if (isLikelyProductFamilyBannerNotSubtotal(joined)) return true
+  if (/^CUSTOM\s+/i.test(joined)) return true
+  if (tokens.length === 1 && /^\d{1,4}$/.test(tokens[0]!)) {
+    const n = Number.parseInt(tokens[0]!, 10)
+    if (Number.isFinite(n) && n >= 0 && n <= 999) return false
+  }
+  return tokens.some((t) => /[A-Za-z]/.test(t))
+}
+
+function isWeakStandalonePartToken(extracted: string, pending: string | null): boolean {
+  if (!pending?.trim()) return false
+  const e = extracted.trim()
+  const p = pending.trim()
+  if (p.length > 14 && e.length <= 8 && p.toUpperCase().includes(e.toUpperCase())) return true
+  if (isLikelyProductFamilyBannerNotSubtotal(p) && !isLikelyProductFamilyBannerNotSubtotal(e)) return true
+  return false
+}
+
+function rowHasPlusMinusBeforeMoney(parts: string[], mi: number, prevMoneyIndex: number): boolean {
+  for (let i = mi - 1; i > prevMoneyIndex + 1; i--) {
+    if ((parts[i] ?? '').trim() === '-' && (parts[i - 1] ?? '').trim() === '+') return true
+  }
+  return false
+}
+
+/** PDF puts “CUSTOM ROLLER SHADES” alone on the line above `+ - … $`. */
+function looksLikeOrphanPartDescriptionLine(line: string, parts: string[]): boolean {
+  const joined = parts.join(' ').trim()
+  if (!joined || joined.length > 140) return false
+  if (parts.some((p) => isMoney(p))) return false
+  if (DATE_ANYWHERE.test(line) && !isMinimalDatePlusMinusQtyLine(line)) return false
+  if (/^Group\s+One$/i.test(joined)) return false
+  if (/^(Lutron|Crestron)$/i.test(joined) && parts.length === 1) return false
+  if (isLikelyProductFamilyBannerNotSubtotal(joined)) return true
+  if (/^CUSTOM\s+(ROLLER|ROMAN)\b/i.test(joined)) return true
+  return false
+}
+
 /** Join tab cells immediately before the `+ -` pair left of `$` (fixes 16 GB Micro SD, PROSIXCOMBO vs PROLTE bleed). */
 function finalizePartDescriptionTokens(tokens: string[]): string | null {
   if (tokens.length === 0) return null
@@ -521,13 +609,26 @@ function extractPartDescriptionBeforePlusMinus(
   mi: number,
   prevMoneyIndex: number
 ): string | null {
-  let pLastPart = -1
+  let minusIdx = -1
   for (let i = mi - 1; i > prevMoneyIndex + 1; i--) {
     if ((parts[i] ?? '').trim() === '-' && (parts[i - 1] ?? '').trim() === '+') {
-      pLastPart = i - 2
+      minusIdx = i
       break
     }
   }
+  if (minusIdx < 0) return null
+
+  const betweenMinusAndMoney = parts
+    .slice(minusIdx + 1, mi)
+    .map((p) => p.trim())
+    .filter((t) => t.length > 0 && !isMoney(t))
+
+  if (tokensBetweenMinusAndMoneyLookLikePart(betweenMinusAndMoney)) {
+    return finalizePartDescriptionTokens(betweenMinusAndMoney)
+  }
+
+  const plusIdx = minusIdx - 1
+  const pLastPart = plusIdx - 1
   if (pLastPart < prevMoneyIndex) return null
 
   const chunk: string[] = []
@@ -568,7 +669,7 @@ function legacySingleTokenPartLeftOfMoney(
     if (/[0-9\-]/.test(tok) && !/^\d+$/.test(tok) && tok.includes('-')) {
       return tok.replace(/^\d+\s*\|\s*/, '').trim()
     }
-    if (/^[A-Za-z0-9][A-Za-z0-9+\-_/&]{1,18}$/.test(tok) && tok.length >= 2 && tok.length <= 20) {
+    if (/^[A-Za-z0-9][A-Za-z0-9+\-_/&]{1,54}$/.test(tok) && tok.length >= 2 && tok.length <= 56) {
       return tok
     }
   }
@@ -604,6 +705,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
    * (common for second job on Micro SD–style rows).
    */
   let pendingOrphanDateForDetail: string | null = null
+  /** Part description on a line with no `$`; applies to the next `+ - … $` row. */
+  let pendingStandalonePartLine: string | null = null
 
   for (const rawLine of lines) {
     let line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -612,6 +715,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       currentJob = null
       lastDetailSignature = null
       pendingOrphanDateForDetail = null
+      pendingStandalonePartLine = null
       continue
     }
     if (!line || line.startsWith('--')) continue
@@ -712,6 +816,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       continue
     }
 
+    const moneyIndices = parts.map((p, idx) => (isMoney(p) ? idx : -1)).filter((i) => i >= 0)
+    if (moneyIndices.length === 0 && looksLikeOrphanPartDescriptionLine(line, parts)) {
+      pendingStandalonePartLine = parts.join(' ').replace(/\s+/g, ' ').trim()
+      continue
+    }
+
     // New robust parsing:
     // - Most purchase rows contain a $cost token, and then a sequence of integers:
     //   + - <part> $<cost> <required> <received> <ordered> <on_hand> <available>
@@ -720,7 +830,6 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // We parse by iterating ALL $cost tokens in the extracted text line, extracting
     // the integer sequence after each, and taking the nearest part-like token
     // to the left of that $cost.
-    const moneyIndices = parts.map((p, idx) => (isMoney(p) ? idx : -1)).filter((i) => i >= 0)
     if (moneyIndices.length > 0) {
       let parsedAtLeastOne = false
 
@@ -733,12 +842,25 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           else break
         }
 
-        const cleanedPart =
+        let cleanedPart =
           extractPartDescriptionBeforePlusMinus(parts, mi, prevMoneyIndex) ??
           legacySingleTokenPartLeftOfMoney(parts, mi, prevMoneyIndex)
 
+        if (
+          pendingStandalonePartLine != null &&
+          rowHasPlusMinusBeforeMoney(parts, mi, prevMoneyIndex)
+        ) {
+          if (!cleanedPart || isWeakStandalonePartToken(cleanedPart, pendingStandalonePartLine)) {
+            cleanedPart = pendingStandalonePartLine
+          }
+        }
+
         if (cleanedPart && !isMoney(cleanedPart) && intsAfter.length >= 1) {
           awaitingManufacturerSubtotal = false
+
+          if (pendingStandalonePartLine != null && rowHasPlusMinusBeforeMoney(parts, mi, prevMoneyIndex)) {
+            pendingStandalonePartLine = null
+          }
 
           if (currentPartContext != null && currentPartContext.part !== cleanedPart) {
             currentJob = null
