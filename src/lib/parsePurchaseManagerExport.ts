@@ -201,6 +201,23 @@ function extractJobFromLine(line: string): string | null {
   return null
 }
 
+/** Match Purchase Manager UI: job column shows the row date plus description (e.g. `01/23/2026 Dowbuilt:…`). */
+function detailJobWithLeadingDate(line: string, jobBody: string | null): string | null {
+  if (!jobBody?.trim()) return null
+  const m = line.match(DATE_ANYWHERE)
+  if (!m) return jobBody.trim()
+  const body = jobBody.trim()
+  if (body.startsWith(m[0])) return body
+  return `${m[0]} ${body}`.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeVendorName(v: string | null): string | null {
+  if (!v) return null
+  const t = v.trim()
+  if (/^sundisk$/i.test(t)) return 'SanDisk'
+  return v
+}
+
 /**
  * Parse lines produced by extractPdfLinesFromArrayBuffer (tab-separated cells).
  * Heuristic: rows with "+", "-" in fixed columns and a numeric Required in the next cell.
@@ -397,7 +414,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       const vendorTokens = parts.slice(dashIndex + 1, vendorMoneyIndex).filter(Boolean)
       const vendor = vendorTokens.join(' ').trim()
       if (vendor && !isMoney(vendor) && !DATE_LINE.test(vendor) && !/^\d+$/.test(vendor)) {
-        currentVendor = vendor
+        currentVendor = normalizeVendorName(vendor) ?? vendor
       }
       continue
     }
@@ -423,8 +440,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       }
 
       let detailRequired: number | null = detailRequiredQtyOnJobLine(parts)
+      const detailJobDisplay = detailJobWithLeadingDate(line, detailJob)
 
-      if (detailJob && detailRequired != null) {
+      if (detailJobDisplay && detailRequired != null) {
         // If this item had a summary row, remove it once detail rows appear.
         if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
           out.splice(pendingSummaryIndex, 1)
@@ -433,7 +451,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         out.push({
           vendor: currentPartContext.vendor,
-          job: detailJob,
+          job: detailJobDisplay,
           part: currentPartContext.part,
           required: detailRequired,
           received: null,
@@ -442,7 +460,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           context_line: currentContext,
           raw_line: line,
         })
-        lastDetailSignature = `${currentPartContext.part}|${detailJob}|${detailRequired}|${line}`
+        lastDetailSignature = `${currentPartContext.part}|${detailJobDisplay}|${detailRequired}|${line}`
         continue
       }
 
@@ -450,7 +468,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       // hold job and consume quantity from the next non-money row.
       if (detailJob && detailRequired == null) {
         for (const seg of splitCompoundJobLineIntoJobs(detailJob)) {
-          pendingDetailJobs.push({ job: seg, sourceLine: line })
+          const j = detailJobWithLeadingDate(line, seg)
+          if (j) pendingDetailJobs.push({ job: j, sourceLine: line })
         }
         continue
       }
@@ -465,7 +484,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       (pendingDetailJobs.length > 0 || pendingSummaryIndex != null)
     ) {
       for (const seg of splitCompoundJobLineIntoJobs(line.trim())) {
-        pendingDetailJobs.push({ job: seg, sourceLine: line })
+        const j = detailJobWithLeadingDate(line, seg)
+        if (j) pendingDetailJobs.push({ job: j, sourceLine: line })
       }
       continue
     }
@@ -476,41 +496,6 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     if (currentPartContext && pendingDetailJobs.length > 0 && moneyIndices.length === 0) {
       const plusMinusQtys = collectPlusMinusQuantities(parts)
       if (plusMinusQtys.length > 0) {
-        // Two job rows queued but one combined qty cell `+ - 3` (3 = 2 + 1) — split FIFO.
-        // Scoped to SD-card lines so other “3 across two jobs” rows (1+2) are unchanged.
-        if (
-          plusMinusQtys.length === 1 &&
-          plusMinusQtys[0] === 3 &&
-          pendingDetailJobs.length === 2 &&
-          /\b(sd|micro|miscro)\b/i.test(currentPartContext.part)
-        ) {
-          const splitQtys = [2, 1] as const
-          for (let si = 0; si < splitQtys.length; si++) {
-            const qty = splitQtys[si]!
-            const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
-            if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
-              out.splice(pendingSummaryIndex, 1)
-              pendingSummaryIndex = null
-            }
-            const sig = `${currentPartContext.part}|${dj}|${qty}|${src}|${line}`
-            if (sig !== lastDetailSignature) {
-              out.push({
-                vendor: currentPartContext.vendor,
-                job: dj,
-                part: currentPartContext.part,
-                required: qty,
-                received: null,
-                ordered: null,
-                cost: currentPartContext.cost,
-                context_line: currentContext,
-                raw_line: line,
-              })
-              lastDetailSignature = sig
-            }
-          }
-          continue
-        }
-
         for (const qty of plusMinusQtys) {
           if (pendingDetailJobs.length === 0) break
           const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
