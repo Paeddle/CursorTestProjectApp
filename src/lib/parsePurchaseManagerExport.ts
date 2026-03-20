@@ -401,11 +401,49 @@ function trimTrailingQtyColumnsFromJobBlob(blob: string): string {
   return s
 }
 
+function isGarbageJobPhrase(phrase: string | null | undefined): boolean {
+  if (!phrase?.trim()) return true
+  const t = phrase.trim()
+  const compact = t.replace(/\s+/g, ' ').trim()
+  if (/^[\s+\-0-9]+$/i.test(t)) return true
+  if (/^\+[\t ]*(-[\t ]*\d+)?\d*$/i.test(t)) return true
+  if (/^\+ -(\s+\d+)?$/i.test(compact)) return true
+  return false
+}
+
+function isGarbageFullJob(job: string | null | undefined): boolean {
+  if (!job?.trim()) return true
+  const m = job.trim().match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s+(.+)$/s)
+  if (m) return isGarbageJobPhrase(m[2])
+  return false
+}
+
+/** Row is only `date TAB + TAB - TAB qty` (maybe repeated) — do not clobber richer currentContext/currentJob. */
+function isMinimalDatePlusMinusQtyLine(line: string): boolean {
+  const p = line.split('\t').map((s) => s.trim()).filter((s) => s.length > 0)
+  if (p.length < 4) return false
+  if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(p[0] ?? '')) return false
+  let i = 1
+  while (i < p.length) {
+    if ((p[i] ?? '') === '+' && (p[i + 1] ?? '') === '-' && p[i + 2] != null && /^\d+$/.test(p[i + 2])) {
+      i += 3
+      continue
+    }
+    if (/^\d+$/.test(p[i] ?? '')) {
+      i++
+      continue
+    }
+    return false
+  }
+  return true
+}
+
 /** Full job column text `MM/DD/YYYY …` from tab cells after the date (multi-word jobs). */
 function detailJobLineFromDatedParts(
   subparts: string[],
   rawLine: string,
-  segmentDateStr: string
+  segmentDateStr: string,
+  contextFallback: string | null = null
 ): string | null {
   const dateTokenIndex = subparts.findIndex((p) => DATE_ANYWHERE.test(p))
   if (dateTokenIndex < 0) return null
@@ -421,15 +459,32 @@ function detailJobLineFromDatedParts(
     }
   }
   let phrase = jobPhraseFromParts(subparts, dateTokenIndex, subparts.length)
-  if (extraFromCell) {
+  if (extraFromCell && !isGarbageJobPhrase(extraFromCell)) {
     phrase = phrase ? `${extraFromCell} ${phrase}`.trim() : extraFromCell
   }
   if (!phrase?.trim()) {
     const fromLine = extractFullJobContextFromLine(rawLine)
     phrase = fromLine ? trimTrailingQtyColumnsFromJobBlob(fromLine) : null
   }
-  if (!phrase?.trim()) return null
-  return `${segmentDateStr} ${phrase.trim()}`.replace(/\s+/g, ' ').trim()
+  if (isGarbageJobPhrase(phrase) && contextFallback && contextFallback.includes(segmentDateStr)) {
+    const idx = contextFallback.indexOf(segmentDateStr)
+    let tail = contextFallback.slice(idx).trim()
+    const afterFirst = tail.slice(segmentDateStr.length)
+    const m2 = afterFirst.match(/\d{1,2}\/\d{1,2}\/\d{4}/)
+    if (m2 && m2.index != null && m2.index > 0) {
+      tail = tail.slice(0, segmentDateStr.length + m2.index).trim()
+    }
+    tail = trimTrailingQtyColumnsFromJobBlob(tail)
+    const afterDate = tail.slice(segmentDateStr.length).trim()
+    if (afterDate.length > 4 && !isGarbageJobPhrase(afterDate)) {
+      return tail.replace(/\s+/g, ' ').trim()
+    }
+  }
+  if (isGarbageJobPhrase(phrase)) return null
+  const body = (phrase ?? '').trim()
+  if (!body) return null
+  if (body.startsWith(segmentDateStr)) return body.replace(/\s+/g, ' ').trim()
+  return `${segmentDateStr} ${body}`.replace(/\s+/g, ' ').trim()
 }
 
 function trimTrailingPlusMinusPair(slice: string[]): string[] {
@@ -451,8 +506,11 @@ function finalizePartDescriptionTokens(tokens: string[]): string | null {
   if (tokens.length === 1) return tokens[0]!.trim() || null
   const last = tokens[tokens.length - 1]!.trim()
   const joined = tokens.map((t) => t.trim()).join(' ').trim()
+  // Require digit or internal hyphen SKU — do not reduce "CUSTOM ROLLER SHADES" to "SHADES".
   const lastLooksLikeModel =
-    (/^[A-Z0-9][A-Z0-9-]{4,}$/i.test(last) && last.length >= 5) ||
+    (/^[A-Z0-9][A-Z0-9-]{3,}$/i.test(last) &&
+      last.length >= 5 &&
+      (/\d/.test(last) || /^[A-Z0-9]{2,}-[A-Za-z0-9]/i.test(last))) ||
     (/^[A-Z]{2,}\d/i.test(last) && last.length >= 4)
   if (lastLooksLikeModel && tokens.length >= 2) return last
   return joined || null
@@ -583,19 +641,28 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // Treat the remainder after the date as job context, but don't `continue`
     // so we can still parse purchase rows on the same extracted line.
     if (DATE_ANYWHERE.test(line)) {
-      const m = line.match(DATE_ANYWHERE)
-      const idx = m?.index ?? 0
-      currentContext = line
-      const after = line.slice(idx + m![0].length).replace(/^\s*\|\s*/g, '').trim()
-      const parsedJob = extractJobFromLine(line)
-      const trimmed = parsedJob ? trimTrailingQtyColumnsFromJobBlob(parsedJob) : null
-      const withDate = trimmed ? detailJobWithLeadingDate(line, trimmed) : null
-      if (withDate?.trim()) {
-        currentJob = withDate.trim()
-      } else if (trimmed?.trim()) {
-        currentJob = trimmed.trim()
-      } else if (after && (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))) {
-        currentJob = trimTrailingQtyColumnsFromJobBlob(after)
+      if (!isMinimalDatePlusMinusQtyLine(line)) {
+        const m = line.match(DATE_ANYWHERE)
+        const idx = m?.index ?? 0
+        currentContext = line
+        const after = line.slice(idx + m![0].length).replace(/^\s*\|\s*/g, '').trim()
+        const parsedJob = extractJobFromLine(line)
+        const trimmed = parsedJob ? trimTrailingQtyColumnsFromJobBlob(parsedJob) : null
+        const withDate = trimmed ? detailJobWithLeadingDate(line, trimmed) : null
+        if (withDate?.trim() && !isGarbageFullJob(withDate.trim())) {
+          currentJob = withDate.trim()
+        } else if (trimmed?.trim()) {
+          const wd = detailJobWithLeadingDate(line, trimmed)
+          if (wd?.trim() && !isGarbageFullJob(wd.trim())) {
+            currentJob = wd.trim()
+          }
+        } else if (
+          after &&
+          (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))
+        ) {
+          const aj = trimTrailingQtyColumnsFromJobBlob(after)
+          if (!isGarbageJobPhrase(aj)) currentJob = aj
+        }
       }
     }
 
@@ -686,7 +753,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             const detailRows: { job: string; required: number }[] = []
             for (const { dateStr, subparts } of datedSegs) {
               const subLine = subparts.join('\t')
-              const dj = detailJobLineFromDatedParts(subparts, subLine, dateStr)
+              const dj = detailJobLineFromDatedParts(subparts, subLine, dateStr, currentContext)
               const rq = detailRequiredQtyOnJobLine(subparts)
               if (dj && rq != null) {
                 detailRows.push({ job: dj, required: rq })
@@ -758,12 +825,17 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
                 extraFromCell = dateCell.slice(dm.index + dm[0].length).trim()
               }
             }
-            let phrase = jobPhraseFromParts(parts, dateIdx, mi)
-            if (extraFromCell) {
-              phrase = phrase ? `${extraFromCell} ${phrase}`.trim() : extraFromCell
-            }
-            if (phrase) {
-              rowJob = `${dateStr} ${phrase}`.replace(/\s+/g, ' ').trim()
+            const dj = detailJobLineFromDatedParts(parts.slice(dateIdx, mi), line, dateStr, currentContext)
+            if (dj) {
+              rowJob = dj
+            } else {
+              let phrase = jobPhraseFromParts(parts, dateIdx, mi)
+              if (extraFromCell && !isGarbageJobPhrase(extraFromCell)) {
+                phrase = phrase ? `${extraFromCell} ${phrase}`.trim() : extraFromCell
+              }
+              if (phrase && !isGarbageJobPhrase(phrase)) {
+                rowJob = `${dateStr} ${phrase}`.replace(/\s+/g, ' ').trim()
+              }
             }
           }
           if (!rowJob && DATE_ANYWHERE.test(line)) {
@@ -772,6 +844,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             if (trimmed) {
               rowJob = detailJobWithLeadingDate(line, trimmed)
             }
+          }
+          if (isGarbageFullJob(rowJob)) {
+            rowJob = currentJob && !isGarbageFullJob(currentJob) ? currentJob : null
           }
 
           const required = intsAfter[0] ?? 0
@@ -831,6 +906,13 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           looksLikeBroadlineStockedBrandSubtotal(label)
         ) {
           hierarchyManufacturer = normalizeManufacturerLabel(label)
+        } else if (
+          hierarchyVendor != null &&
+          /\bgroup\s+one\b/i.test(hierarchyVendor) &&
+          /^system\s+sensor\b/i.test(label.trim())
+        ) {
+          hierarchyManufacturer = normalizeManufacturerLabel(label)
+          awaitingManufacturerSubtotal = false
         } else {
           const rawV = label.trim() || null
           hierarchyVendor = rawV ? canonicalHierarchyVendorLabel(rawV) : null
@@ -853,7 +935,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         let handled = false
         for (const { dateStr, subparts } of datedSegs) {
           const subLine = subparts.join('\t')
-          const detailJobDisplay = detailJobLineFromDatedParts(subparts, subLine, dateStr)
+          const detailJobDisplay = detailJobLineFromDatedParts(subparts, subLine, dateStr, currentContext)
           const detailJobBody =
             detailJobDisplay?.replace(new RegExp(`^${dateStr.replace(/\//g, '\\/')}\\s+`), '').trim() ?? null
 
@@ -892,7 +974,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       const lineDate = line.match(DATE_ANYWHERE)
       const segmentDateStr = lineDate ? lineDate[0] : ''
       let detailJobDisplay =
-        segmentDateStr ? detailJobLineFromDatedParts(parts, line, segmentDateStr) : null
+        segmentDateStr ? detailJobLineFromDatedParts(parts, line, segmentDateStr, currentContext) : null
       if (!detailJobDisplay && segmentDateStr) {
         const fb = extractJobFromLine(line)
         if (fb) {
