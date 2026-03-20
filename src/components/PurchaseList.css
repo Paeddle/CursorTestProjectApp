@@ -95,6 +95,12 @@
   margin-top: 0.75rem;
 }
 
+.purchase-list-mfg {
+  color: #1d4ed8;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .purchase-list-table {
   width: 100%;
   border-collapse: collapse;

@@ -7,6 +7,8 @@ export interface PurchaseListBatch {
 export interface PurchaseListItemRow {
   batch_id: string
   vendor: string | null
+  /** Same as PDF blue/teal manufacturer row (Purchase Manager). */
+  manufacturer: string | null
   job: string | null
   part: string
   required: number
@@ -42,6 +44,7 @@ export interface PullSuggestion {
   part: string
   required: number
   job: string | null
+  manufacturer: string | null
   stock_available: number | null
   can_pull: number
   match_type: 'part_number' | 'item' | 'none'

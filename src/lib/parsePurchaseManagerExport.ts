@@ -75,6 +75,28 @@ function detailRequiredQtyOnJobLine(parts: string[]): number | null {
   return null
 }
 
+/** Tab cell is only a date — PDF often puts two jobs on one line as `… 01/23/2026 JobA … 2 03/04/2026 JobB … 3`. */
+function isDateOnlyCell(tok: string): boolean {
+  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(tok.trim())
+}
+
+function splitPartsIntoDateSegments(parts: string[]): { dateStr: string; subparts: string[] }[] {
+  const segments: { dateStr: string; subparts: string[] }[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const tok = (parts[i] ?? '').trim()
+    if (!isDateOnlyCell(tok)) continue
+    const dm = tok.match(DATE_ANYWHERE)
+    const dateStr = dm ? dm[0] : tok
+    let j = i + 1
+    while (j < parts.length && !isDateOnlyCell((parts[j] ?? '').trim())) {
+      j++
+    }
+    segments.push({ dateStr, subparts: parts.slice(i, j) })
+    i = j - 1
+  }
+  return segments
+}
+
 /**
  * PDF text extraction often merges two job descriptions on one row after the date, e.g.
  * `Dowbuilt:…Ref# 3878-… … SBC:Bozeman-196…Ref# 4542…`. Without splitting we only FIFO one job.
@@ -423,6 +445,61 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // Many exports place one summary line (with cost/total required) followed by
     // multiple date+job lines with per-job requested qty. We prefer those per-job rows.
     if (currentPartContext && DATE_ANYWHERE.test(line)) {
+      const datedSegs = splitPartsIntoDateSegments(parts)
+
+      // Two+ date-only cells on one extracted row → one row per job (e.g. Micro SD: Dowbuilt qty 2 + SBC qty 3).
+      if (datedSegs.length >= 2) {
+        let handled = false
+        for (const { dateStr, subparts } of datedSegs) {
+          const subLine = subparts.join('\t')
+          let detailJob: string | null = extractJobFromLine(subLine)
+          const dateTokenIndex = subparts.findIndex((p) => DATE_ANYWHERE.test(p))
+          if (!detailJob && dateTokenIndex >= 0) {
+            for (let j = dateTokenIndex + 1; j < subparts.length; j++) {
+              const jt = (subparts[j] ?? '').trim()
+              if (!jt || jt === '+' || jt === '-') continue
+              if (isMoney(jt)) break
+              if (isJobTokenAfterDate(jt)) {
+                detailJob = jt
+                break
+              }
+            }
+          }
+
+          const detailRequired = detailRequiredQtyOnJobLine(subparts)
+          const detailJobDisplay = detailJob
+            ? `${dateStr} ${detailJob.trim()}`.replace(/\s+/g, ' ').trim()
+            : null
+
+          if (detailJobDisplay && detailRequired != null) {
+            if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+              out.splice(pendingSummaryIndex, 1)
+              pendingSummaryIndex = null
+            }
+            out.push({
+              vendor: currentPartContext.vendor,
+              job: detailJobDisplay,
+              part: currentPartContext.part,
+              required: detailRequired,
+              received: null,
+              ordered: null,
+              cost: currentPartContext.cost,
+              context_line: currentContext,
+              raw_line: line,
+            })
+            lastDetailSignature = `${currentPartContext.part}|${detailJobDisplay}|${detailRequired}|${line}`
+            handled = true
+          } else if (detailJob && detailRequired == null) {
+            for (const seg of splitCompoundJobLineIntoJobs(detailJob)) {
+              const j = `${dateStr} ${seg.trim()}`.replace(/\s+/g, ' ').trim()
+              pendingDetailJobs.push({ job: j, sourceLine: line })
+            }
+            handled = true
+          }
+        }
+        if (handled) continue
+      }
+
       // Prefer full job line (after the date). Do not overwrite with a single token like "and"
       // from phrases such as "AV and Security".
       let detailJob: string | null = extractJobFromLine(line)

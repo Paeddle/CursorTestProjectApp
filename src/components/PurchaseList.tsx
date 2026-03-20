@@ -19,6 +19,7 @@ type ParsedDebugRow = {
   source_file: string
   row_index: number
   vendor: string
+  manufacturer: string
   job: string
   part: string
   required: number
@@ -87,7 +88,7 @@ function PurchaseList() {
     }
     const { data, error: e } = await supabase
       .from('purchase_list_items')
-      .select('batch_id, vendor, job, part, required, received, ordered, cost, context_line, raw_line')
+      .select('batch_id, vendor, manufacturer, job, part, required, received, ordered, cost, context_line, raw_line')
       .eq('batch_id', batchId)
       .order('part', { ascending: true })
     if (e) throw new Error(e.message)
@@ -110,6 +111,7 @@ function PurchaseList() {
         part: r.part,
         required: r.required,
         job: r.job,
+        manufacturer: (r.manufacturer ?? r.vendor) || null,
       }))
       setSuggestions(comparePurchaseToInventory(purchaseRows, invRows))
     } catch (err) {
@@ -174,10 +176,12 @@ function PurchaseList() {
         const lines = await extractPdfLinesFromArrayBuffer(buf)
         const parsed = parsePurchaseManagerLines(lines)
         parsed.forEach((p, idx) => {
+          const mfg = p.vendor ?? ''
           debugRows.push({
             source_file: file.name,
             row_index: idx + 1,
-            vendor: p.vendor ?? '',
+            vendor: mfg,
+            manufacturer: mfg,
             job: p.job ?? '',
             part: p.part ?? '',
             required: p.required ?? 0,
@@ -207,6 +211,7 @@ function PurchaseList() {
         const inserts: PurchaseListItemRow[] = parsed.map((p) => ({
           batch_id: batchId,
           vendor: p.vendor,
+          manufacturer: p.vendor,
           job: p.job,
           part: p.part,
           required: p.required,
@@ -276,6 +281,7 @@ function PurchaseList() {
   const downloadPurchaseCsv = () => {
     if (batchItems.length === 0) return
     const flat = batchItems.map((r) => ({
+      manufacturer: (r.manufacturer ?? r.vendor) ?? '',
       vendor: r.vendor ?? '',
       job: r.job ?? '',
       part: r.part,
@@ -315,7 +321,8 @@ function PurchaseList() {
         <div className="purchase-list-setup">
           <p>
             Configure <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>, then run{' '}
-            <code>supabase/add-purchase-list-inventory.sql</code> in the SQL Editor.
+            <code>supabase/add-purchase-list-inventory.sql</code> in the SQL Editor (re-run it if you need the{' '}
+            <code>manufacturer</code> column on <code>purchase_list_items</code>).
           </p>
         </div>
       </div>
@@ -412,6 +419,7 @@ function PurchaseList() {
           <table className="purchase-list-table">
             <thead>
               <tr>
+                <th>Manufacturer</th>
                 <th>Job</th>
                 <th>Part (from PDF)</th>
                 <th>Required</th>
@@ -423,7 +431,7 @@ function PurchaseList() {
             <tbody>
               {suggestions.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     {selectedBatchId ? 'No rows or inventory empty — import an XLSX first.' : 'Select a batch.'}
                   </td>
                 </tr>
@@ -432,7 +440,8 @@ function PurchaseList() {
                   const full = s.stock_available != null && s.can_pull >= s.required
                   const partial = s.stock_available != null && s.can_pull > 0 && s.can_pull < s.required
                   return (
-                    <tr key={`${s.part}-${i}`}>
+                    <tr key={`${s.part}-${s.job ?? ''}-${i}`}>
+                      <td className="purchase-list-mfg">{s.manufacturer?.trim() ? s.manufacturer : '—'}</td>
                       <td>{s.job ?? '—'}</td>
                       <td>{s.part}</td>
                       <td>{s.required}</td>
