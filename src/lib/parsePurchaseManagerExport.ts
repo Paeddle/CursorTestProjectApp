@@ -1,3 +1,8 @@
+/**
+ * Heuristic PDF table parser: Purchase Manager layouts vary, so behavior is layered (hierarchy $ rows,
+ * line items, multi-date columns). Prefer small reusable checks (distributor vs integrated brand,
+ * banner-like part families) over one-off PDF strings where possible.
+ */
 export interface ParsedPurchaseLine {
   /** Black row: distributor / vendor group (overall total). */
   vendor: string | null
@@ -129,9 +134,46 @@ function splitPartsLeadingDateSegments(parts: string[]): { dateStr: string; subp
   return out
 }
 
-/** Date-only cells first; else cells that *start* with a date (common for Micro SD + two jobs on one PDF row). */
+/** Indices where a new job column starts: date-only cell or cell beginning with MM/DD/YYYY. */
+function allDateSegmentStartIndices(parts: string[]): number[] {
+  const starts: number[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const t = (parts[i] ?? '').trim()
+    if (isDateOnlyCell(t) || LEADING_DATE_IN_CELL.test(t)) starts.push(i)
+  }
+  return starts
+}
+
+function dateStrFromSegmentSubparts(subparts: string[]): string {
+  const firstCell = (subparts[0] ?? '').trim()
+  const lead = firstCell.match(LEADING_DATE_IN_CELL)
+  if (lead) return lead[1]!
+  if (isDateOnlyCell(firstCell)) {
+    const dm = firstCell.match(DATE_ANYWHERE)
+    return dm ? dm[0] : firstCell
+  }
+  const dm = firstCell.match(DATE_ANYWHERE)
+  return dm ? dm[0] : firstCell
+}
+
+/**
+ * Split one extracted row into multiple date/job/qty columns (e.g. two jobs for one Micro SD line).
+ * Unifies date-only columns and leading-date-in-cell so mixed PDF layouts still split.
+ */
 function splitPartsIntoDatedJobSegments(parts: string[]): { dateStr: string; subparts: string[] }[] {
   const trimmed = stripLeadingPlusMinusCells(parts)
+  const starts = allDateSegmentStartIndices(trimmed)
+  if (starts.length >= 2) {
+    const out: { dateStr: string; subparts: string[] }[] = []
+    for (let s = 0; s < starts.length; s++) {
+      const from = starts[s]!
+      const to = s + 1 < starts.length ? starts[s + 1]! : trimmed.length
+      const subparts = trimmed.slice(from, to)
+      const dateStr = dateStrFromSegmentSubparts(subparts)
+      if (dateStr) out.push({ dateStr, subparts })
+    }
+    return out
+  }
   const exact = splitPartsIntoDateSegments(trimmed)
   if (exact.length >= 2) return exact
   return splitPartsLeadingDateSegments(trimmed)
@@ -231,8 +273,38 @@ function normalizeManufacturerLabel(v: string | null): string | null {
   return v.trim() || null
 }
 
-function normalizePartTypo(part: string): string {
-  return part.replace(/Miscro/gi, 'Micro').trim()
+/** Long PDF “banner” lines that look like subtotals but are the first parts under a real vendor block. */
+function isLikelyProductFamilyBannerNotSubtotal(s: string): boolean {
+  const t = s.trim()
+  if (!t) return false
+  if (/\bCUSTOM\s+(ROLLER|ROMAN)\b/i.test(t)) return true
+  if (/\bCUSTOM\s+ROMAN\s+KIT\b/i.test(t)) return true
+  if (/\bCUSTOM\s+ROLLER\s+SHADES?\b/i.test(t)) return true
+  if (/\bQS\s+PALLADIOM\b/i.test(t) && /\b(SHADE|ROLLER)\b/i.test(t)) return true
+  return false
+}
+
+/** OEM lines usually stocked via CDW/ADI/etc. — not direct-sale integrator brands (Crestron, Lutron, …). */
+function looksLikeBroadlineStockedBrandSubtotal(s: string): boolean {
+  const t = s.trim()
+  if (t.length < 3 || t.length > 40) return false
+  return /\b(SANDISK|SAMSUNG|APPLE|HONEYWELL|HP|LENOVO|DELL|MICROSOFT)\b/i.test(t)
+}
+
+/** When the PDF blue row is only “Crestron” / “Lutron” but the black row is the legal vendor name. */
+function integratedVendorForShortManufacturerLabel(manufacturerLabel: string | null): string | null {
+  const m = (manufacturerLabel ?? '').trim()
+  if (!m) return null
+  if (/^crestron$/i.test(m)) return 'Crestron Electronics'
+  if (/^lutron$/i.test(m)) return 'Lutron Electronics'
+  return null
+}
+
+function canonicalHierarchyVendorLabel(label: string): string {
+  const t = label.trim()
+  if (/^crestron$/i.test(t)) return 'Crestron Electronics'
+  if (/^lutron$/i.test(t)) return 'Lutron Electronics'
+  return t
 }
 
 /** Honeywell / alarm product families — never vendor/manufacturer subtotal rows. */
@@ -248,6 +320,7 @@ function isLikelyHoneywellStylePartFamily(s: string): boolean {
 function isLikelySkuOrPartLabel(s: string): boolean {
   const t = s.trim()
   if (!t) return false
+  if (isLikelyProductFamilyBannerNotSubtotal(t)) return true
   if (isLikelyHoneywellStylePartFamily(t)) return true
   if (/\s/.test(t) && t.length < 40) return false
   // All-caps run (no spaces), typical PDF part codes — exclude real OEM subtotal names.
@@ -273,21 +346,11 @@ function looksLikeDistributorName(s: string | null): boolean {
   return /\b(CDW|ADI|INGRAM|ANIXTER|SCANSOURCE|WESCO|TD\s*SYNNEX|AVB|BLACKBOX)\b/i.test(s)
 }
 
-/**
- * Brand-style subtotal (blue) — if we already have a distributor, keep vendor and set this as mfg.
- */
-function looksLikeOemBrandSubtotalLabel(s: string): boolean {
-  const t = s.trim()
-  if (t.length < 3 || t.length > 40) return false
-  return /\b(SANDISK|SAMSUNG|APPLE|HONEYWELL|CRESTRON|LUTRON|UBIQUITI|SONANCE|HP|LENOVO|DELL|MICROSOFT)\b/i.test(
-    t
-  )
-}
-
 /** Black/blue subtotal rows use short distributor or brand names, not part numbers. */
 function isLikelyHierarchySubtotalLabel(label: string): boolean {
   const t = label.trim()
   if (!t || t.length > 56) return false
+  if (isLikelyProductFamilyBannerNotSubtotal(t)) return false
   if (isLikelySkuOrPartLabel(t)) return false
   const words = t.split(/\s+/).filter(Boolean).length
   if (words > 8) return false
@@ -517,7 +580,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         if (partCandidate && intsAfter.length >= 1) {
           // Clean up: sometimes Part looks like "20|VISTAH3" or prefixed with qty.
-          const cleanedPart = normalizePartTypo(partCandidate.replace(/^\d+\s*\|\s*/, '').trim())
+          const cleanedPart = partCandidate.replace(/^\d+\s*\|\s*/, '').trim()
           // Allow multi-word descriptions (e.g. "16 GB Micro SD") from a single PDF cell.
           if (cleanedPart && !isMoney(cleanedPart)) {
             awaitingManufacturerSubtotal = false
@@ -620,14 +683,19 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         if (awaitingManufacturerSubtotal && hierarchyVendor != null) {
           hierarchyManufacturer = normalizeManufacturerLabel(label)
           awaitingManufacturerSubtotal = false
+          const iv = integratedVendorForShortManufacturerLabel(hierarchyManufacturer)
+          if (iv && looksLikeDistributorName(hierarchyVendor)) {
+            hierarchyVendor = iv
+          }
         } else if (
           !awaitingManufacturerSubtotal &&
           looksLikeDistributorName(hierarchyVendor) &&
-          looksLikeOemBrandSubtotalLabel(label)
+          looksLikeBroadlineStockedBrandSubtotal(label)
         ) {
           hierarchyManufacturer = normalizeManufacturerLabel(label)
         } else {
-          hierarchyVendor = label.trim() || null
+          const rawV = label.trim() || null
+          hierarchyVendor = rawV ? canonicalHierarchyVendorLabel(rawV) : null
           hierarchyManufacturer = null
           awaitingManufacturerSubtotal = true
         }
@@ -870,7 +938,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         const rawPart = parts.slice(0, i).join(' ').trim()
         const required = Number.parseInt(requiredToken, 10)
-        const cleanedPart = normalizePartTypo(rawPart.replace(/^\d+\s*\|\s*/, '').trim())
+        const cleanedPart = rawPart.replace(/^\d+\s*\|\s*/, '').trim()
         if (!cleanedPart || /^\d+$/.test(cleanedPart) || isMoney(cleanedPart)) continue
         if (DATE_LINE.test(cleanedPart) && !/[A-Za-z]{4,}/.test(cleanedPart)) continue
 
