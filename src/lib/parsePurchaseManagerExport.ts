@@ -428,6 +428,33 @@ function indexOfDateAlias(haystack: string, dateFromLine: string): { index: numb
   return null
 }
 
+/** Normalize M/D/YYYY for map keys (rich job line → minimal purchase row). */
+function canonicalDateKey(mdy: string): string | null {
+  const m = mdy.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
+  const mo = Number.parseInt(m[1]!, 10)
+  const d = Number.parseInt(m[2]!, 10)
+  const y = Number.parseInt(m[3]!, 10)
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+function allDateTokensInLine(line: string): string[] {
+  const out: string[] = []
+  const re = /\d{1,2}\/\d{1,2}\/\d{4}/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line)) != null) out.push(m[0])
+  return out
+}
+
+function firstDateTokenInSlice(parts: string[], lo: number, hiExclusive: number): string | null {
+  for (let j = lo; j < hiExclusive && j < parts.length; j++) {
+    const dm = (parts[j] ?? '').trim().match(DATE_ANYWHERE)
+    if (dm) return dm[0]
+  }
+  return null
+}
+
 /** Drop purchase columns merged into the job blob (`… SBC:… + - 6290W` → `… SBC:…`). */
 function stripJobBlobBeforePlusMinusColumns(s: string): string {
   let t = s.replace(/\u00a0/g, ' ').trim()
@@ -477,6 +504,21 @@ function jobFromRichContextLine(context: string | null, line: string): string | 
   return tail
 }
 
+function jobFromDateKeyCache(
+  richByKey: Map<string, string>,
+  dateTok: string | null,
+  line: string
+): string | null {
+  if (!dateTok) return null
+  const k = canonicalDateKey(dateTok)
+  if (!k) return null
+  const stored = richByKey.get(k)
+  if (!stored) return null
+  const j = jobFromRichContextLine(stored, line)
+  if (j && !isGarbageFullJob(j)) return j
+  return null
+}
+
 function resolveJobForMoneyRow(
   rowJob: string | null,
   currentJob: string | null,
@@ -484,12 +526,17 @@ function resolveJobForMoneyRow(
   line: string,
   parts: string[],
   mi: number,
-  prevMoneyIndex: number
+  prevMoneyIndex: number,
+  richJobContextByDateKey: Map<string, string>
 ): string | null {
   if (rowJob?.trim() && !isGarbageFullJob(rowJob)) return rowJob.trim()
   if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
   const fromCtx = jobFromRichContextLine(currentContext, line)
   if (fromCtx && !isGarbageFullJob(fromCtx)) return fromCtx
+
+  const rowDateTok = firstDateTokenInSlice(parts, prevMoneyIndex + 1, mi)
+  const fromKey = jobFromDateKeyCache(richJobContextByDateKey, rowDateTok, line)
+  if (fromKey) return fromKey
 
   let dateIdx: number | null = null
   for (let j = mi - 1; j > prevMoneyIndex; j--) {
@@ -522,6 +569,12 @@ function resolveJobForMoneyRow(
     const withDate = cleaned ? detailJobWithLeadingDate(line, cleaned) : null
     if (withDate && !isGarbageFullJob(withDate)) return withDate
   }
+
+  if (DATE_ANYWHERE.test(line) && !isMinimalDatePlusMinusQtyLine(line)) {
+    const selfJob = jobFromRichContextLine(line, line)
+    if (selfJob && !isGarbageFullJob(selfJob)) return selfJob
+  }
+
   const last = rowJob?.trim() ?? null
   if (last && !isGarbageFullJob(last)) return last
   return null
@@ -533,10 +586,13 @@ function resolveDetailRowJob(
   subparts: string[],
   line: string,
   currentContext: string | null,
-  currentJob: string | null
+  currentJob: string | null,
+  richJobContextByDateKey: Map<string, string>
 ): string | null {
   if (dj?.trim() && !isGarbageFullJob(dj)) return dj.trim()
   if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
+  const fromKey = jobFromDateKeyCache(richJobContextByDateKey, dateStr, line)
+  if (fromKey) return fromKey
   const { jobSide } = splitMoneyRowIntoJobSideAndPurchaseTail(subparts, 0, subparts.length)
   const sliceForJob = jobSide.length > 0 ? jobSide : subparts
   const retry = detailJobLineFromDatedParts(sliceForJob, line, dateStr, currentContext)
@@ -553,6 +609,8 @@ function isGarbageJobPhrase(phrase: string | null | undefined): boolean {
   if (/^[\s+\-0-9]+$/i.test(t)) return true
   if (/^\+[\t ]*(-[\t ]*\d+)?\d*$/i.test(t)) return true
   if (/^\+ -(\s+\d+)?$/i.test(compact)) return true
+  // "+ - 10 10", "+ - 1 1" — duplicate qty cells in job column
+  if (/^\+ -(\s+\d{1,4})+$/i.test(compact)) return true
   return false
 }
 
@@ -857,6 +915,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
   let pendingOrphanDateForDetail: string | null = null
   /** Part description on a line with no `$`; applies to the next `+ - … $` row. */
   let pendingStandalonePartLine: string | null = null
+  /** Rich DATE+job header lines keyed by calendar day — money rows often only repeat the date. */
+  const richJobContextByDateKey = new Map<string, string>()
 
   for (const rawLine of lines) {
     let line = rawLine.replace(/\u00a0/g, ' ').trim()
@@ -866,6 +926,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       lastDetailSignature = null
       pendingOrphanDateForDetail = null
       pendingStandalonePartLine = null
+      richJobContextByDateKey.clear()
       continue
     }
     if (!line || line.startsWith('--')) continue
@@ -916,6 +977,10 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         ) {
           const aj = trimTrailingQtyColumnsFromJobBlob(after)
           if (!isGarbageJobPhrase(aj)) currentJob = aj
+        }
+        for (const tok of allDateTokensInLine(line)) {
+          const k = canonicalDateKey(tok)
+          if (k) richJobContextByDateKey.set(k, line)
         }
       }
     }
@@ -1048,7 +1113,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
                   seg.subparts,
                   line,
                   currentContext,
-                  currentJob
+                  currentJob,
+                  richJobContextByDateKey
                 )
                 const sig = `${cleanedPart}|${jobOut}|${dr.required}|${line}|mi${mi}`
                 if (sig !== lastDetailSignature) {
@@ -1122,7 +1188,16 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               }
             }
           }
-          rowJob = resolveJobForMoneyRow(rowJob, currentJob, currentContext, line, parts, mi, prevMoneyIndex)
+          rowJob = resolveJobForMoneyRow(
+            rowJob,
+            currentJob,
+            currentContext,
+            line,
+            parts,
+            mi,
+            prevMoneyIndex,
+            richJobContextByDateKey
+          )
 
           const required = intsAfter[0] ?? 0
           const received = intsAfter.length >= 2 ? intsAfter[1]! : null
