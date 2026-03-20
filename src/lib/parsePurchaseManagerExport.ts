@@ -76,6 +76,30 @@ function detailRequiredQtyOnJobLine(parts: string[]): number | null {
 }
 
 /**
+ * PDF text extraction often merges two job descriptions on one row after the date, e.g.
+ * `Dowbuilt:…Ref# 3878-… … SBC:Bozeman-196…Ref# 4542…`. Without splitting we only FIFO one job.
+ */
+function splitCompoundJobLineIntoJobs(jobBlob: string): string[] {
+  const full = jobBlob.trim()
+  if (full.length < 20) return [full]
+
+  const refM = /\bRef#\s*\d+/i.exec(full)
+  if (!refM) return [full]
+
+  const afterFirstRef = full.slice(refM.index + refM.length)
+  const nextCo = afterFirstRef.match(
+    /\b(SBC|Dowbuilt|Dovetail|Lohss Construction|Cohutta Lee Builders|Teton Heritage Builders|Blue Ribbon Builders|James Loudspeaker|Samsung|Apple|SanDisk|HP|Sonance|Honeywell|First Alert|AVPro Edge|Crestron|Faradite|GRI|CUSTOM ROMAN|QS PALLADIOM|SIVOIA|Middle Atlantic|LSTU|Sanus|System Sensor|Interlogix|PROSIXHEATV|PROSIXSMOKEV|PROSIX|Lutron|CLOUD GATEWAY|Ubiquiti|Montana Cabin|Smart Home Systems|Friend,|Stanley,|Young,|Perry,|Langlas & Assoc\.)\s*:\s*/i
+  )
+  if (!nextCo || nextCo.index == null) return [full]
+
+  const splitAt = refM.index + refM[0].length + nextCo.index
+  const j1 = full.slice(0, splitAt).trim()
+  const j2 = full.slice(splitAt).trim()
+  if (j1.length < 12 || j2.length < 12) return [full]
+  return [j1, j2]
+}
+
+/**
  * Second and later job rows often omit the date (still aligned under the same column).
  * Queue them like date+job lines when we're in a multi-job detail block for one part.
  */
@@ -425,7 +449,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       // Date/job line without an obvious quantity on the same row:
       // hold job and consume quantity from the next non-money row.
       if (detailJob && detailRequired == null) {
-        pendingDetailJobs.push({ job: detailJob, sourceLine: line })
+        for (const seg of splitCompoundJobLineIntoJobs(detailJob)) {
+          pendingDetailJobs.push({ job: seg, sourceLine: line })
+        }
         continue
       }
     }
@@ -438,7 +464,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       looksLikeStandaloneJobRow(line, parts) &&
       (pendingDetailJobs.length > 0 || pendingSummaryIndex != null)
     ) {
-      pendingDetailJobs.push({ job: line.trim(), sourceLine: line })
+      for (const seg of splitCompoundJobLineIntoJobs(line.trim())) {
+        pendingDetailJobs.push({ job: seg, sourceLine: line })
+      }
       continue
     }
 
