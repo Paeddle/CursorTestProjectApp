@@ -567,6 +567,11 @@ function jobFromRefLineMap(refMap: Map<string, string>, refDigits: string, purch
   return null
 }
 
+/** Purchase Manager “Job” for some stock lines is stored with a date; AVPro split rows should show body only. */
+function stripLeadingMdyFromJob(job: string): string {
+  return job.replace(/^\d{1,2}\/\d{1,2}\/\d{4}\s+/, '').trim()
+}
+
 /** AVPro BT-10KUHD* lines often sit under SBC Ref# 4542 in the extract; real job is Lohss Ref# 4203 on the same page. */
 function avproBtKuhdPreferLohss4203(
   job: string,
@@ -577,8 +582,10 @@ function avproBtKuhdPreferLohss4203(
 ): string {
   if (!hierarchyManufacturer || !/^avpro\b/i.test(hierarchyManufacturer.trim())) return job
   if (!cleanedPart || !/^BT-10KUHD/i.test(cleanedPart.trim())) return job
+  const jr = jobFromRefLineMap(refMap, '4203', line)
+  if (jr) return stripLeadingMdyFromJob(jr)
   if (extractPrimaryRef(job) !== '4542') return job
-  return jobFromRefLineMap(refMap, '4203', line) ?? job
+  return job
 }
 
 function collectPeekJobsFromForward(
@@ -680,14 +687,18 @@ function resolveJobForMoneyRow(
     )
   }
 
+  const peekCandidates = collectPeekJobsFromForward(richJobContextByDateKey, peekForwardLines, line)
+  if ((cleanedPart ?? '').trim() === '6290W' && peekCandidates.length > 0) {
+    const co = pickPeekJobForMoneyRowNoDate(peekCandidates, currentJob, '6290W')
+    if (co) return avproLohss(co)
+  }
+
   if (rowJob?.trim() && !isGarbageFullJob(rowJob)) {
     return avproLohss(rowJob.trim())
   }
 
   const rowDateTok = firstDateTokenInSlice(parts, prevMoneyIndex + 1, mi)
   let best: string | null = jobFromDateKeyCache(richJobContextByDateKey, rowDateTok, line)
-
-  const peekCandidates = collectPeekJobsFromForward(richJobContextByDateKey, peekForwardLines, line)
   const noPurchDate = !DATE_ANYWHERE.test(line)
   const usePeekMoneyPick =
     peekCandidates.length > 0 && (noPurchDate || (cleanedPart ?? '').trim() === '6290W')
@@ -998,6 +1009,23 @@ function looksLikeOrphanPartDescriptionLine(line: string, parts: string[]): bool
   return false
 }
 
+/**
+ * SKUs like `14-2c-EX+` are often split into `14-2c-EX` and a lone `+` tab cell before `$`.
+ */
+function mergeLonelyPlusPartSuffix(tokens: string[]): string[] {
+  const out = tokens.map((t) => t.trim()).filter((t) => t.length > 0)
+  for (let i = 0; i < out.length - 1; i++) {
+    const a = out[i] ?? ''
+    const b = out[i + 1] ?? ''
+    if (b === '+' && /^[\w.-]+$/i.test(a)) {
+      out[i] = `${a}+`
+      out.splice(i + 1, 1)
+      break
+    }
+  }
+  return out
+}
+
 /** Join tab cells immediately before the `+ -` pair left of `$` (fixes 16 GB Micro SD, PROSIXCOMBO vs PROLTE bleed). */
 function finalizePartDescriptionTokens(tokens: string[]): string | null {
   if (tokens.length === 0) return null
@@ -1028,10 +1056,12 @@ function extractPartDescriptionBeforePlusMinus(
   }
   if (minusIdx < 0) return null
 
-  const betweenMinusAndMoney = parts
-    .slice(minusIdx + 1, mi)
-    .map((p) => p.trim())
-    .filter((t) => t.length > 0 && !isMoney(t))
+  const betweenMinusAndMoney = mergeLonelyPlusPartSuffix(
+    parts
+      .slice(minusIdx + 1, mi)
+      .map((p) => p.trim())
+      .filter((t) => t.length > 0 && !isMoney(t))
+  )
 
   if (tokensBetweenMinusAndMoneyLookLikePart(betweenMinusAndMoney)) {
     return finalizePartDescriptionTokens(betweenMinusAndMoney)
@@ -1405,7 +1435,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           }
         }
 
-        if (cleanedPart && !isMoney(cleanedPart) && intsAfter.length >= 1) {
+        const costTok = (parts[mi] ?? '').trim()
+        const isZeroMoneyCost = /^\$0(?:\.00)?$/i.test(costTok)
+        if (cleanedPart && !isMoney(cleanedPart) && (intsAfter.length >= 1 || isZeroMoneyCost)) {
           awaitingManufacturerSubtotal = false
 
           if (pendingStandalonePartLine != null && rowHasPlusMinusBeforeMoney(parts, mi, prevMoneyIndex)) {
@@ -1541,7 +1573,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             hierarchyManufacturer
           )
 
-          const required = intsAfter[0] ?? 0
+          const required = intsAfter.length >= 1 ? intsAfter[0]! : isZeroMoneyCost ? 1 : 0
           const received = intsAfter.length >= 2 ? intsAfter[1]! : null
           const ordered = intsAfter.length >= 3 ? intsAfter[2]! : null
 
