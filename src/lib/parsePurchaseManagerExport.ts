@@ -401,6 +401,33 @@ function trimTrailingQtyColumnsFromJobBlob(blob: string): string {
   return s
 }
 
+/** Same calendar day as `MM/DD/YYYY` / `M/D/YYYY` — context lines often omit leading zeros. */
+function dateTokenAliases(dateTok: string): string[] {
+  const m = dateTok.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return [dateTok.trim()]
+  const mo = Number.parseInt(m[1]!, 10)
+  const day = Number.parseInt(m[2]!, 10)
+  const y = m[3]!
+  const z = (n: number) => String(n).padStart(2, '0')
+  return [
+    ...new Set([
+      dateTok.trim(),
+      `${z(mo)}/${z(day)}/${y}`,
+      `${mo}/${day}/${y}`,
+      `${z(mo)}/${day}/${y}`,
+      `${mo}/${z(day)}/${y}`,
+    ]),
+  ]
+}
+
+function indexOfDateAlias(haystack: string, dateFromLine: string): { index: number; matched: string } | null {
+  for (const a of dateTokenAliases(dateFromLine)) {
+    const i = haystack.indexOf(a)
+    if (i >= 0) return { index: i, matched: a }
+  }
+  return null
+}
+
 /** Drop purchase columns merged into the job blob (`… SBC:… + - 6290W` → `… SBC:…`). */
 function stripJobBlobBeforePlusMinusColumns(s: string): string {
   let t = s.replace(/\u00a0/g, ' ').trim()
@@ -435,16 +462,17 @@ function jobFromRichContextLine(context: string | null, line: string): string | 
   const dm = line.match(DATE_ANYWHERE)
   if (!dm) return null
   const d = dm[0]
-  if (!context.includes(d)) return null
-  let tail = context.slice(context.indexOf(d)).trim()
-  const afterFirst = tail.slice(d.length)
+  const hit = indexOfDateAlias(context, d)
+  if (!hit) return null
+  let tail = context.slice(hit.index).trim()
+  const afterFirst = tail.slice(hit.matched.length)
   const nextD = afterFirst.match(/\d{1,2}\/\d{1,2}\/\d{4}/)
   if (nextD && nextD.index != null && nextD.index > 0) {
-    tail = tail.slice(0, d.length + nextD.index).trim()
+    tail = tail.slice(0, hit.matched.length + nextD.index).trim()
   }
   tail = stripJobBlobBeforePlusMinusColumns(tail)
   tail = trimTrailingQtyColumnsFromJobBlob(tail).replace(/\s+/g, ' ').trim()
-  const body = tail.slice(d.length).trim()
+  const body = tail.slice(hit.matched.length).trim()
   if (!body || isGarbageJobPhrase(body)) return null
   return tail
 }
@@ -494,7 +522,9 @@ function resolveJobForMoneyRow(
     const withDate = cleaned ? detailJobWithLeadingDate(line, cleaned) : null
     if (withDate && !isGarbageFullJob(withDate)) return withDate
   }
-  return rowJob?.trim() ? rowJob.trim() : null
+  const last = rowJob?.trim() ?? null
+  if (last && !isGarbageFullJob(last)) return last
+  return null
 }
 
 function resolveDetailRowJob(
@@ -629,18 +659,21 @@ function detailJobLineFromDatedParts(
       if (fromRaw) phrase = fromRaw
     }
   }
-  if (isGarbageJobPhrase(phrase) && contextFallback && contextFallback.includes(segmentDateStr)) {
-    const idx = contextFallback.indexOf(segmentDateStr)
-    let tail = contextFallback.slice(idx).trim()
-    const afterFirst = tail.slice(segmentDateStr.length)
-    const m2 = afterFirst.match(/\d{1,2}\/\d{1,2}\/\d{4}/)
-    if (m2 && m2.index != null && m2.index > 0) {
-      tail = tail.slice(0, segmentDateStr.length + m2.index).trim()
-    }
-    tail = trimTrailingQtyColumnsFromJobBlob(stripJobBlobBeforePlusMinusColumns(tail))
-    const afterDate = tail.slice(segmentDateStr.length).trim()
-    if (afterDate.length > 4 && !isGarbageJobPhrase(afterDate)) {
-      return tail.replace(/\s+/g, ' ').trim()
+  if (isGarbageJobPhrase(phrase) && contextFallback) {
+    const dateHit = indexOfDateAlias(contextFallback, segmentDateStr)
+    if (dateHit != null) {
+      let tail = contextFallback.slice(dateHit.index).trim()
+      const matchedLen = dateHit.matched.length
+      const afterFirst = tail.slice(matchedLen)
+      const m2 = afterFirst.match(/\d{1,2}\/\d{1,2}\/\d{4}/)
+      if (m2 && m2.index != null && m2.index > 0) {
+        tail = tail.slice(0, matchedLen + m2.index).trim()
+      }
+      tail = trimTrailingQtyColumnsFromJobBlob(stripJobBlobBeforePlusMinusColumns(tail))
+      const afterDate = tail.slice(matchedLen).trim()
+      if (afterDate.length > 4 && !isGarbageJobPhrase(afterDate)) {
+        return tail.replace(/\s+/g, ' ').trim()
+      }
     }
   }
   if (isGarbageJobPhrase(phrase)) return null
