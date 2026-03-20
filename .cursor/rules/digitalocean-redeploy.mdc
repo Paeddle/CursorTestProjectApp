@@ -1,0 +1,17 @@
+---
+description: After app-impacting changes, push to main and redeploy DigitalOcean
+alwaysApply: true
+---
+
+# DigitalOcean redeploy
+
+When you finish changes that affect the **deployed** app (root `src/`, `scanner-app/`, `wire-scanner-app/`, shared `lib/`, or DigitalOcean spec/scripts):
+
+1. **Production builds from GitHub** — commit and `git push origin main` (or the branch in `deployments/digitalocean/.env.deploy` as `DO_GITHUB_BRANCH`) so the remote has the code.
+2. From the **repo root**, run:
+
+   `powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1`
+
+   This updates the App Platform spec if needed and runs `doctl apps create-deployment --force-rebuild`. Requires `deployments/digitalocean/.env.deploy` with `DO_ACCESS_TOKEN` on the machine that runs it.
+
+Do this **at the end of the same session** after such changes unless the user explicitly opts out. If push or deploy fails, say what failed and fix or retry.

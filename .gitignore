@@ -33,3 +33,6 @@ deployments/digitalocean/deployments/digitalocean/.env.deploy
 *.sln
 *.sw?
 
+# Local Purchase List parser debug exports
+purchase-parse-debug-*.csv
+

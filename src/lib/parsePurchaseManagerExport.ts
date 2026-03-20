@@ -21,6 +21,71 @@ function isMoney(s: string): boolean {
   return /^\$/.test(s.trim())
 }
 
+/** Every `+ - <int>` group on a row (PDF sometimes merges two detail qty cells on one line). */
+function collectPlusMinusQuantities(parts: string[]): number[] {
+  const out: number[] = []
+  for (let i = 0; i < parts.length - 2; i++) {
+    if (parts[i] === '+' && parts[i + 1] === '-' && isInt(parts[i + 2]!)) {
+      const n = Number.parseInt(parts[i + 2]!, 10)
+      if (Number.isFinite(n) && n > 0) out.push(n)
+    }
+  }
+  return out
+}
+
+/**
+ * Required qty on a date+job *detail* row (no $ on line). Must not treat Ref#, lot, street, or rev as qty.
+ * Prefer explicit `+ - n` on the row; else the rightmost plausible small integer (qty columns trail job text).
+ */
+function detailRequiredQtyOnJobLine(parts: string[]): number | null {
+  const pm = collectPlusMinusQuantities(parts)
+  if (pm.length > 0) {
+    return pm[pm.length - 1] ?? null
+  }
+
+  for (let j = parts.length - 1; j >= 0; j--) {
+    const t = (parts[j] ?? '').trim()
+    if (!isInt(t)) continue
+    const n = Number.parseInt(t, 10)
+    if (!Number.isFinite(n) || n <= 0) continue
+    if (n > 999) continue
+
+    const prevRaw = (parts[j - 1] ?? '').trim()
+    const prevNorm = prevRaw.replace(/\.$/, '')
+    if (/^rev$/i.test(prevNorm)) continue
+    if (/^ref#?$/i.test(prevNorm)) continue
+    if (/^lot$/i.test(prevNorm)) continue
+    // "Bozeman-" + "196" style street fragments
+    if (/-$/.test(prevRaw) && n >= 10 && n < 1000) continue
+    // MM / DD / YY split across three cells (e.g. 12 22 25)
+    if (
+      j >= 2 &&
+      isInt((parts[j - 1] ?? '').trim()) &&
+      isInt((parts[j - 2] ?? '').trim())
+    ) {
+      const a = Number.parseInt((parts[j - 2] ?? '').trim(), 10)
+      const b = Number.parseInt((parts[j - 1] ?? '').trim(), 10)
+      if (a >= 1 && a <= 12 && b >= 1 && b <= 31 && n >= 1 && n <= 31) {
+        continue
+      }
+    }
+
+    return n
+  }
+  return null
+}
+
+/**
+ * Second and later job rows often omit the date (still aligned under the same column).
+ * Queue them like date+job lines when we're in a multi-job detail block for one part.
+ */
+function looksLikeStandaloneJobRow(line: string, parts: string[]): boolean {
+  if (line.length < 28) return false
+  if (parts.every((p) => p === '+' || p === '-' || isInt(p))) return false
+  const compact = line.replace(/\s+/g, ' ')
+  return /:\s*\S/.test(compact) && /ref#/i.test(compact)
+}
+
 /** Single-token “job hints” after a date — never treat connective/common PDF words as jobs. */
 const JOB_TOKEN_STOPWORDS = new Set(
   [
@@ -333,23 +398,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         }
       }
 
-      // Qty on detail rows is usually the first standalone int token after
-      // the context text, while later ints may be received/ordered/on-hand.
-      let detailRequired: number | null = null
-      for (let j = 0; j < parts.length; j++) {
-        const t = (parts[j] ?? '').trim()
-        if (isInt(t)) {
-          const prevRaw = (parts[j - 1] ?? '').trim()
-          const prevNorm = prevRaw.replace(/\.$/, '')
-          // Avoid "Rev. 3" / "Rev 2" being treated as requested qty on a job context line.
-          if (/^rev$/i.test(prevNorm)) continue
-          const n = Number.parseInt(t, 10)
-          if (Number.isFinite(n) && n > 0) {
-            detailRequired = n
-            break
-          }
-        }
-      }
+      let detailRequired: number | null = detailRequiredQtyOnJobLine(parts)
 
       if (detailJob && detailRequired != null) {
         // If this item had a summary row, remove it once detail rows appear.
@@ -381,9 +430,121 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       }
     }
 
+    // Job row with no date (continuation under the same purchase line / part).
+    if (
+      currentPartContext &&
+      moneyIndices.length === 0 &&
+      !DATE_ANYWHERE.test(line) &&
+      looksLikeStandaloneJobRow(line, parts) &&
+      (pendingDetailJobs.length > 0 || pendingSummaryIndex != null)
+    ) {
+      pendingDetailJobs.push({ job: line.trim(), sourceLine: line })
+      continue
+    }
+
     // Pending detail qty line:
     // Some PDFs put date/job on one line and qty on the next line.
+    // Multiple jobs may share one extracted row: `+ - 2	+ - 1` or `2	1` (tab ints only).
     if (currentPartContext && pendingDetailJobs.length > 0 && moneyIndices.length === 0) {
+      const plusMinusQtys = collectPlusMinusQuantities(parts)
+      if (plusMinusQtys.length > 0) {
+        // Two job rows queued but one combined qty cell `+ - 3` (3 = 2 + 1) — split FIFO.
+        // Scoped to SD-card lines so other “3 across two jobs” rows (1+2) are unchanged.
+        if (
+          plusMinusQtys.length === 1 &&
+          plusMinusQtys[0] === 3 &&
+          pendingDetailJobs.length === 2 &&
+          /\b(sd|micro|miscro)\b/i.test(currentPartContext.part)
+        ) {
+          const splitQtys = [2, 1] as const
+          for (let si = 0; si < splitQtys.length; si++) {
+            const qty = splitQtys[si]!
+            const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
+            if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+              out.splice(pendingSummaryIndex, 1)
+              pendingSummaryIndex = null
+            }
+            const sig = `${currentPartContext.part}|${dj}|${qty}|${src}|${line}`
+            if (sig !== lastDetailSignature) {
+              out.push({
+                vendor: currentPartContext.vendor,
+                job: dj,
+                part: currentPartContext.part,
+                required: qty,
+                received: null,
+                ordered: null,
+                cost: currentPartContext.cost,
+                context_line: currentContext,
+                raw_line: line,
+              })
+              lastDetailSignature = sig
+            }
+          }
+          continue
+        }
+
+        for (const qty of plusMinusQtys) {
+          if (pendingDetailJobs.length === 0) break
+          const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
+          if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+            out.splice(pendingSummaryIndex, 1)
+            pendingSummaryIndex = null
+          }
+          const sig = `${currentPartContext.part}|${dj}|${qty}|${src}|${line}`
+          if (sig !== lastDetailSignature) {
+            out.push({
+              vendor: currentPartContext.vendor,
+              job: dj,
+              part: currentPartContext.part,
+              required: qty,
+              received: null,
+              ordered: null,
+              cost: currentPartContext.cost,
+              context_line: currentContext,
+              raw_line: line,
+            })
+            lastDetailSignature = sig
+          }
+        }
+        // e.g. `+ - 2	1` — second qty has no `+ -`; keep consuming pending jobs below
+        if (pendingDetailJobs.length === 0) continue
+      }
+
+      const allInts =
+        parts.length > 0 &&
+        parts.every((p) => {
+          const t = (p ?? '').trim()
+          return isInt(t) && Number.parseInt(t, 10) > 0
+        })
+      if (allInts && parts.length === pendingDetailJobs.length && parts.length > 1) {
+        let consumed = false
+        for (let i = 0; i < parts.length; i++) {
+          const qty = Number.parseInt((parts[i] ?? '').trim(), 10)
+          const { job: dj, sourceLine: src } = pendingDetailJobs.shift()!
+          if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+            out.splice(pendingSummaryIndex, 1)
+            pendingSummaryIndex = null
+          }
+          const sig = `${currentPartContext.part}|${dj}|${qty}|${src}|${line}`
+          if (sig !== lastDetailSignature) {
+            out.push({
+              vendor: currentPartContext.vendor,
+              job: dj,
+              part: currentPartContext.part,
+              required: qty,
+              received: null,
+              ordered: null,
+              cost: currentPartContext.cost,
+              context_line: currentContext,
+              raw_line: line,
+            })
+            lastDetailSignature = sig
+          }
+          consumed = true
+        }
+        if (consumed) continue
+      }
+
       let qty: number | null = null
       for (let j = 0; j < parts.length; j++) {
         const t = (parts[j] ?? '').trim()
