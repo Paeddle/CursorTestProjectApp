@@ -172,55 +172,6 @@ function looksLikeStandaloneJobRow(line: string, parts: string[]): boolean {
   return /:\s*\S/.test(compact) && /ref#/i.test(compact)
 }
 
-/** Single-token “job hints” after a date — never treat connective/common PDF words as jobs. */
-const JOB_TOKEN_STOPWORDS = new Set(
-  [
-    'and',
-    'or',
-    'the',
-    'a',
-    'an',
-    'of',
-    'for',
-    'to',
-    'in',
-    'on',
-    'at',
-    'by',
-    'with',
-    'from',
-    'av',
-    'security',
-    'systems',
-    'network',
-    'wiring',
-    'standalone',
-    'update',
-    'rev',
-    'wo',
-  ].map((s) => s.toLowerCase())
-)
-
-function isJobTokenAfterDate(tok: string): boolean {
-  // Jobs in your screenshots tend to be lowercase names like:
-  // "zalupski" and "pugliese/berezin"
-  const t = tok
-    .trim()
-    .replace(/[,:;]$/g, '')
-    .replace(/[,:;]/g, '')
-  if (!t) return false
-  if (JOB_TOKEN_STOPWORDS.has(t.toLowerCase())) return false
-  if (isMoney(t)) return false
-  if (DATE_ANYWHERE.test(t) || DATE_LINE.test(t)) return false
-  if (t === '+' || t === '-') return false
-  // Exclude anything with digits (part names and quantities contain digits).
-  if (/\d/.test(t)) return false
-  // Prefer lowercase tokens to avoid picking manufacturer names like "Sandisk".
-  if (!/^[a-z]/.test(t)) return false
-  // Allow letters plus optional slash-separated words.
-  return /^[a-zA-Z]+(?:\/[a-zA-Z]+)*$/.test(t)
-}
-
 function extractFullJobContextFromLine(line: string): string | null {
   const m = line.match(DATE_ANYWHERE)
   if (!m || m.index == null) return null
@@ -280,10 +231,102 @@ function normalizeManufacturerLabel(v: string | null): string | null {
   return v.trim() || null
 }
 
+/** Model / part tokens mis-read as vendor when a $ row fails line-item parsing. */
+function isLikelySkuOrPartLabel(s: string): boolean {
+  const t = s.trim()
+  if (!t) return false
+  if (/\s/.test(t) && t.length < 40) return false
+  if (/[0-9]/.test(t) && /[A-Za-z]/.test(t) && !/^\d+$/.test(t)) {
+    if (!/\s/.test(t) && t.length >= 4) return true
+    if (/^[A-Z]{2,}\d/i.test(t.replace(/[\s\-_/]/g, ''))) return true
+  }
+  if (t.length >= 12 && !/\s/.test(t)) return true
+  return false
+}
+
+/** Black/blue subtotal rows use short distributor or brand names, not part numbers. */
+function isLikelyHierarchySubtotalLabel(label: string): boolean {
+  const t = label.trim()
+  if (!t || t.length > 56) return false
+  if (isLikelySkuOrPartLabel(t)) return false
+  const words = t.split(/\s+/).filter(Boolean).length
+  if (words > 8) return false
+  return true
+}
+
+/**
+ * Text before the first $ on a row, skipping PDF “+ - qty” columns (do not use raw
+ * lastIndexOf('-') — it hits the quantity minus and steals the real vendor label).
+ */
 function extractSubtotalLabelBeforeMoney(parts: string[], vendorMoneyIndex: number): string {
-  const dashIndex = parts.lastIndexOf('-')
-  const vendorTokens = parts.slice(dashIndex + 1, vendorMoneyIndex).filter(Boolean)
-  return vendorTokens.join(' ').trim()
+  const chunk = parts.slice(0, vendorMoneyIndex)
+  const out: string[] = []
+  for (let j = 0; j < chunk.length; j++) {
+    const t = (chunk[j] ?? '').trim()
+    if (!t) continue
+    if (t === '+' && (chunk[j + 1] ?? '').trim() === '-') {
+      j++
+      continue
+    }
+    if (t === '+' || t === '-') continue
+    if (DATE_LINE.test(t) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t)) continue
+    out.push(t)
+  }
+  return out.join(' ').trim()
+}
+
+/** Collect job title cells after a date cell up to $ / qty columns (handles “Smart Home Systems …”). */
+function jobPhraseFromParts(parts: string[], dateIdx: number, endExclusive: number): string | null {
+  const bits: string[] = []
+  for (let j = dateIdx + 1; j < endExclusive; j++) {
+    const jt = (parts[j] ?? '').trim()
+    if (!jt) continue
+    if (jt === '+' || jt === '-') break
+    if (isMoney(jt)) break
+    if (isInt(jt)) break
+    if (DATE_ANYWHERE.test(jt) && j > dateIdx) break
+    bits.push(jt)
+  }
+  const joined = bits.join(' ').trim()
+  return joined || null
+}
+
+function trimTrailingQtyColumnsFromJobBlob(blob: string): string {
+  let s = blob.replace(/\u00a0/g, ' ').trim()
+  s = s.replace(/(?:[\t ]|\|)+\+[\t ]*\-[\t ]*\d+[\t ]*$/g, '').trim()
+  s = s.replace(/(?:[\t ]|\|)+\d{1,4}[\t ]*$/g, '').trim()
+  return s
+}
+
+/** Full job column text `MM/DD/YYYY …` from tab cells after the date (multi-word jobs). */
+function detailJobLineFromDatedParts(
+  subparts: string[],
+  rawLine: string,
+  segmentDateStr: string
+): string | null {
+  const dateTokenIndex = subparts.findIndex((p) => DATE_ANYWHERE.test(p))
+  if (dateTokenIndex < 0) return null
+  const dateCell = (subparts[dateTokenIndex] ?? '').trim()
+  let extraFromCell = ''
+  const lead = dateCell.match(LEADING_DATE_IN_CELL)
+  if (lead) {
+    extraFromCell = dateCell.slice(lead[0].length).trim()
+  } else if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateCell)) {
+    const dm = dateCell.match(DATE_ANYWHERE)
+    if (dm && dm.index != null) {
+      extraFromCell = dateCell.slice(dm.index + dm[0].length).trim()
+    }
+  }
+  let phrase = jobPhraseFromParts(subparts, dateTokenIndex, subparts.length)
+  if (extraFromCell) {
+    phrase = phrase ? `${extraFromCell} ${phrase}`.trim() : extraFromCell
+  }
+  if (!phrase?.trim()) {
+    const fromLine = extractFullJobContextFromLine(rawLine)
+    phrase = fromLine ? trimTrailingQtyColumnsFromJobBlob(fromLine) : null
+  }
+  if (!phrase?.trim()) return null
+  return `${segmentDateStr} ${phrase.trim()}`.replace(/\s+/g, ' ').trim()
 }
 
 /**
@@ -329,9 +372,14 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       currentContext = line
       const after = line.slice(idx + m![0].length).replace(/^\s*\|\s*/g, '').trim()
       const parsedJob = extractJobFromLine(line)
-      if (parsedJob) currentJob = parsedJob
-      else if (after && (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))) {
-        currentJob = after
+      const trimmed = parsedJob ? trimTrailingQtyColumnsFromJobBlob(parsedJob) : null
+      const withDate = trimmed ? detailJobWithLeadingDate(line, trimmed) : null
+      if (withDate?.trim()) {
+        currentJob = withDate.trim()
+      } else if (trimmed?.trim()) {
+        currentJob = trimmed.trim()
+      } else if (after && (after.includes('/') || after.includes(':') || /ref#|ref\b/i.test(after) || /\bwo\b/i.test(after))) {
+        currentJob = trimTrailingQtyColumnsFromJobBlob(after)
       }
     }
 
@@ -428,13 +476,13 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           if (cleanedPart && !isMoney(cleanedPart)) {
             awaitingManufacturerSubtotal = false
 
-            // Pick the nearest job-like token immediately to the left of this $cost,
-            // but do not cross over into the previous $cost "segment".
-            let rowJob: string | null = currentJob
+            if (currentPartContext != null && currentPartContext.part !== cleanedPart) {
+              currentJob = null
+              pendingDetailJobs = []
+            }
 
-            // Anchored job selection:
-            // 1) find the nearest date token in this segment (between prevMoneyIndex and mi)
-            // 2) choose the first job-like token after the date and before $cost/ints
+            // Same-line date + multi-cell job (e.g. Smart Home Systems) before part/$; do not use previous part’s job.
+            let rowJob: string | null = currentJob
             let dateIdx: number | null = null
             for (let j = mi - 1; j > prevMoneyIndex; j--) {
               const jt = (parts[j] ?? '').trim()
@@ -443,17 +491,36 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
                 break
               }
             }
-
             if (dateIdx != null) {
-              for (let j = dateIdx + 1; j < mi; j++) {
-                const jt = (parts[j] ?? '').trim()
-                if (!jt || jt === '+' || jt === '-' || jt === currentContext) continue
-                if (isMoney(jt)) break
-                if (isInt(jt)) break
-                if (isJobTokenAfterDate(jt)) {
-                  rowJob = jt
-                  break
+              const dateCell = (parts[dateIdx] ?? '').trim()
+              let dateStr = dateCell
+              let extraFromCell = ''
+              const lead = dateCell.match(LEADING_DATE_IN_CELL)
+              if (lead) {
+                dateStr = lead[1]!
+                extraFromCell = dateCell.slice(lead[0].length).trim()
+              } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateCell)) {
+                dateStr = dateCell
+              } else {
+                const dm = dateCell.match(DATE_ANYWHERE)
+                if (dm && dm.index != null) {
+                  dateStr = dm[0]
+                  extraFromCell = dateCell.slice(dm.index + dm[0].length).trim()
                 }
+              }
+              let phrase = jobPhraseFromParts(parts, dateIdx, mi)
+              if (extraFromCell) {
+                phrase = phrase ? `${extraFromCell} ${phrase}`.trim() : extraFromCell
+              }
+              if (phrase) {
+                rowJob = `${dateStr} ${phrase}`.replace(/\s+/g, ' ').trim()
+              }
+            }
+            if (!rowJob && DATE_ANYWHERE.test(line)) {
+              const blob = extractFullJobContextFromLine(line)
+              const trimmed = blob ? trimTrailingQtyColumnsFromJobBlob(blob) : null
+              if (trimmed) {
+                rowJob = detailJobWithLeadingDate(line, trimmed)
               }
             }
 
@@ -494,10 +561,16 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
       if (parsedAtLeastOne) continue
 
-      // No part on this $ row: Purchase Manager hierarchy is vendor (black) then manufacturer (blue).
+      // No part on this $ row: vendor (black) then manufacturer (blue). Ignore part-like “labels”.
       const vendorMoneyIndex = moneyIndices[0]!
       const label = extractSubtotalLabelBeforeMoney(parts, vendorMoneyIndex)
-      if (label && !isMoney(label) && !DATE_LINE.test(label) && !/^\d+$/.test(label)) {
+      if (
+        label &&
+        !isMoney(label) &&
+        !DATE_LINE.test(label) &&
+        !/^\d+$/.test(label) &&
+        isLikelyHierarchySubtotalLabel(label)
+      ) {
         if (awaitingManufacturerSubtotal && hierarchyVendor != null) {
           hierarchyManufacturer = normalizeManufacturerLabel(label)
           awaitingManufacturerSubtotal = false
@@ -506,8 +579,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           hierarchyManufacturer = null
           awaitingManufacturerSubtotal = true
         }
+        continue
       }
-      continue
+      // $ row that is not a line item and not a hierarchy row — fall through to other parsers.
     }
 
     // Detail-row parsing (no cost on row):
@@ -521,24 +595,11 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         let handled = false
         for (const { dateStr, subparts } of datedSegs) {
           const subLine = subparts.join('\t')
-          let detailJob: string | null = extractJobFromLine(subLine)
-          const dateTokenIndex = subparts.findIndex((p) => DATE_ANYWHERE.test(p))
-          if (!detailJob && dateTokenIndex >= 0) {
-            for (let j = dateTokenIndex + 1; j < subparts.length; j++) {
-              const jt = (subparts[j] ?? '').trim()
-              if (!jt || jt === '+' || jt === '-') continue
-              if (isMoney(jt)) break
-              if (isJobTokenAfterDate(jt)) {
-                detailJob = jt
-                break
-              }
-            }
-          }
+          const detailJobDisplay = detailJobLineFromDatedParts(subparts, subLine, dateStr)
+          const detailJobBody =
+            detailJobDisplay?.replace(new RegExp(`^${dateStr.replace(/\//g, '\\/')}\\s+`), '').trim() ?? null
 
           const detailRequired = detailRequiredQtyOnJobLine(subparts)
-          const detailJobDisplay = detailJob
-            ? `${dateStr} ${detailJob.trim()}`.replace(/\s+/g, ' ').trim()
-            : null
 
           if (detailJobDisplay && detailRequired != null) {
             if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
@@ -559,8 +620,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             })
             lastDetailSignature = `${currentPartContext.part}|${detailJobDisplay}|${detailRequired}|${line}`
             handled = true
-          } else if (detailJob && detailRequired == null) {
-            for (const seg of splitCompoundJobLineIntoJobs(detailJob)) {
+          } else if (detailJobBody && detailRequired == null) {
+            for (const seg of splitCompoundJobLineIntoJobs(detailJobBody)) {
               const j = `${dateStr} ${seg.trim()}`.replace(/\s+/g, ' ').trim()
               pendingDetailJobs.push({ job: j, sourceLine: line })
             }
@@ -570,24 +631,23 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         if (handled) continue
       }
 
-      // Prefer full job line (after the date). Do not overwrite with a single token like "and"
-      // from phrases such as "AV and Security".
-      let detailJob: string | null = extractJobFromLine(line)
-      const dateTokenIndex = parts.findIndex((p) => DATE_ANYWHERE.test(p))
-      if (!detailJob && dateTokenIndex >= 0) {
-        for (let j = dateTokenIndex + 1; j < parts.length; j++) {
-          const jt = (parts[j] ?? '').trim()
-          if (!jt || jt === '+' || jt === '-') continue
-          if (isMoney(jt)) break
-          if (isJobTokenAfterDate(jt)) {
-            detailJob = jt
-            break
-          }
+      const lineDate = line.match(DATE_ANYWHERE)
+      const segmentDateStr = lineDate ? lineDate[0] : ''
+      let detailJobDisplay =
+        segmentDateStr ? detailJobLineFromDatedParts(parts, line, segmentDateStr) : null
+      if (!detailJobDisplay && segmentDateStr) {
+        const fb = extractJobFromLine(line)
+        if (fb) {
+          detailJobDisplay =
+            detailJobWithLeadingDate(line, trimTrailingQtyColumnsFromJobBlob(fb)) ?? null
         }
       }
+      const detailJobBody =
+        detailJobDisplay && segmentDateStr
+          ? detailJobDisplay.replace(new RegExp(`^${segmentDateStr.replace(/\//g, '\\/')}\\s+`), '').trim()
+          : null
 
       let detailRequired: number | null = detailRequiredQtyOnJobLine(parts)
-      const detailJobDisplay = detailJobWithLeadingDate(line, detailJob)
 
       if (detailJobDisplay && detailRequired != null) {
         // If this item had a summary row, remove it once detail rows appear.
@@ -614,8 +674,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
       // Date/job line without an obvious quantity on the same row:
       // hold job and consume quantity from the next non-money row.
-      if (detailJob && detailRequired == null) {
-        for (const seg of splitCompoundJobLineIntoJobs(detailJob)) {
+      if (detailJobBody && detailRequired == null) {
+        for (const seg of splitCompoundJobLineIntoJobs(detailJobBody)) {
           const j = detailJobWithLeadingDate(line, seg)
           if (j) pendingDetailJobs.push({ job: j, sourceLine: line })
         }

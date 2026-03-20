@@ -416,8 +416,8 @@ function PurchaseList() {
       parse_order: r.parse_order ?? 0,
       vendor: r.vendor ?? '',
       manufacturer: r.manufacturer ?? '',
-      job: r.job ?? '',
       part: r.part,
+      job: r.job ?? '',
       required: r.required,
       received: r.received ?? '',
       ordered: r.ordered ?? '',
@@ -573,12 +573,12 @@ function PurchaseList() {
                   Manufacturer{' '}
                   <span className="purchase-list-sort-hint">{compareSortKey === 'manufacturer' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
                 </th>
-                <th {...sortHeaderProps('job')}>
-                  Job <span className="purchase-list-sort-hint">{compareSortKey === 'job' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
-                </th>
                 <th {...sortHeaderProps('part')}>
                   Part (from PDF){' '}
                   <span className="purchase-list-sort-hint">{compareSortKey === 'part' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('job')}>
+                  Job <span className="purchase-list-sort-hint">{compareSortKey === 'job' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
                 </th>
                 <th {...sortHeaderProps('required')}>
                   Required <span className="purchase-list-sort-hint">{compareSortKey === 'required' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
@@ -613,8 +613,8 @@ function PurchaseList() {
                       <td>{pdfNum}</td>
                       <td className="purchase-list-vendor">{item.vendor?.trim() ? item.vendor : '—'}</td>
                       <td className="purchase-list-mfg">{item.manufacturer?.trim() ? item.manufacturer : '—'}</td>
-                      <td>{item.job ?? '—'}</td>
                       <td>{item.part}</td>
+                      <td>{item.job ?? '—'}</td>
                       <td>{item.required}</td>
                       <td>{s?.stock_available ?? '—'}</td>
                       <td>{s?.can_pull ?? '—'}</td>
