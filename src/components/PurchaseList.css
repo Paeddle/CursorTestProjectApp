@@ -124,6 +124,26 @@
   font-weight: 600;
 }
 
+.purchase-list-th-sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.purchase-list-th-sortable:hover {
+  background: #f3f4f6;
+}
+
+.purchase-list-th-sorted {
+  background: #eef2ff;
+}
+
+.purchase-list-sort-hint {
+  font-size: 0.65rem;
+  opacity: 0.85;
+  margin-left: 0.15rem;
+}
+
 .purchase-list-badge {
   display: inline-block;
   padding: 0.15rem 0.45rem;

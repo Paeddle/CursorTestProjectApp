@@ -17,6 +17,8 @@ export interface PurchaseListItemRow {
   cost: string | null
   context_line: string | null
   raw_line: string | null
+  /** 0-based index within the PDF parse sequence for this batch. */
+  parse_order?: number
 }
 
 export interface InventoryRow {

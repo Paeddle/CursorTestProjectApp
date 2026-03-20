@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Papa from 'papaparse'
 import { supabase } from '../lib/supabase'
 import { extractPdfLinesFromArrayBuffer } from '../lib/extractPdfLines'
@@ -6,6 +6,90 @@ import { parsePurchaseManagerLines } from '../lib/parsePurchaseManagerExport'
 import { parseInventoryXlsxArrayBuffer } from '../lib/inventoryFromXlsx'
 import { comparePurchaseToInventory } from '../lib/purchaseListMatch'
 import type { InventoryRow, PurchaseListBatch, PurchaseListItemRow, PullSuggestion } from '../types/purchaseList'
+
+type CompareSortKey =
+  | 'parse_order'
+  | 'vendor'
+  | 'manufacturer'
+  | 'job'
+  | 'part'
+  | 'required'
+  | 'stock_available'
+  | 'can_pull'
+  | 'match_type'
+
+type ZippedCompareRow = {
+  item: PurchaseListItemRow
+  rowIndex: number
+  suggestion: PullSuggestion | null
+}
+
+function cmpStr(a: string, b: string, asc: boolean): number {
+  const c = a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+  return asc ? c : -c
+}
+
+/** Compare numbers; null/undefined sort last when nullsLast. */
+function cmpNum(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  asc: boolean,
+  nullsLast: boolean
+): number {
+  const aN = a == null || !Number.isFinite(Number(a))
+  const bN = b == null || !Number.isFinite(Number(b))
+  if (aN && bN) return 0
+  if (aN) return nullsLast ? (asc ? 1 : -1) : asc ? -1 : 1
+  if (bN) return nullsLast ? (asc ? -1 : 1) : asc ? 1 : -1
+  const av = Number(a)
+  const bv = Number(b)
+  if (av === bv) return 0
+  const base = av < bv ? -1 : 1
+  return asc ? base : -base
+}
+
+function matchTypeRank(m: PullSuggestion['match_type'] | undefined): number {
+  if (m === 'part_number') return 0
+  if (m === 'item') return 1
+  return 2
+}
+
+function compareZippedRows(a: ZippedCompareRow, b: ZippedCompareRow, key: CompareSortKey, asc: boolean): number {
+  const sa = a.suggestion
+  const sb = b.suggestion
+  switch (key) {
+    case 'parse_order': {
+      const ao = a.item.parse_order ?? a.rowIndex
+      const bo = b.item.parse_order ?? b.rowIndex
+      if (ao === bo) return 0
+      const base = ao < bo ? -1 : 1
+      return asc ? base : -base
+    }
+    case 'vendor':
+      return cmpStr((a.item.vendor ?? '').trim(), (b.item.vendor ?? '').trim(), asc)
+    case 'manufacturer':
+      return cmpStr((a.item.manufacturer ?? '').trim(), (b.item.manufacturer ?? '').trim(), asc)
+    case 'job':
+      return cmpStr((a.item.job ?? '').trim(), (b.item.job ?? '').trim(), asc)
+    case 'part':
+      return cmpStr((a.item.part ?? '').trim(), (b.item.part ?? '').trim(), asc)
+    case 'required':
+      return cmpNum(a.item.required, b.item.required, asc, false)
+    case 'stock_available':
+      return cmpNum(sa?.stock_available ?? null, sb?.stock_available ?? null, asc, true)
+    case 'can_pull':
+      return cmpNum(sa?.can_pull ?? null, sb?.can_pull ?? null, asc, true)
+    case 'match_type': {
+      const ao = matchTypeRank(sa?.match_type)
+      const bo = matchTypeRank(sb?.match_type)
+      if (ao === bo) return 0
+      const base = ao < bo ? -1 : 1
+      return asc ? base : -base
+    }
+    default:
+      return 0
+  }
+}
 import './PurchaseList.css'
 
 function isConfigured(): boolean {
@@ -62,6 +146,8 @@ function PurchaseList() {
   const [inventoryCount, setInventoryCount] = useState(0)
   const [suggestions, setSuggestions] = useState<PullSuggestion[]>([])
   const [parsedDebugRows, setParsedDebugRows] = useState<ParsedDebugRow[]>([])
+  const [compareSortKey, setCompareSortKey] = useState<CompareSortKey>('parse_order')
+  const [compareSortAsc, setCompareSortAsc] = useState(true)
 
   const loadBatches = useCallback(async () => {
     const { data, error: e } = await supabase
@@ -88,9 +174,12 @@ function PurchaseList() {
     }
     const { data, error: e } = await supabase
       .from('purchase_list_items')
-      .select('batch_id, vendor, manufacturer, job, part, required, received, ordered, cost, context_line, raw_line')
+      .select(
+        'batch_id, vendor, manufacturer, job, part, required, received, ordered, cost, context_line, raw_line, parse_order'
+      )
       .eq('batch_id', batchId)
-      .order('part', { ascending: true })
+      .order('parse_order', { ascending: true })
+      .order('id', { ascending: true })
     if (e) throw new Error(e.message)
     setBatchItems((data ?? []) as PurchaseListItemRow[])
   }, [])
@@ -135,6 +224,7 @@ function PurchaseList() {
 
   useEffect(() => {
     if (!selectedBatchId) return
+    setSuggestions([])
     ;(async () => {
       try {
         await loadBatchItems(selectedBatchId)
@@ -145,8 +235,48 @@ function PurchaseList() {
   }, [selectedBatchId, loadBatchItems])
 
   useEffect(() => {
+    setCompareSortKey('parse_order')
+    setCompareSortAsc(true)
+  }, [selectedBatchId])
+
+  useEffect(() => {
     void runCompare()
   }, [runCompare])
+
+  const compareDisplayRows = useMemo((): ZippedCompareRow[] => {
+    const zipped = batchItems.map((item, rowIndex) => ({
+      item,
+      rowIndex,
+      suggestion: suggestions[rowIndex] ?? null,
+    }))
+    const sorted = [...zipped].sort((a, b) => {
+      const c = compareZippedRows(a, b, compareSortKey, compareSortAsc)
+      if (c !== 0) return c
+      return a.rowIndex - b.rowIndex
+    })
+    return sorted
+  }, [batchItems, suggestions, compareSortKey, compareSortAsc])
+
+  const onCompareSortHeader = (key: CompareSortKey) => {
+    if (key === compareSortKey) {
+      setCompareSortAsc((a) => !a)
+    } else {
+      setCompareSortKey(key)
+      setCompareSortAsc(true)
+    }
+  }
+
+  const sortHeaderProps = (key: CompareSortKey) => ({
+    className:
+      'purchase-list-th-sortable' + (compareSortKey === key ? ' purchase-list-th-sorted' : ''),
+    onClick: () => onCompareSortHeader(key),
+    'aria-sort':
+      compareSortKey === key
+        ? compareSortAsc
+          ? ('ascending' as const)
+          : ('descending' as const)
+        : ('none' as const),
+  })
 
   const handleUploadPdfs = async () => {
     setError(null)
@@ -208,8 +338,9 @@ function PurchaseList() {
         if (be || !batchRow) throw new Error(be?.message ?? 'Failed to create batch')
 
         const batchId = (batchRow as { id: string }).id
-        const inserts: PurchaseListItemRow[] = parsed.map((p) => ({
+        const inserts: PurchaseListItemRow[] = parsed.map((p, idx) => ({
           batch_id: batchId,
+          parse_order: idx,
           vendor: p.vendor,
           manufacturer: p.manufacturer,
           job: p.job,
@@ -279,8 +410,10 @@ function PurchaseList() {
   }
 
   const downloadPurchaseCsv = () => {
-    if (batchItems.length === 0) return
-    const flat = batchItems.map((r) => ({
+    if (compareDisplayRows.length === 0) return
+    const flat = compareDisplayRows.map(({ item: r }) => ({
+      pdf_line: (r.parse_order ?? 0) + 1,
+      parse_order: r.parse_order ?? 0,
       vendor: r.vendor ?? '',
       manufacturer: r.manufacturer ?? '',
       job: r.job ?? '',
@@ -321,8 +454,8 @@ function PurchaseList() {
         <div className="purchase-list-setup">
           <p>
             Configure <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>, then run{' '}
-            <code>supabase/add-purchase-list-inventory.sql</code> in the SQL Editor (re-run it if you need the{' '}
-            <code>manufacturer</code> column on <code>purchase_list_items</code>).
+            <code>supabase/add-purchase-list-inventory.sql</code> in the SQL Editor (re-run it if you need{' '}
+            <code>manufacturer</code> or <code>parse_order</code> on <code>purchase_list_items</code>).
           </p>
         </div>
       </div>
@@ -409,7 +542,11 @@ function PurchaseList() {
             </select>
           </label>
           <div className="purchase-list-actions">
-            <button type="button" disabled={!selectedBatchId || batchItems.length === 0} onClick={downloadPurchaseCsv}>
+            <button
+              type="button"
+              disabled={!selectedBatchId || compareDisplayRows.length === 0}
+              onClick={downloadPurchaseCsv}
+            >
               Download batch as CSV
             </button>
             <button type="button" disabled={busy} onClick={() => void runCompare()}>
@@ -418,42 +555,73 @@ function PurchaseList() {
           </div>
         </div>
 
+        <p className="purchase-list-meta">
+          Rows default to <strong>PDF parse order</strong> (column “PDF #”). Click any column header to sort;{' '}
+          <strong>Download batch as CSV</strong> exports rows in the order currently shown in the table.
+        </p>
         <div className="purchase-list-table-wrap">
           <table className="purchase-list-table">
             <thead>
               <tr>
-                <th>Vendor</th>
-                <th>Manufacturer</th>
-                <th>Job</th>
-                <th>Part (from PDF)</th>
-                <th>Required</th>
-                <th>stock_available</th>
-                <th>Can pull from stock</th>
-                <th>Match (via)</th>
+                <th {...sortHeaderProps('parse_order')}>
+                  PDF # <span className="purchase-list-sort-hint">{compareSortKey === 'parse_order' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('vendor')}>
+                  Vendor <span className="purchase-list-sort-hint">{compareSortKey === 'vendor' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('manufacturer')}>
+                  Manufacturer{' '}
+                  <span className="purchase-list-sort-hint">{compareSortKey === 'manufacturer' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('job')}>
+                  Job <span className="purchase-list-sort-hint">{compareSortKey === 'job' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('part')}>
+                  Part (from PDF){' '}
+                  <span className="purchase-list-sort-hint">{compareSortKey === 'part' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('required')}>
+                  Required <span className="purchase-list-sort-hint">{compareSortKey === 'required' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('stock_available')}>
+                  stock_available{' '}
+                  <span className="purchase-list-sort-hint">{compareSortKey === 'stock_available' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('can_pull')}>
+                  Can pull <span className="purchase-list-sort-hint">{compareSortKey === 'can_pull' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
+                <th {...sortHeaderProps('match_type')}>
+                  Match (via){' '}
+                  <span className="purchase-list-sort-hint">{compareSortKey === 'match_type' ? (compareSortAsc ? '▲' : '▼') : ''}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {suggestions.length === 0 ? (
+              {batchItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>
-                    {selectedBatchId ? 'No rows or inventory empty — import an XLSX first.' : 'Select a batch.'}
+                  <td colSpan={9}>
+                    {selectedBatchId ? 'No rows in this batch.' : 'Select a batch.'}
                   </td>
                 </tr>
               ) : (
-                suggestions.map((s, i) => {
-                  const full = s.stock_available != null && s.can_pull >= s.required
-                  const partial = s.stock_available != null && s.can_pull > 0 && s.can_pull < s.required
+                compareDisplayRows.map(({ item, rowIndex, suggestion: s }) => {
+                  const full = s != null && s.stock_available != null && s.can_pull >= s.required
+                  const partial = s != null && s.stock_available != null && s.can_pull > 0 && s.can_pull < s.required
+                  const pdfNum = item.parse_order != null ? item.parse_order + 1 : rowIndex + 1
                   return (
-                    <tr key={`${s.part}-${s.job ?? ''}-${i}`}>
-                      <td className="purchase-list-vendor">{s.vendor?.trim() ? s.vendor : '—'}</td>
-                      <td className="purchase-list-mfg">{s.manufacturer?.trim() ? s.manufacturer : '—'}</td>
-                      <td>{s.job ?? '—'}</td>
-                      <td>{s.part}</td>
-                      <td>{s.required}</td>
-                      <td>{s.stock_available ?? '—'}</td>
-                      <td>{s.can_pull}</td>
+                    <tr key={`${item.batch_id}-${rowIndex}`}>
+                      <td>{pdfNum}</td>
+                      <td className="purchase-list-vendor">{item.vendor?.trim() ? item.vendor : '—'}</td>
+                      <td className="purchase-list-mfg">{item.manufacturer?.trim() ? item.manufacturer : '—'}</td>
+                      <td>{item.job ?? '—'}</td>
+                      <td>{item.part}</td>
+                      <td>{item.required}</td>
+                      <td>{s?.stock_available ?? '—'}</td>
+                      <td>{s?.can_pull ?? '—'}</td>
                       <td>
-                        {s.match_type === 'none' ? (
+                        {!s ? (
+                          <span className="purchase-list-badge none">—</span>
+                        ) : s.match_type === 'none' ? (
                           <span className="purchase-list-badge none">No match</span>
                         ) : partial ? (
                           <span className="purchase-list-badge partial">

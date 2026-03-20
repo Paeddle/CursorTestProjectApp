@@ -22,6 +22,7 @@ create table if not exists public.purchase_list_items (
   cost text,
   context_line text,
   raw_line text,
+  parse_order integer not null default 0,
   created_at timestamptz not null default now()
 );
 
@@ -31,8 +32,12 @@ alter table public.purchase_list_items add column if not exists job text;
 -- Manufacturer (teal/blue header row in Purchase Manager PDF); same source as vendor in the parser.
 alter table public.purchase_list_items add column if not exists manufacturer text;
 
+-- Order of rows as extracted from the PDF (0-based index within each batch).
+alter table public.purchase_list_items add column if not exists parse_order integer not null default 0;
+
 create index if not exists idx_purchase_list_items_batch_id on public.purchase_list_items (batch_id);
 create index if not exists idx_purchase_list_items_part on public.purchase_list_items (part);
+create index if not exists idx_purchase_list_items_batch_parse_order on public.purchase_list_items (batch_id, parse_order);
 
 -- Inventory snapshot from XLSX (selected columns only). Latest upload replaces rows (app deletes then inserts).
 create table if not exists public.inventory (
