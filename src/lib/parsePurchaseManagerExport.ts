@@ -567,6 +567,20 @@ function jobFromRefLineMap(refMap: Map<string, string>, refDigits: string, purch
   return null
 }
 
+/** AVPro BT-10KUHD* lines often sit under SBC Ref# 4542 in the extract; real job is Lohss Ref# 4203 on the same page. */
+function avproBtKuhdPreferLohss4203(
+  job: string,
+  hierarchyManufacturer: string | null,
+  cleanedPart: string | null,
+  refMap: Map<string, string>,
+  line: string
+): string {
+  if (!hierarchyManufacturer || !/^avpro\b/i.test(hierarchyManufacturer.trim())) return job
+  if (!cleanedPart || !/^BT-10KUHD/i.test(cleanedPart.trim())) return job
+  if (extractPrimaryRef(job) !== '4542') return job
+  return jobFromRefLineMap(refMap, '4203', line) ?? job
+}
+
 function collectPeekJobsFromForward(
   richMap: Map<string, string>,
   peekLines: string[],
@@ -655,14 +669,29 @@ function resolveJobForMoneyRow(
   cleanedPart: string | null,
   hierarchyManufacturer: string | null
 ): string | null {
-  if (rowJob?.trim() && !isGarbageFullJob(rowJob)) return rowJob.trim()
+  const avproLohss = (j: string | null): string | null => {
+    if (!j?.trim() || isGarbageFullJob(j)) return j
+    return avproBtKuhdPreferLohss4203(
+      j.trim(),
+      hierarchyManufacturer,
+      cleanedPart,
+      richJobContextByRefKey,
+      line
+    )
+  }
+
+  if (rowJob?.trim() && !isGarbageFullJob(rowJob)) {
+    return avproLohss(rowJob.trim())
+  }
 
   const rowDateTok = firstDateTokenInSlice(parts, prevMoneyIndex + 1, mi)
   let best: string | null = jobFromDateKeyCache(richJobContextByDateKey, rowDateTok, line)
 
   const peekCandidates = collectPeekJobsFromForward(richJobContextByDateKey, peekForwardLines, line)
   const noPurchDate = !DATE_ANYWHERE.test(line)
-  if (noPurchDate && peekCandidates.length > 0) {
+  const usePeekMoneyPick =
+    peekCandidates.length > 0 && (noPurchDate || (cleanedPart ?? '').trim() === '6290W')
+  if (usePeekMoneyPick) {
     const picked = pickPeekJobForMoneyRowNoDate(peekCandidates, currentJob, cleanedPart ?? '')
     if (picked) best = picked
   } else if (!best && peekCandidates.length > 0) {
@@ -670,16 +699,7 @@ function resolveJobForMoneyRow(
   }
 
   if (best && !isGarbageFullJob(best)) {
-    if (
-      hierarchyManufacturer &&
-      /^avpro\b/i.test(hierarchyManufacturer.trim()) &&
-      /^BT-10KUHD/i.test((cleanedPart ?? '').trim()) &&
-      extractPrimaryRef(best) === '4542'
-    ) {
-      const jr = jobFromRefLineMap(richJobContextByRefKey, '4203', line)
-      if (jr) return jr
-    }
-    return best
+    return avproLohss(best)
   }
 
   // Money row often omits the date (`+ - 6290W $…`); try each date in context for cache (rightmost first).
@@ -688,14 +708,14 @@ function resolveJobForMoneyRow(
     for (let ti = ctxDates.length - 1; ti >= 0; ti--) {
       const tok = ctxDates[ti]!
       const j = jobFromDateKeyCache(richJobContextByDateKey, tok, `${tok}\t${line}`)
-      if (j && !isGarbageFullJob(j)) return j
+      if (j && !isGarbageFullJob(j)) return avproLohss(j)
     }
   }
 
   const fromCtx = jobFromRichContextLine(currentContext, line)
-  if (fromCtx && !isGarbageFullJob(fromCtx)) return fromCtx
+  if (fromCtx && !isGarbageFullJob(fromCtx)) return avproLohss(fromCtx)
 
-  if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return currentJob.trim()
+  if (currentJob?.trim() && !isGarbageFullJob(currentJob)) return avproLohss(currentJob.trim())
 
   let dateIdx: number | null = null
   for (let j = mi - 1; j > prevMoneyIndex; j--) {
@@ -717,7 +737,7 @@ function resolveJobForMoneyRow(
     const { jobSide } = splitMoneyRowIntoJobSideAndPurchaseTail(parts, dateIdx, mi)
     const sliceForJob = jobSide.length > 0 ? jobSide : parts.slice(dateIdx, mi)
     const dj = detailJobLineFromDatedParts(sliceForJob, line, dateStr, currentContext)
-    if (dj && !isGarbageFullJob(dj)) return dj
+    if (dj && !isGarbageFullJob(dj)) return avproLohss(dj)
   }
 
   if (DATE_ANYWHERE.test(line)) {
@@ -726,16 +746,16 @@ function resolveJobForMoneyRow(
       ? trimTrailingQtyColumnsFromJobBlob(stripJobBlobBeforePlusMinusColumns(blob))
       : null
     const withDate = cleaned ? detailJobWithLeadingDate(line, cleaned) : null
-    if (withDate && !isGarbageFullJob(withDate)) return withDate
+    if (withDate && !isGarbageFullJob(withDate)) return avproLohss(withDate)
   }
 
   if (DATE_ANYWHERE.test(line) && !isMinimalDatePlusMinusQtyLine(line)) {
     const selfJob = jobFromRichContextLine(line, line)
-    if (selfJob && !isGarbageFullJob(selfJob)) return selfJob
+    if (selfJob && !isGarbageFullJob(selfJob)) return avproLohss(selfJob)
   }
 
   const last = rowJob?.trim() ?? null
-  if (last && !isGarbageFullJob(last)) return last
+  if (last && !isGarbageFullJob(last)) return avproLohss(last)
   return null
 }
 
@@ -1116,6 +1136,14 @@ function buildRichJobContextMapsByPage(
       const synthetic = `${lastDateTokForOrphan}\t${line}`
       mergeRichLineIntoMap(mapD, synthetic)
       mergeRefLineIntoMap(mapR, synthetic)
+    } else if (lastDateTokForOrphan && /^\s*revision\b/i.test(line) && line.length < 48) {
+      const k = canonicalDateKey(lastDateTokForOrphan)
+      if (k) {
+        const prev = mapD.get(k)
+        if (prev && !/\brevision\b/i.test(prev)) {
+          mapD.set(k, `${prev.replace(/\s+$/, '')} Revision`.trim())
+        }
+      }
     }
   }
   flushPage()
@@ -1281,6 +1309,15 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
       const syn = `${lastRichDateTokMain}\t${line}`
       mergeRichLineIntoMap(richJobContextByDateKey, syn)
       mergeRefLineIntoMap(richJobContextByRefKey, syn)
+    } else if (lastRichDateTokMain && /^\s*revision\b/i.test(line) && line.length < 48) {
+      const k = canonicalDateKey(lastRichDateTokMain)
+      if (k) {
+        const prev = richJobContextByDateKey.get(k)
+        if (prev && !/\brevision\b/i.test(prev)) {
+          richJobContextByDateKey.set(k, `${prev.replace(/\s+$/, '')} Revision`.trim())
+        }
+      }
+      continue
     }
 
     // Lone integer lines are usually noise, but when we have active part+job context
@@ -1627,6 +1664,42 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             })
             lastDetailSignature = `${currentPartContext.part}|${jobOut}|${detailRequired}|${line}`
             handled = true
+          } else if (
+            detailRequired != null &&
+            (!detailJobDisplay?.trim() || isGarbageFullJob(detailJobDisplay))
+          ) {
+            if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+              out.splice(pendingSummaryIndex, 1)
+              pendingSummaryIndex = null
+            }
+            const prevJobD = out.length > 0 ? out[out.length - 1]!.job : null
+            const jobOut = resolveDetailRowJob(
+              null,
+              dateStr,
+              subparts,
+              subLine,
+              currentContext,
+              currentJob,
+              richJobContextByDateKey,
+              peekForwardLines,
+              prevJobD
+            )
+            if (jobOut && !isGarbageFullJob(jobOut)) {
+              out.push({
+                vendor: currentPartContext.vendor,
+                manufacturer: currentPartContext.manufacturer,
+                job: jobOut,
+                part: currentPartContext.part,
+                required: detailRequired,
+                received: null,
+                ordered: null,
+                cost: currentPartContext.cost,
+                context_line: currentContext,
+                raw_line: line,
+              })
+              lastDetailSignature = `${currentPartContext.part}|${jobOut}|${detailRequired}|${line}`
+              handled = true
+            }
           } else if (detailJobBody && detailRequired == null) {
             for (const seg of splitCompoundJobLineIntoJobs(detailJobBody)) {
               const j = `${dateStr} ${seg.trim()}`.replace(/\s+/g, ' ').trim()
@@ -1689,6 +1762,45 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         })
         lastDetailSignature = `${currentPartContext.part}|${jobOut}|${detailRequired}|${line}`
         continue
+      }
+
+      if (
+        segmentDateStr &&
+        detailRequired != null &&
+        (!detailJobDisplay?.trim() || isGarbageFullJob(detailJobDisplay))
+      ) {
+        if (pendingSummaryIndex != null && pendingSummaryIndex >= 0 && pendingSummaryIndex < out.length) {
+          out.splice(pendingSummaryIndex, 1)
+          pendingSummaryIndex = null
+        }
+        const prevJobS = out.length > 0 ? out[out.length - 1]!.job : null
+        const jobOut = resolveDetailRowJob(
+          null,
+          segmentDateStr,
+          parts,
+          line,
+          currentContext,
+          currentJob,
+          richJobContextByDateKey,
+          peekForwardLines,
+          prevJobS
+        )
+        if (jobOut && !isGarbageFullJob(jobOut)) {
+          out.push({
+            vendor: currentPartContext.vendor,
+            manufacturer: currentPartContext.manufacturer,
+            job: jobOut,
+            part: currentPartContext.part,
+            required: detailRequired,
+            received: null,
+            ordered: null,
+            cost: currentPartContext.cost,
+            context_line: currentContext,
+            raw_line: line,
+          })
+          lastDetailSignature = `${currentPartContext.part}|${jobOut}|${detailRequired}|${line}`
+          continue
+        }
       }
 
       // Date/job line without an obvious quantity on the same row:
