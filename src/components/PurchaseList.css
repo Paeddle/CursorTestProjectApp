@@ -95,6 +95,10 @@
   margin-top: 0.75rem;
 }
 
+.purchase-list-vendor {
+  white-space: nowrap;
+}
+
 .purchase-list-mfg {
   color: #1d4ed8;
   font-weight: 600;

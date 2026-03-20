@@ -44,6 +44,7 @@ export interface PullSuggestion {
   part: string
   required: number
   job: string | null
+  vendor: string | null
   manufacturer: string | null
   stock_available: number | null
   can_pull: number

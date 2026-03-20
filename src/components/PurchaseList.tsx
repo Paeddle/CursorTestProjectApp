@@ -111,7 +111,8 @@ function PurchaseList() {
         part: r.part,
         required: r.required,
         job: r.job,
-        manufacturer: (r.manufacturer ?? r.vendor) || null,
+        vendor: r.vendor || null,
+        manufacturer: r.manufacturer || null,
       }))
       setSuggestions(comparePurchaseToInventory(purchaseRows, invRows))
     } catch (err) {
@@ -176,12 +177,11 @@ function PurchaseList() {
         const lines = await extractPdfLinesFromArrayBuffer(buf)
         const parsed = parsePurchaseManagerLines(lines)
         parsed.forEach((p, idx) => {
-          const mfg = p.vendor ?? ''
           debugRows.push({
             source_file: file.name,
             row_index: idx + 1,
-            vendor: mfg,
-            manufacturer: mfg,
+            vendor: p.vendor ?? '',
+            manufacturer: p.manufacturer ?? '',
             job: p.job ?? '',
             part: p.part ?? '',
             required: p.required ?? 0,
@@ -211,7 +211,7 @@ function PurchaseList() {
         const inserts: PurchaseListItemRow[] = parsed.map((p) => ({
           batch_id: batchId,
           vendor: p.vendor,
-          manufacturer: p.vendor,
+          manufacturer: p.manufacturer,
           job: p.job,
           part: p.part,
           required: p.required,
@@ -281,8 +281,8 @@ function PurchaseList() {
   const downloadPurchaseCsv = () => {
     if (batchItems.length === 0) return
     const flat = batchItems.map((r) => ({
-      manufacturer: (r.manufacturer ?? r.vendor) ?? '',
       vendor: r.vendor ?? '',
+      manufacturer: r.manufacturer ?? '',
       job: r.job ?? '',
       part: r.part,
       required: r.required,
@@ -362,7 +362,10 @@ function PurchaseList() {
           </div>
         </div>
         <p className="purchase-list-meta">
-          Each file creates one batch. Large multi-page PDFs are supported (parsed in the browser).
+          Each file creates one batch. Large multi-page PDFs are supported (parsed in the browser). The parser expects
+          Purchase Manager’s hierarchy: a black <strong>vendor</strong> subtotal row, then a blue <strong>manufacturer</strong>{' '}
+          subtotal, then line items and dated job rows (two jobs for one part may appear as two date cells on the same
+          extracted row).
         </p>
       </section>
 
@@ -419,6 +422,7 @@ function PurchaseList() {
           <table className="purchase-list-table">
             <thead>
               <tr>
+                <th>Vendor</th>
                 <th>Manufacturer</th>
                 <th>Job</th>
                 <th>Part (from PDF)</th>
@@ -431,7 +435,7 @@ function PurchaseList() {
             <tbody>
               {suggestions.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     {selectedBatchId ? 'No rows or inventory empty — import an XLSX first.' : 'Select a batch.'}
                   </td>
                 </tr>
@@ -441,6 +445,7 @@ function PurchaseList() {
                   const partial = s.stock_available != null && s.can_pull > 0 && s.can_pull < s.required
                   return (
                     <tr key={`${s.part}-${s.job ?? ''}-${i}`}>
+                      <td className="purchase-list-vendor">{s.vendor?.trim() ? s.vendor : '—'}</td>
                       <td className="purchase-list-mfg">{s.manufacturer?.trim() ? s.manufacturer : '—'}</td>
                       <td>{s.job ?? '—'}</td>
                       <td>{s.part}</td>

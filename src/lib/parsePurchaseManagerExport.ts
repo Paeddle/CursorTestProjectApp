@@ -1,5 +1,8 @@
 export interface ParsedPurchaseLine {
+  /** Black row: distributor / vendor group (overall total). */
   vendor: string | null
+  /** Blue row: brand / manufacturer subtotal under that vendor. */
+  manufacturer: string | null
   job: string | null
   part: string
   required: number
@@ -95,6 +98,43 @@ function splitPartsIntoDateSegments(parts: string[]): { dateStr: string; subpart
     i = j - 1
   }
   return segments
+}
+
+/** Cell begins with MM/DD/YYYY (job + date often in one cell: `01/23/2026 Dowbuilt:…`). */
+const LEADING_DATE_IN_CELL = /^(\d{1,2}\/\d{1,2}\/\d{4})\b/
+
+function stripLeadingPlusMinusCells(parts: string[]): string[] {
+  let i = 0
+  while (i < parts.length && ((parts[i] ?? '').trim() === '+' || (parts[i] ?? '').trim() === '-')) {
+    i++
+  }
+  return parts.slice(i)
+}
+
+function splitPartsLeadingDateSegments(parts: string[]): { dateStr: string; subparts: string[] }[] {
+  const starts: number[] = []
+  for (let i = 0; i < parts.length; i++) {
+    if (LEADING_DATE_IN_CELL.test((parts[i] ?? '').trim())) starts.push(i)
+  }
+  if (starts.length < 2) return []
+  const out: { dateStr: string; subparts: string[] }[] = []
+  for (let s = 0; s < starts.length; s++) {
+    const from = starts[s]!
+    const to = s + 1 < starts.length ? starts[s + 1]! : parts.length
+    const subparts = parts.slice(from, to)
+    const m = (parts[from] ?? '').trim().match(LEADING_DATE_IN_CELL)
+    const dateStr = m ? m[1]! : ''
+    if (dateStr) out.push({ dateStr, subparts })
+  }
+  return out
+}
+
+/** Date-only cells first; else cells that *start* with a date (common for Micro SD + two jobs on one PDF row). */
+function splitPartsIntoDatedJobSegments(parts: string[]): { dateStr: string; subparts: string[] }[] {
+  const trimmed = stripLeadingPlusMinusCells(parts)
+  const exact = splitPartsIntoDateSegments(trimmed)
+  if (exact.length >= 2) return exact
+  return splitPartsLeadingDateSegments(trimmed)
 }
 
 /**
@@ -233,11 +273,17 @@ function detailJobWithLeadingDate(line: string, jobBody: string | null): string 
   return `${m[0]} ${body}`.replace(/\s+/g, ' ').trim()
 }
 
-function normalizeVendorName(v: string | null): string | null {
+function normalizeManufacturerLabel(v: string | null): string | null {
   if (!v) return null
   const t = v.trim()
   if (/^sundisk$/i.test(t)) return 'SanDisk'
-  return v
+  return v.trim() || null
+}
+
+function extractSubtotalLabelBeforeMoney(parts: string[], vendorMoneyIndex: number): string {
+  const dashIndex = parts.lastIndexOf('-')
+  const vendorTokens = parts.slice(dashIndex + 1, vendorMoneyIndex).filter(Boolean)
+  return vendorTokens.join(' ').trim()
 }
 
 /**
@@ -246,10 +292,20 @@ function normalizeVendorName(v: string | null): string | null {
  */
 export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[] {
   const out: ParsedPurchaseLine[] = []
-  let currentVendor: string | null = null
+  /** Black “vendor” subtotal row (distributor). */
+  let hierarchyVendor: string | null = null
+  /** Blue “manufacturer” subtotal row (brand under vendor). */
+  let hierarchyManufacturer: string | null = null
+  /** After a vendor subtotal, the next $ subtotal without a part is the manufacturer. */
+  let awaitingManufacturerSubtotal = false
   let currentContext: string | null = null
   let currentJob: string | null = null
-  let currentPartContext: { part: string; vendor: string | null; cost: string | null } | null = null
+  let currentPartContext: {
+    part: string
+    vendor: string | null
+    manufacturer: string | null
+    cost: string | null
+  } | null = null
   let pendingSummaryIndex: number | null = null
   let lastDetailSignature: string | null = null
   /** Date/job lines waiting for a following qty row (`+ - 2 2`, lone `3`, etc.). FIFO when several jobs stack up. */
@@ -296,6 +352,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           if (sig !== lastDetailSignature) {
             out.push({
               vendor: currentPartContext.vendor,
+              manufacturer: currentPartContext.manufacturer,
               job: useJob,
               part: currentPartContext.part,
               required: qty,
@@ -369,6 +426,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           const cleanedPart = partCandidate.replace(/^\d+\s*\|\s*/, '').trim()
           // Allow multi-word descriptions (e.g. "16 GB Micro SD") from a single PDF cell.
           if (cleanedPart && !isMoney(cleanedPart)) {
+            awaitingManufacturerSubtotal = false
+
             // Pick the nearest job-like token immediately to the left of this $cost,
             // but do not cross over into the previous $cost "segment".
             let rowJob: string | null = currentJob
@@ -409,7 +468,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             }
 
             out.push({
-              vendor: currentVendor,
+              vendor: hierarchyVendor,
+              manufacturer: hierarchyManufacturer,
               job: rowJob,
               part: cleanedPart,
               required: Number.isFinite(required) ? required : 0,
@@ -419,7 +479,12 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
               context_line: currentContext,
               raw_line: line,
             })
-            currentPartContext = { part: cleanedPart, vendor: currentVendor, cost: parts[mi] ?? null }
+            currentPartContext = {
+              part: cleanedPart,
+              vendor: hierarchyVendor,
+              manufacturer: hierarchyManufacturer,
+              cost: parts[mi] ?? null,
+            }
             pendingSummaryIndex = out.length - 1
             parsedAtLeastOne = true
           }
@@ -429,14 +494,18 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
       if (parsedAtLeastOne) continue
 
-      // If we didn't parse any purchase rows, treat it as a vendor subtotal:
-      // extract vendor name between the last '-' and the first money token.
+      // No part on this $ row: Purchase Manager hierarchy is vendor (black) then manufacturer (blue).
       const vendorMoneyIndex = moneyIndices[0]!
-      const dashIndex = parts.lastIndexOf('-')
-      const vendorTokens = parts.slice(dashIndex + 1, vendorMoneyIndex).filter(Boolean)
-      const vendor = vendorTokens.join(' ').trim()
-      if (vendor && !isMoney(vendor) && !DATE_LINE.test(vendor) && !/^\d+$/.test(vendor)) {
-        currentVendor = normalizeVendorName(vendor) ?? vendor
+      const label = extractSubtotalLabelBeforeMoney(parts, vendorMoneyIndex)
+      if (label && !isMoney(label) && !DATE_LINE.test(label) && !/^\d+$/.test(label)) {
+        if (awaitingManufacturerSubtotal && hierarchyVendor != null) {
+          hierarchyManufacturer = normalizeManufacturerLabel(label)
+          awaitingManufacturerSubtotal = false
+        } else {
+          hierarchyVendor = label.trim() || null
+          hierarchyManufacturer = null
+          awaitingManufacturerSubtotal = true
+        }
       }
       continue
     }
@@ -445,9 +514,9 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
     // Many exports place one summary line (with cost/total required) followed by
     // multiple date+job lines with per-job requested qty. We prefer those per-job rows.
     if (currentPartContext && DATE_ANYWHERE.test(line)) {
-      const datedSegs = splitPartsIntoDateSegments(parts)
+      const datedSegs = splitPartsIntoDatedJobSegments(parts)
 
-      // Two+ date-only cells on one extracted row → one row per job (e.g. Micro SD: Dowbuilt qty 2 + SBC qty 3).
+      // Two+ job segments on one extracted row (date-only cells or cells starting with a date).
       if (datedSegs.length >= 2) {
         let handled = false
         for (const { dateStr, subparts } of datedSegs) {
@@ -478,6 +547,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
             }
             out.push({
               vendor: currentPartContext.vendor,
+              manufacturer: currentPartContext.manufacturer,
               job: detailJobDisplay,
               part: currentPartContext.part,
               required: detailRequired,
@@ -528,6 +598,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
 
         out.push({
           vendor: currentPartContext.vendor,
+          manufacturer: currentPartContext.manufacturer,
           job: detailJobDisplay,
           part: currentPartContext.part,
           required: detailRequired,
@@ -584,6 +655,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           if (sig !== lastDetailSignature) {
             out.push({
               vendor: currentPartContext.vendor,
+              manufacturer: currentPartContext.manufacturer,
               job: dj,
               part: currentPartContext.part,
               required: qty,
@@ -619,6 +691,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
           if (sig !== lastDetailSignature) {
             out.push({
               vendor: currentPartContext.vendor,
+              manufacturer: currentPartContext.manufacturer,
               job: dj,
               part: currentPartContext.part,
               required: qty,
@@ -656,6 +729,7 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         if (sig !== lastDetailSignature) {
           out.push({
             vendor: currentPartContext.vendor,
+            manufacturer: currentPartContext.manufacturer,
             job: dj,
             part: currentPartContext.part,
             required: qty,
@@ -687,7 +761,8 @@ export function parsePurchaseManagerLines(lines: string[]): ParsedPurchaseLine[]
         if (!cleanedPart || /^\d+$/.test(cleanedPart) || isMoney(cleanedPart)) continue
 
         out.push({
-          vendor: currentVendor,
+          vendor: hierarchyVendor,
+          manufacturer: hierarchyManufacturer,
           job: currentJob,
           part: cleanedPart,
           required: Number.isFinite(required) ? required : 0,

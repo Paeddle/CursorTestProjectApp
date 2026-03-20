@@ -49,7 +49,13 @@ export function inventoryLookups(rows: InvRow[]): {
 }
 
 export function comparePurchaseToInventory(
-  purchaseParts: { part: string; required: number; job: string | null; manufacturer: string | null }[],
+  purchaseParts: {
+    part: string
+    required: number
+    job: string | null
+    vendor: string | null
+    manufacturer: string | null
+  }[],
   inventoryRows: InvRow[]
 ): PullSuggestion[] {
   const { byPart, byItem } = inventoryLookups(inventoryRows)
@@ -63,6 +69,7 @@ export function comparePurchaseToInventory(
       part: p.part,
       required: p.required,
       job: p.job,
+      vendor: p.vendor,
       manufacturer: p.manufacturer,
       stock_available: stock,
       can_pull: can,
