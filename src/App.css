@@ -36,6 +36,122 @@
   font-size: 1.25rem;
 }
 
+.po-report-upload-card {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.po-report-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.po-report-upload-copy {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.po-report-upload-copy strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.po-report-upload-hint {
+  font-size: 0.875rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.po-report-upload-hint code {
+  font-size: 0.8rem;
+  background: #e2e8f0;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.po-report-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.po-report-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.po-report-upload-button,
+.po-report-clear-button {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.po-report-upload-button {
+  background: #00658f;
+  color: white;
+  border: 1px solid #004d6b;
+}
+
+.po-report-upload-button:hover:not(:disabled) {
+  background: #005077;
+}
+
+.po-report-upload-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.po-report-clear-button {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.po-report-clear-button:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.po-report-upload-status {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  color: #0369a1;
+  font-weight: 500;
+}
+
+.po-report-upload-success {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: #15803d;
+}
+
+.po-report-upload-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: #b91c1c;
+}
+
 .api-warning {
   background: rgba(254, 243, 199, 0.95);
   backdrop-filter: blur(10px);

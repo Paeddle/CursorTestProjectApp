@@ -74,3 +74,53 @@ export async function extractPdfLinesFromArrayBuffer(data: ArrayBuffer): Promise
 
   return allLines
 }
+
+/**
+ * Linearizes PDF text into newline-separated rows with space-delimited tokens on each row.
+ * Tuned for PO Line Report PDFs where `PO:… | Item:… | For:…` should stay on one logical line when the layout permits.
+ */
+export async function extractPdfPlainTextForPoLineReport(data: ArrayBuffer): Promise<string> {
+  ensureWorker()
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(data) })
+  const pdf = await loadingTask.promise
+  const pageLines: string[] = []
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p)
+    const content = await page.getTextContent()
+    const items: { x: number; y: number; str: string }[] = []
+
+    for (const raw of content.items) {
+      const item = raw as TextItem
+      if (!item?.str) continue
+      const x = Number(item.transform?.[4] ?? 0)
+      const y = Number(item.transform?.[5] ?? 0)
+      const str = item.str?.toString?.().trim()
+      if (!str) continue
+      items.push({ x, y, str })
+    }
+
+    items.sort((a, b) => b.y - a.y || a.x - b.x)
+
+    const tolerance = 1.5
+    const rows: { y: number; cells: { x: number; str: string }[] }[] = []
+
+    for (const it of items) {
+      const last = rows[rows.length - 1]
+      if (!last || Math.abs(last.y - it.y) > tolerance) {
+        rows.push({ y: it.y, cells: [{ x: it.x, str: it.str }] })
+      } else {
+        last.cells.push({ x: it.x, str: it.str })
+        last.y = last.y * 0.8 + it.y * 0.2
+      }
+    }
+
+    for (const row of rows) {
+      const cells = row.cells.sort((a, b) => a.x - b.x)
+      const line = cells.map((c) => c.str.trim()).filter(Boolean).join(' ')
+      if (line.trim()) pageLines.push(line.trim())
+    }
+  }
+
+  return pageLines.join('\n')
+}

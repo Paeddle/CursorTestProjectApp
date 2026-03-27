@@ -33,20 +33,31 @@ export interface POItem {
 }
 
 const PO_LINE_REPORT_PATH = '/po_line_report.csv'
+/** Browser-only: uploaded PO Line Report CSV overrides the static `public` file until cleared. */
+const PO_LINE_REPORT_STORAGE_KEY = 'po_line_report_csv_v1'
 
 class CSVService {
-  private async loadCSVFile(path: string): Promise<any[]> {
-    const timestamp = new Date().getTime()
-    const response = await fetch(`${path}?t=${timestamp}`, {
-      cache: 'no-store'
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to load CSV: ${response.statusText}`)
+  hasLocalPoLineReport(): boolean {
+    if (typeof localStorage === 'undefined') return false
+    try {
+      const s = localStorage.getItem(PO_LINE_REPORT_STORAGE_KEY)
+      return Boolean(s && s.trim())
+    } catch {
+      return false
     }
+  }
 
-    const csvText = await response.text()
+  saveLocalPoLineReport(csv: string): void {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(PO_LINE_REPORT_STORAGE_KEY, csv)
+  }
 
+  clearLocalPoLineReport(): void {
+    if (typeof localStorage === 'undefined') return
+    localStorage.removeItem(PO_LINE_REPORT_STORAGE_KEY)
+  }
+
+  private parseCsvText(csvText: string): Promise<any[]> {
     return new Promise((resolve, reject) => {
       Papa.parse(csvText, {
         header: true,
@@ -62,6 +73,31 @@ class CSVService {
         }
       })
     })
+  }
+
+  private async loadCSVFile(path: string): Promise<any[]> {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(PO_LINE_REPORT_STORAGE_KEY)
+        if (stored != null && stored.trim() !== '') {
+          return this.parseCsvText(stored)
+        }
+      } catch {
+        /* use network */
+      }
+    }
+
+    const timestamp = new Date().getTime()
+    const response = await fetch(`${path}?t=${timestamp}`, {
+      cache: 'no-store'
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to load CSV: ${response.statusText}`)
+    }
+
+    const csvText = await response.text()
+    return this.parseCsvText(csvText)
   }
 
   async loadTrackings(): Promise<TrackingInfo[]> {

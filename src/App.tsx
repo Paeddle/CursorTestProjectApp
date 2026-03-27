@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import './App.css'
 import { csvService, TrackingInfo, POItem } from './services/csvService'
 import Sidebar from './components/Sidebar'
@@ -6,6 +6,8 @@ import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
 import Wire from './components/Wire'
 import PurchaseList from './components/PurchaseList'
+import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
+import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
 type SortDirection = 'asc' | 'desc' | null
 type ItemSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
 type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
@@ -26,6 +28,11 @@ function App() {
   const [itemSortDirection, setItemSortDirection] = useState<SortDirection>(null)
   const [orderSortColumn, setOrderSortColumn] = useState<OrderSortColumn | null>(null)
   const [orderSortDirection, setOrderSortDirection] = useState<SortDirection>(null)
+  const [usingLocalPoReport, setUsingLocalPoReport] = useState(() => csvService.hasLocalPoLineReport())
+  const [poPdfBusy, setPoPdfBusy] = useState(false)
+  const [poPdfMessage, setPoPdfMessage] = useState<string | null>(null)
+  const [poPdfError, setPoPdfError] = useState<string | null>(null)
+  const poPdfInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadTrackings()
@@ -79,6 +86,60 @@ function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handlePoLineReportPdfSelected = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setPoPdfBusy(true)
+    setPoPdfError(null)
+    setPoPdfMessage(null)
+
+    try {
+      const buf = await file.arrayBuffer()
+      const text = await extractPdfPlainTextForPoLineReport(buf)
+      if (!text.trim()) {
+        throw new Error('No text could be read from this PDF.')
+      }
+      const rows = parsePoLineReportText(text)
+      if (rows.length === 0) {
+        throw new Error('No PO lines found. Use the same PO Line Report export as the desktop parser.')
+      }
+      const csv = poLineReportRowsToCsv(rows)
+      csvService.saveLocalPoLineReport(csv)
+      setUsingLocalPoReport(true)
+      setLoading(true)
+      setError(null)
+      try {
+        const [trackingsData, itemsMap] = await Promise.all([
+          csvService.loadTrackings(),
+          csvService.loadPOItems(),
+        ])
+        setTrackings(trackingsData)
+        setPoItemsMap(itemsMap)
+        setPoPdfMessage(`Saved ${rows.length} line(s) from “${file.name}” for this browser.`)
+      } catch (err: any) {
+        setError(err.message || 'Failed to load data after import')
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    } catch (err: any) {
+      setPoPdfError(err.message || 'Failed to process PDF')
+      console.error(err)
+    } finally {
+      setPoPdfBusy(false)
+    }
+  }
+
+  const handleClearLocalPoReport = async () => {
+    csvService.clearLocalPoLineReport()
+    setUsingLocalPoReport(false)
+    setPoPdfMessage(null)
+    setPoPdfError(null)
+    await handleRefreshData()
   }
 
   const getStatusColor = (tag: string) => {
@@ -528,6 +589,54 @@ function App() {
           </p>
         </header>
 
+        {activePage === 'tracking' && (
+          <div className="po-report-upload-card" aria-label="PO Line Report PDF import">
+            <div className="po-report-upload-row">
+              <div className="po-report-upload-copy">
+                <strong>PO Line Report (PDF)</strong>
+                <span className="po-report-upload-hint">
+                  Upload the same export you parse with <code>scripts/parse-po-report.mjs</code>. Data is stored in this
+                  browser as CSV and used instead of <code>public/po_line_report.csv</code> until you clear it.
+                </span>
+              </div>
+              <div className="po-report-upload-actions">
+                <input
+                  ref={poPdfInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="po-report-file-input"
+                  onChange={handlePoLineReportPdfSelected}
+                  disabled={poPdfBusy}
+                />
+                <button
+                  type="button"
+                  className="po-report-upload-button"
+                  disabled={poPdfBusy}
+                  onClick={() => poPdfInputRef.current?.click()}
+                >
+                  {poPdfBusy ? 'Reading PDF…' : 'Choose PDF…'}
+                </button>
+                {usingLocalPoReport && (
+                  <button
+                    type="button"
+                    className="po-report-clear-button"
+                    disabled={poPdfBusy}
+                    onClick={handleClearLocalPoReport}
+                    title="Load po_line_report.csv from the server again"
+                  >
+                    Clear upload
+                  </button>
+                )}
+              </div>
+            </div>
+            {usingLocalPoReport && (
+              <p className="po-report-upload-status">Using PDF upload / saved CSV (this device).</p>
+            )}
+            {poPdfMessage && <p className="po-report-upload-success">{poPdfMessage}</p>}
+            {poPdfError && <p className="po-report-upload-error">{poPdfError}</p>}
+          </div>
+        )}
+
         {error && (
           <div className="error-message">
             {error}
@@ -723,7 +832,10 @@ function App() {
             )
           ) : trackings.length === 0 ? (
             <div className="empty-state">
-              <p>No orders found. Make sure po_line_report.csv exists in the public folder.</p>
+              <p>
+                No orders found. Add <code>public/po_line_report.csv</code>, or on Order Tracking upload a PO Line
+                Report PDF to import data in this browser.
+              </p>
             </div>
           ) : activePage === 'order-history' && trackingsToShow.length === 0 ? (
             <div className="empty-state">
