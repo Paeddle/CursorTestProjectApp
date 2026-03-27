@@ -55,9 +55,12 @@ function Wire() {
   const [error, setError] = useState<string | null>(null)
   const [searchBox, setSearchBox] = useState('')
   const [expandedBox, setExpandedBox] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true)
+    }
     setError(null)
     try {
       const list = await loadSummaries()
@@ -65,7 +68,9 @@ function Wire() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load wire box data')
     } finally {
-      setLoading(false)
+      if (!opts?.silent) {
+        setLoading(false)
+      }
     }
   }, [])
 
@@ -92,6 +97,53 @@ function Wire() {
       else next.add(key)
       return next
     })
+  }
+
+  const deleteScan = async (scan: WireBoxScan) => {
+    if (
+      !window.confirm(
+        `Delete this scan for ${scan.box_id} (${formatCheckType(scan.check_type)}, ${scan.job_name})?`
+      )
+    ) {
+      return
+    }
+    setDeleting(true)
+    setError(null)
+    try {
+      const { error: delErr } = await supabase.from('wire_box_scans').delete().eq('id', scan.id)
+      if (delErr) throw new Error(delErr.message)
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to delete scan')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const deleteBox = async (boxId: string, scanCount: number) => {
+    if (
+      !window.confirm(
+        `Delete box ${boxId} and all ${scanCount} scan${scanCount !== 1 ? 's' : ''}? This cannot be undone.`
+      )
+    ) {
+      return
+    }
+    setDeleting(true)
+    setError(null)
+    try {
+      const { error: delErr } = await supabase.from('wire_box_scans').delete().eq('box_id', boxId)
+      if (delErr) throw new Error(delErr.message)
+      setExpandedBox((prev) => {
+        const next = new Set(prev)
+        next.delete(boxId.toLowerCase())
+        return next
+      })
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to delete box')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   if (!isConfigured()) {
@@ -149,18 +201,32 @@ function Wire() {
             const isExpanded = expandedBox.has(key)
             return (
               <div key={key} className="wire-card">
-                <button
-                  type="button"
-                  className="wire-card-header"
-                  onClick={() => toggleExpanded(summary.box_id)}
-                  aria-expanded={isExpanded}
-                >
-                  <span className="wire-card-title">Box {summary.box_id}</span>
-                  <span className="wire-card-badge">
-                    {summary.scans.length} scan{summary.scans.length !== 1 ? 's' : ''}
-                  </span>
-                  <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
-                </button>
+                <div className="wire-card-header-row">
+                  <button
+                    type="button"
+                    className="wire-card-header"
+                    onClick={() => toggleExpanded(summary.box_id)}
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="wire-card-title">Box {summary.box_id}</span>
+                    <span className="wire-card-badge">
+                      {summary.scans.length} scan{summary.scans.length !== 1 ? 's' : ''}
+                    </span>
+                    <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="wire-delete-box"
+                    title="Delete this box and all its scans"
+                    disabled={deleting}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteBox(summary.box_id, summary.scans.length)
+                    }}
+                  >
+                    Delete box
+                  </button>
+                </div>
                 {isExpanded && (
                   <div className="wire-card-body">
                     <table className="wire-scans-table">
@@ -170,6 +236,7 @@ function Wire() {
                           <th>Job name</th>
                           <th>Current footage</th>
                           <th>Scanned at</th>
+                          <th className="wire-actions-col"> </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -189,6 +256,17 @@ function Wire() {
                             <td>{scan.job_name}</td>
                             <td>{scan.current_footage}</td>
                             <td>{formatDateTime(scan.scanned_at)}</td>
+                            <td className="wire-actions-col">
+                              <button
+                                type="button"
+                                className="wire-delete-scan"
+                                title="Delete this scan"
+                                disabled={deleting}
+                                onClick={() => deleteScan(scan)}
+                              >
+                                Delete
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

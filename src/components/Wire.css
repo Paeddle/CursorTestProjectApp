@@ -113,8 +113,14 @@
   overflow: hidden;
 }
 
+.wire-card-header-row {
+  display: flex;
+  align-items: stretch;
+}
+
 .wire-card-header {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -125,6 +131,29 @@
   font-size: 1rem;
   text-align: left;
   cursor: pointer;
+}
+
+.wire-delete-box {
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fecaca;
+  background: #450a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.wire-delete-box:hover:not(:disabled) {
+  background: #7f1d1d;
+}
+
+.wire-delete-box:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .wire-card-header:hover {
@@ -196,4 +225,31 @@
 
 .wire-scans-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.wire-actions-col {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  vertical-align: middle;
+}
+
+.wire-delete-scan {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fecaca;
+  background: transparent;
+  border: 1px solid #991b1b;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.wire-delete-scan:hover:not(:disabled) {
+  background: rgba(127, 29, 29, 0.35);
+}
+
+.wire-delete-scan:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

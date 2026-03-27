@@ -26,3 +26,7 @@ create policy "Allow public read on wire_box_scans"
 drop policy if exists "Allow anonymous insert on wire_box_scans" on public.wire_box_scans;
 create policy "Allow anonymous insert on wire_box_scans"
   on public.wire_box_scans for insert to anon with check (true);
+
+drop policy if exists "Allow anonymous delete on wire_box_scans" on public.wire_box_scans;
+create policy "Allow anonymous delete on wire_box_scans"
+  on public.wire_box_scans for delete to anon using (true);
