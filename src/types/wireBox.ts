@@ -1,8 +1,12 @@
+export type WireBoxCheckType = 'check_in' | 'check_out'
+
 export interface WireBoxScan {
   id: string
   box_id: string
   job_name: string
   current_footage: string
+  /** Present after running add-wire-box-check-type.sql; older rows behave as check-in. */
+  check_type?: WireBoxCheckType | string
   scanned_at: string
   created_at: string
 }

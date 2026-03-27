@@ -36,8 +36,11 @@ function getInitialBoxIdFromWindow(): string {
   return ''
 }
 
+type CheckType = 'check_in' | 'check_out'
+
 function App() {
   const [showScanner, setShowScanner] = useState(false)
+  const [checkType, setCheckType] = useState<CheckType>('check_in')
   const [boxId, setBoxId] = useState(getInitialBoxIdFromWindow)
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
@@ -112,13 +115,15 @@ function App() {
         box_id: id,
         job_name: job,
         current_footage: footage,
+        check_type: checkType,
         scanned_at: new Date().toISOString(),
       })
       if (error) {
         showError(error.message)
         return
       }
-      showSuccess(`Saved: ${id} — ${job} — ${footage} ft`)
+      const modeLabel = checkType === 'check_out' ? 'Check out' : 'Check in'
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${job} — ${footage} ft`)
       setBoxId('')
       setJobName('')
       setCurrentFootage('')
@@ -144,7 +149,10 @@ function App() {
         </header>
         <div className="section section-error">
           <p>Supabase is not configured. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your host&apos;s environment variables (e.g. DigitalOcean app env) and redeploy.</p>
-          <p className="hint">Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor to create the <code>wire_box_scans</code> table.</p>
+          <p className="hint">
+            Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor to create the <code>wire_box_scans</code> table. If the table already exists, run{' '}
+            <code>supabase/add-wire-box-check-type.sql</code> for check-in / check-out.
+          </p>
         </div>
       </div>
     )
@@ -168,6 +176,31 @@ function App() {
       <main className="app-main">
         {!boxId ? (
           <section className="section">
+            <div className="form-field">
+              <span className="label" id="check-type-label-idle">
+                Check in / Check out
+              </span>
+              <div
+                className="check-type-toggle"
+                role="group"
+                aria-labelledby="check-type-label-idle"
+              >
+                <button
+                  type="button"
+                  className={`check-type-btn ${checkType === 'check_in' ? 'active check-type-in' : ''}`}
+                  onClick={() => setCheckType('check_in')}
+                >
+                  Check in
+                </button>
+                <button
+                  type="button"
+                  className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
+                  onClick={() => setCheckType('check_out')}
+                >
+                  Check out
+                </button>
+              </div>
+            </div>
             <button
               type="button"
               className="btn btn-primary btn-full"
@@ -178,6 +211,31 @@ function App() {
           </section>
         ) : (
           <form onSubmit={handleSubmit} className="section form-section">
+            <div className="form-field">
+              <span className="label" id="check-type-label-form">
+                Check in / Check out
+              </span>
+              <div
+                className="check-type-toggle"
+                role="group"
+                aria-labelledby="check-type-label-form"
+              >
+                <button
+                  type="button"
+                  className={`check-type-btn ${checkType === 'check_in' ? 'active check-type-in' : ''}`}
+                  onClick={() => setCheckType('check_in')}
+                >
+                  Check in
+                </button>
+                <button
+                  type="button"
+                  className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
+                  onClick={() => setCheckType('check_out')}
+                >
+                  Check out
+                </button>
+              </div>
+            </div>
             <div className="form-field">
               <label className="label">Box ID</label>
               <div className="box-id-display">{boxId}</div>

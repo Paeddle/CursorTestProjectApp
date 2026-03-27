@@ -21,6 +21,11 @@ function formatDateTime(iso: string) {
   }
 }
 
+function formatCheckType(raw: string | undefined): string {
+  if (raw === 'check_out') return 'Check out'
+  return 'Check in'
+}
+
 async function loadSummaries(): Promise<WireBoxSummary[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
@@ -108,7 +113,7 @@ function Wire() {
       <header className="wire-header">
         <h1>Wire</h1>
         <p className="wire-subtitle">
-          Box numbers and scans from the wire scanner app (job name + footage per scan).
+          Box numbers and scans from the wire scanner app (check-in or check-out, job name, and footage per scan).
         </p>
       </header>
 
@@ -161,6 +166,7 @@ function Wire() {
                     <table className="wire-scans-table">
                       <thead>
                         <tr>
+                          <th>Type</th>
                           <th>Job name</th>
                           <th>Current footage</th>
                           <th>Scanned at</th>
@@ -169,6 +175,17 @@ function Wire() {
                       <tbody>
                         {summary.scans.map((scan) => (
                           <tr key={scan.id}>
+                            <td>
+                              <span
+                                className={
+                                  scan.check_type === 'check_out'
+                                    ? 'wire-check-badge wire-check-out'
+                                    : 'wire-check-badge wire-check-in'
+                                }
+                              >
+                                {formatCheckType(scan.check_type)}
+                              </span>
+                            </td>
                             <td>{scan.job_name}</td>
                             <td>{scan.current_footage}</td>
                             <td>{formatDateTime(scan.scanned_at)}</td>

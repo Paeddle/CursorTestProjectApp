@@ -67,6 +67,45 @@
   color: #fecaca;
 }
 
+.check-type-toggle {
+  display: flex;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #475569;
+}
+
+.check-type-btn {
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+  border: none;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.check-type-btn + .check-type-btn {
+  border-left: 1px solid #475569;
+}
+
+.check-type-btn:hover:not(.active) {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+.check-type-btn.active.check-type-in {
+  background: #15803d;
+  color: #f0fdf4;
+}
+
+.check-type-btn.active.check-type-out {
+  background: #c2410c;
+  color: #fff7ed;
+}
+
 .label {
   display: block;
   font-size: 0.8rem;
