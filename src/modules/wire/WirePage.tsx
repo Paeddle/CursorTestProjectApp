@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
-import type { WireBoxScan, WireBoxSummary } from '../types/wireBox'
-import './Wire.css'
+import { supabase } from '../../lib/supabase'
+import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
+import './WirePage.css'
 
 function isConfigured(): boolean {
   const url = import.meta.env.VITE_SUPABASE_URL
@@ -49,7 +49,7 @@ async function loadSummaries(): Promise<WireBoxSummary[]> {
     .sort((a, b) => a.box_id.localeCompare(b.box_id, undefined, { numeric: true }))
 }
 
-function Wire() {
+export function WirePage() {
   const [summaries, setSummaries] = useState<WireBoxSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -281,5 +281,3 @@ function Wire() {
     </div>
   )
 }
-
-export default Wire

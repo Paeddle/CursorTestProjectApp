@@ -48,6 +48,8 @@
   color: rgba(255, 255, 255, 0.9);
   transition: all 0.2s;
   border-left: 3px solid transparent;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .menu-item:hover {

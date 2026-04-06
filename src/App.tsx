@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, type ChangeEvent } from 'react'
+import { useLocation } from 'react-router-dom'
 import './App.css'
 import { csvService, TrackingInfo, POItem } from './services/csvService'
 import Sidebar from './components/Sidebar'
 import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
-import Wire from './components/Wire'
+import { WirePage, WIRE_ROUTE_PATH } from './modules/wire'
 import PurchaseList from './components/PurchaseList'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
 import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
@@ -13,6 +14,8 @@ type ItemSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
 type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
 
 function App() {
+  const location = useLocation()
+  const isWireRoute = location.pathname === WIRE_ROUTE_PATH
   const [activePage, setActivePage] = useState('tracking')
   const [trackings, setTrackings] = useState<TrackingInfo[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -568,12 +571,12 @@ function App() {
     <div className="app">
       <Sidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="main-content">
-        {activePage === 'analytics' ? (
+        {isWireRoute ? (
+          <WirePage />
+        ) : activePage === 'analytics' ? (
           <Analytics poItemsMap={poItemsMap} trackings={trackings} />
         ) : activePage === 'po-info' ? (
           <POInfo />
-        ) : activePage === 'wire' ? (
-          <Wire />
         ) : activePage === 'purchase-list' ? (
           <PurchaseList />
         ) : (
