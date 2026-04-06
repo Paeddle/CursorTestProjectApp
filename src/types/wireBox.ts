@@ -9,6 +9,10 @@ export interface WireBoxScan {
   check_type?: WireBoxCheckType | string
   scanned_at: string
   created_at: string
+  /** Preset id from wire scanner (after add-wire-box-profile-columns.sql). */
+  wire_type?: string | null
+  /** Full spool length in ft for this box (after add-wire-box-profile-columns.sql). */
+  spool_capacity_ft?: string | null
 }
 
 export interface WireBoxSummary {

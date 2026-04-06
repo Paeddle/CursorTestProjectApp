@@ -205,3 +205,98 @@
 .btn-full {
   width: 100%;
 }
+
+.box-meta-loading {
+  margin: 0 0 1rem 0;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.init-banner,
+.profile-banner,
+.legacy-banner {
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.init-banner {
+  background: rgba(30, 58, 138, 0.45);
+  border: 1px solid #3b82f6;
+  color: #e2e8f0;
+}
+
+.init-banner strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #bfdbfe;
+}
+
+.init-banner p {
+  margin: 0 0 0.75rem 0;
+  color: #cbd5e1;
+}
+
+.profile-banner {
+  background: rgba(22, 101, 52, 0.35);
+  border: 1px solid #22c55e;
+  color: #dcfce7;
+}
+
+.profile-banner strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.profile-banner p {
+  margin: 0;
+}
+
+.profile-cap {
+  color: #86efac;
+}
+
+.legacy-banner {
+  background: rgba(113, 63, 18, 0.35);
+  border: 1px solid #f59e0b;
+  color: #fef3c7;
+}
+
+.legacy-banner strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.legacy-banner p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.footage-context {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.88rem;
+  color: #a5b4fc;
+  line-height: 1.4;
+}
+
+.footage-context-type {
+  font-weight: 600;
+  color: #c7d2fe;
+}
+
+.footage-context-sep {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.footage-context-pct {
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.field-hint.subtle {
+  color: #64748b;
+  font-size: 0.78rem;
+}

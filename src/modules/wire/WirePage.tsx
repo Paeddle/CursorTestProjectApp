@@ -4,6 +4,7 @@ import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
 import {
   buildWireMaterialsReport,
   downloadTextFile,
+  parseFootage,
   reportRowsToCsv,
   reportRowsToHtmlDocument,
   uniqueJobNamesFromScans,
@@ -32,6 +33,15 @@ function formatDateTime(iso: string) {
 function formatCheckType(raw: string | undefined): string {
   if (raw === 'check_out') return 'Check out'
   return 'Check in'
+}
+
+function formatFootageCell(scan: WireBoxScan): string {
+  const capRaw = scan.spool_capacity_ft
+  if (!capRaw) return scan.current_footage
+  const cur = parseFootage(scan.current_footage)
+  const cap = parseFootage(capRaw)
+  if (cur === null || cap === null) return scan.current_footage
+  return `${cur} / ${cap} ft`
 }
 
 async function fetchAllScans(): Promise<WireBoxScan[]> {
@@ -363,7 +373,8 @@ export function WirePage() {
                         <tr>
                           <th>Type</th>
                           <th>Job name</th>
-                          <th>Current footage</th>
+                          <th>Footage (left / spool)</th>
+                          <th>Wire type</th>
                           <th>Scanned at</th>
                           <th className="wire-actions-col"> </th>
                         </tr>
@@ -383,7 +394,10 @@ export function WirePage() {
                               </span>
                             </td>
                             <td>{scan.job_name}</td>
-                            <td>{scan.current_footage}</td>
+                            <td>{formatFootageCell(scan)}</td>
+                            <td className="wire-scan-wire-type">
+                              {scan.wire_type ? scan.wire_type.replace(/-/g, ' ') : '—'}
+                            </td>
                             <td>{formatDateTime(scan.scanned_at)}</td>
                             <td className="wire-actions-col">
                               <button

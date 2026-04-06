@@ -8,6 +8,8 @@ create table if not exists public.wire_box_scans (
   current_footage text not null,
   check_type text not null default 'check_in'
     constraint wire_box_scans_check_type_chk check (check_type in ('check_in', 'check_out')),
+  wire_type text,
+  spool_capacity_ft text,
   scanned_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );

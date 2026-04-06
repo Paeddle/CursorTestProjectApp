@@ -1,9 +1,13 @@
 import { useState, useCallback, useEffect } from 'react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import QRScanner from './components/QRScanner'
+import {
+  WIRE_TYPE_PRESETS,
+  getWireTypePreset,
+  parseFootageNumber,
+} from './wireTypePresets'
 import './App.css'
 
-// Accept box IDs like bx-1234, BX-5678, wire-99, etc. (letters, numbers, hyphens)
 function normalizeBoxId(raw: string): string {
   return raw.trim()
 }
@@ -13,7 +17,6 @@ function isValidBoxIdFormat(id: string): boolean {
   return /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/.test(id) || /^[a-zA-Z][a-zA-Z0-9-]*\d+$/.test(id)
 }
 
-// Parse ?box=xxx or #box=xxx (or #xxx) from a query/hash string
 function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   if (!searchOrHash || !searchOrHash.trim()) return null
   const s = searchOrHash.trim()
@@ -21,12 +24,10 @@ function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   const params = new URLSearchParams(query)
   const box = params.get('box')
   if (box) return normalizeBoxId(box)
-  // Hash might be just #bx-1234 (no param name)
   if (s.startsWith('#') && s.length > 1 && !s.includes('=')) return normalizeBoxId(s.slice(1))
   return null
 }
 
-// Read box ID from current page URL (query or hash) on load
 function getInitialBoxIdFromWindow(): string {
   if (typeof window === 'undefined') return ''
   const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
@@ -38,6 +39,41 @@ function getInitialBoxIdFromWindow(): string {
 
 type CheckType = 'check_in' | 'check_out'
 
+interface BoxProfile {
+  wireTypeId: string
+  capacityFt: string
+  label: string
+}
+
+function FootageContextHint({
+  currentFootage,
+  capacityStr,
+  typeLabel,
+}: {
+  currentFootage: string
+  capacityStr: string | null
+  typeLabel?: string | null
+}) {
+  const cur = parseFootageNumber(currentFootage)
+  const cap = capacityStr ? parseFootageNumber(capacityStr) : null
+  if (cur === null || cap === null || cap <= 0) return null
+  const pct = Math.min(100, Math.round((cur / cap) * 100))
+  return (
+    <p className="footage-context" role="status">
+      {typeLabel && (
+        <span className="footage-context-type">
+          {typeLabel}
+          <span className="footage-context-sep"> · </span>
+        </span>
+      )}
+      <span>
+        <strong>{cur}</strong> ft left of <strong>{cap}</strong> ft on spool
+      </span>
+      <span className="footage-context-pct"> ({pct}% of full reel)</span>
+    </p>
+  )
+}
+
 function App() {
   const [showScanner, setShowScanner] = useState(false)
   const [checkType, setCheckType] = useState<CheckType>('check_in')
@@ -47,17 +83,97 @@ function App() {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Ensure box ID from URL is applied after mount (in case initial state ran before location was ready)
+  const [boxMetaLoading, setBoxMetaLoading] = useState(false)
+  /** null = not loaded yet */
+  const [hasExistingScans, setHasExistingScans] = useState<boolean | null>(null)
+  const [boxProfile, setBoxProfile] = useState<BoxProfile | null>(null)
+  const [selectedPresetId, setSelectedPresetId] = useState('')
+  const [spoolCapacityStr, setSpoolCapacityStr] = useState('')
+
   useEffect(() => {
     const fromUrl = getInitialBoxIdFromWindow()
     if (fromUrl) setBoxId(fromUrl)
   }, [])
 
+  useEffect(() => {
+    setSelectedPresetId('')
+    setSpoolCapacityStr('')
+    setBoxProfile(null)
+    setHasExistingScans(null)
+
+    if (!boxId || !supabase) {
+      setBoxMetaLoading(false)
+      return
+    }
+
+    const id = normalizeBoxId(boxId)
+    let cancelled = false
+    setBoxMetaLoading(true)
+
+    ;(async () => {
+      try {
+        const [countRes, profileRes] = await Promise.all([
+          supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).eq('box_id', id),
+          supabase
+            .from('wire_box_scans')
+            .select('wire_type, spool_capacity_ft')
+            .eq('box_id', id)
+            .not('spool_capacity_ft', 'is', null)
+            .order('scanned_at', { ascending: true })
+            .limit(1)
+            .maybeSingle(),
+        ])
+
+        if (cancelled) return
+
+        if (countRes.error) {
+          console.error(countRes.error)
+          setHasExistingScans(false)
+        } else {
+          setHasExistingScans((countRes.count ?? 0) > 0)
+        }
+
+        const row = profileRes.data
+        if (row?.wire_type && row?.spool_capacity_ft) {
+          const preset = getWireTypePreset(row.wire_type)
+          setBoxProfile({
+            wireTypeId: row.wire_type,
+            capacityFt: row.spool_capacity_ft,
+            label: preset?.label ?? row.wire_type,
+          })
+        } else {
+          setBoxProfile(null)
+        }
+      } catch (e) {
+        console.error(e)
+        if (!cancelled) {
+          setHasExistingScans(false)
+          setBoxProfile(null)
+        }
+      } finally {
+        if (!cancelled) setBoxMetaLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [boxId])
+
+  useEffect(() => {
+    if (hasExistingScans !== false || !selectedPresetId) return
+    const p = getWireTypePreset(selectedPresetId)
+    if (!p) return
+    const cap = String(p.defaultCapacityFt)
+    setSpoolCapacityStr(cap)
+    setCurrentFootage(cap)
+  }, [selectedPresetId, hasExistingScans])
+
   const clearStatus = useCallback(() => setStatus(null), [])
 
   const showSuccess = (msg: string) => {
     setStatus({ type: 'success', message: msg })
-    setTimeout(clearStatus, 4000)
+    setTimeout(clearStatus, 5000)
   }
 
   const showError = (msg: string) => {
@@ -67,7 +183,6 @@ function App() {
   const handleQRScanned = useCallback((value: string) => {
     const raw = (value || '').trim()
     if (!raw) return
-    // If the QR contains a URL with ?box= or #box=, parse it; otherwise use as box ID
     let id: string | null = null
     if (/^https?:\/\//i.test(raw)) {
       try {
@@ -86,6 +201,23 @@ function App() {
     }
   }, [])
 
+  const buildProfileInsert = (): { wire_type?: string; spool_capacity_ft?: string } => {
+    if (hasExistingScans === false) {
+      if (!selectedPresetId || !spoolCapacityStr.trim()) return {}
+      return {
+        wire_type: selectedPresetId,
+        spool_capacity_ft: spoolCapacityStr.trim(),
+      }
+    }
+    if (hasExistingScans === true && boxProfile) {
+      return {
+        wire_type: boxProfile.wireTypeId,
+        spool_capacity_ft: boxProfile.capacityFt,
+      }
+    }
+    return {}
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!supabase) {
@@ -99,6 +231,16 @@ function App() {
       showError('Scan a QR code first.')
       return
     }
+    if (hasExistingScans === false) {
+      if (!selectedPresetId) {
+        showError('This box has no scans yet. Choose a wire type to initialize the box.')
+        return
+      }
+      if (!spoolCapacityStr.trim()) {
+        showError('Enter the full spool length (feet).')
+        return
+      }
+    }
     if (!job) {
       showError('Enter a job name.')
       return
@@ -111,19 +253,37 @@ function App() {
     setSubmitting(true)
     setStatus(null)
     try {
-      const { error } = await supabase.from('wire_box_scans').insert({
+      const profile = buildProfileInsert()
+      const row: Record<string, string | number | boolean | null> = {
         box_id: id,
         job_name: job,
         current_footage: footage,
         check_type: checkType,
         scanned_at: new Date().toISOString(),
-      })
+      }
+      if (profile.wire_type) {
+        row.wire_type = profile.wire_type
+        row.spool_capacity_ft = profile.spool_capacity_ft!
+      }
+
+      const { error } = await supabase.from('wire_box_scans').insert(row)
       if (error) {
-        showError(error.message)
+        const msg = error.message || 'Save failed'
+        if (/wire_type|spool_capacity|column/i.test(msg)) {
+          showError(
+            `${msg} If the database was created before wire profiles, run supabase/add-wire-box-profile-columns.sql in the Supabase SQL Editor.`
+          )
+        } else {
+          showError(msg)
+        }
         return
       }
       const modeLabel = checkType === 'check_out' ? 'Check out' : 'Check in'
-      showSuccess(`Saved: ${modeLabel} — ${id} — ${job} — ${footage} ft`)
+      const capHint =
+        profile.spool_capacity_ft && parseFootageNumber(footage) !== null
+          ? ` (${footage} ft of ${profile.spool_capacity_ft} ft on spool)`
+          : ''
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${job} — ${footage} ft${capHint}`)
       setBoxId('')
       setJobName('')
       setCurrentFootage('')
@@ -136,9 +296,27 @@ function App() {
     setBoxId('')
     setJobName('')
     setCurrentFootage('')
+    setSelectedPresetId('')
+    setSpoolCapacityStr('')
     setStatus(null)
     setShowScanner(true)
   }
+
+  const capacityForHint =
+    hasExistingScans === false
+      ? spoolCapacityStr.trim() || null
+      : boxProfile
+        ? boxProfile.capacityFt
+        : null
+
+  const typeLabelForHint =
+    hasExistingScans === false
+      ? selectedPresetId
+        ? getWireTypePreset(selectedPresetId)?.label ?? selectedPresetId
+        : null
+      : boxProfile
+        ? boxProfile.label
+        : null
 
   if (!isSupabaseConfigured) {
     return (
@@ -148,10 +326,14 @@ function App() {
           <p className="app-subtitle">Scan wire box QR codes and log job + footage</p>
         </header>
         <div className="section section-error">
-          <p>Supabase is not configured. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your host&apos;s environment variables (e.g. DigitalOcean app env) and redeploy.</p>
+          <p>
+            Supabase is not configured. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your
+            host&apos;s environment variables (e.g. DigitalOcean app env) and redeploy.
+          </p>
           <p className="hint">
-            Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor to create the <code>wire_box_scans</code> table. If the table already exists, run{' '}
-            <code>supabase/add-wire-box-check-type.sql</code> for check-in / check-out.
+            Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor. For check-in/out and reel size on
+            each box, also run <code>supabase/add-wire-box-check-type.sql</code> and{' '}
+            <code>supabase/add-wire-box-profile-columns.sql</code>.
           </p>
         </div>
       </div>
@@ -163,7 +345,8 @@ function App() {
       <header className="app-header">
         <h1>Wire Box Scanner</h1>
         <p className="app-subtitle">
-          Scan the QR code on the wire box, or open a link like <code>/wire-scanner/?box=bx-1234</code> to auto-fill the box ID. Then enter job name and current footage.
+          Scan the box QR or open <code>/wire-scanner/?box=bx-1234</code>. New boxes need a wire type once; after that
+          footage shows versus full spool.
         </p>
       </header>
 
@@ -211,6 +394,74 @@ function App() {
           </section>
         ) : (
           <form onSubmit={handleSubmit} className="section form-section">
+            {boxMetaLoading && (
+              <p className="box-meta-loading">Checking this box in the database…</p>
+            )}
+
+            {!boxMetaLoading && hasExistingScans === false && (
+              <div className="init-banner" role="region" aria-label="New box setup">
+                <strong>New box — first entry</strong>
+                <p>
+                  This box ID has no scans yet. Pick the wire type and confirm the reel size. Current footage defaults to a
+                  full spool; change it if the box is already partial.
+                </p>
+                <div className="form-field">
+                  <label className="label" htmlFor="wire-type-preset">
+                    Wire type
+                  </label>
+                  <select
+                    id="wire-type-preset"
+                    className="input"
+                    value={selectedPresetId}
+                    onChange={(e) => setSelectedPresetId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select wire type…</option>
+                    {WIRE_TYPE_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label} — default {p.defaultCapacityFt} ft
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedPresetId !== '' && (
+                  <div className="form-field">
+                    <label className="label" htmlFor="spool-capacity">
+                      Full spool length (feet)
+                    </label>
+                    <input
+                      id="spool-capacity"
+                      type="text"
+                      className="input"
+                      inputMode="decimal"
+                      value={spoolCapacityStr}
+                      onChange={(e) => setSpoolCapacityStr(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <p className="field-hint subtle">Used to show &quot;ft left of full reel&quot; on future scans.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!boxMetaLoading && hasExistingScans === true && boxProfile && (
+              <div className="profile-banner" role="status">
+                <strong>Box reel on file</strong>
+                <p>
+                  {boxProfile.label}
+                  <span className="profile-cap"> · Full spool {boxProfile.capacityFt} ft</span>
+                </p>
+              </div>
+            )}
+
+            {!boxMetaLoading && hasExistingScans === true && !boxProfile && (
+              <div className="legacy-banner">
+                <strong>No reel profile</strong>
+                <p>This box has scans but no wire type / spool size stored (added before that feature). Footage is shown without a denominator until you use a new box ID or backfill in the database.</p>
+              </div>
+            )}
+
             <div className="form-field">
               <span className="label" id="check-type-label-form">
                 Check in / Check out
@@ -256,7 +507,9 @@ function App() {
               />
             </div>
             <div className="form-field">
-              <label className="label" htmlFor="current-footage">Current footage</label>
+              <label className="label" htmlFor="current-footage">
+                Current footage (feet remaining on spool)
+              </label>
               <input
                 id="current-footage"
                 type="text"
@@ -265,21 +518,29 @@ function App() {
                 onChange={(e) => setCurrentFootage(e.target.value)}
                 placeholder="e.g. 250 or 125.5"
                 autoComplete="off"
+                disabled={boxMetaLoading}
               />
+              {!boxMetaLoading && (
+                <FootageContextHint
+                  currentFootage={currentFootage}
+                  capacityStr={capacityForHint}
+                  typeLabel={typeLabelForHint}
+                />
+              )}
             </div>
             <div className="form-actions">
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={handleScanAnother}
-                disabled={submitting}
+                disabled={submitting || boxMetaLoading}
               >
                 Scan another
               </button>
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={submitting}
+                disabled={submitting || boxMetaLoading}
               >
                 {submitting ? 'Saving…' : 'Save'}
               </button>
