@@ -1,6 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
+import {
+  buildWireMaterialsReport,
+  downloadTextFile,
+  reportRowsToCsv,
+  reportRowsToHtmlDocument,
+  uniqueJobNamesFromScans,
+  type WireReportRow,
+} from './wireReport'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -26,13 +34,16 @@ function formatCheckType(raw: string | undefined): string {
   return 'Check in'
 }
 
-async function loadSummaries(): Promise<WireBoxSummary[]> {
+async function fetchAllScans(): Promise<WireBoxScan[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
     .select('*')
     .order('scanned_at', { ascending: false })
   if (error) throw new Error(error.message)
-  const rows = (data ?? []) as WireBoxScan[]
+  return (data ?? []) as WireBoxScan[]
+}
+
+function scansToSummaries(rows: WireBoxScan[]): WireBoxSummary[] {
   const byBox = new Map<string, WireBoxScan[]>()
   for (const row of rows) {
     const box = (row.box_id || '').trim()
@@ -51,11 +62,16 @@ async function loadSummaries(): Promise<WireBoxSummary[]> {
 
 export function WirePage() {
   const [summaries, setSummaries] = useState<WireBoxSummary[]>([])
+  const [allScans, setAllScans] = useState<WireBoxScan[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchBox, setSearchBox] = useState('')
   const [expandedBox, setExpandedBox] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
+  const [reportJob, setReportJob] = useState('')
+  const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
+
+  const jobOptions = useMemo(() => uniqueJobNamesFromScans(allScans), [allScans])
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
@@ -63,8 +79,9 @@ export function WirePage() {
     }
     setError(null)
     try {
-      const list = await loadSummaries()
-      setSummaries(list)
+      const rows = await fetchAllScans()
+      setAllScans(rows)
+      setSummaries(scansToSummaries(rows))
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load wire box data')
     } finally {
@@ -82,6 +99,13 @@ export function WirePage() {
     }
     load()
   }, [load])
+
+  useEffect(() => {
+    if (reportJob && !jobOptions.includes(reportJob)) {
+      setReportJob('')
+      setReportRows(null)
+    }
+  }, [jobOptions, reportJob])
 
   const filtered = searchBox.trim()
     ? summaries.filter((s) =>
@@ -118,6 +142,26 @@ export function WirePage() {
     } finally {
       setDeleting(false)
     }
+  }
+
+  const handleCreateReport = () => {
+    if (!reportJob.trim()) return
+    setReportRows(buildWireMaterialsReport(reportJob.trim(), allScans))
+  }
+
+  const safeReportFileStem = () =>
+    reportJob.trim().replace(/[^\w\- ./()]+/g, '_').replace(/\s+/g, '_').slice(0, 80) || 'job'
+
+  const handleDownloadCsv = () => {
+    if (!reportRows || !reportJob.trim()) return
+    const csv = reportRowsToCsv(reportJob.trim(), reportRows)
+    downloadTextFile(`wire-materials-${safeReportFileStem()}.csv`, csv, 'text/csv;charset=utf-8')
+  }
+
+  const handleDownloadHtml = () => {
+    if (!reportRows || !reportJob.trim()) return
+    const html = reportRowsToHtmlDocument(reportJob.trim(), reportRows)
+    downloadTextFile(`wire-materials-${safeReportFileStem()}.html`, html, 'text/html;charset=utf-8')
   }
 
   const deleteBox = async (boxId: string, scanCount: number) => {
@@ -168,6 +212,91 @@ export function WirePage() {
           Box numbers and scans from the wire scanner app (check-in or check-out, job name, and footage per scan).
         </p>
       </header>
+
+      <section className="wire-report-section" aria-labelledby="wire-report-heading">
+        <h2 id="wire-report-heading" className="wire-report-title">
+          Materials used report
+        </h2>
+        <p className="wire-report-hint">
+          Pick a job, then create a rough-in style table: for each wire box on that job,{' '}
+          <strong>used footage</strong> is the <strong>first</strong> scan&apos;s remaining length minus the{' '}
+          <strong>last</strong> scan&apos;s (typically check-in at the start of the job and check-out when you leave).
+          Unmatched boxes appear under &quot;Other&quot;; standard rows match common NM-B labels in the box ID.
+        </p>
+        <div className="wire-report-toolbar">
+          <label className="wire-report-job-label">
+            <span>Job</span>
+            <select
+              className="wire-report-select"
+              value={reportJob}
+              onChange={(e) => {
+                setReportJob(e.target.value)
+                setReportRows(null)
+              }}
+              disabled={loading || jobOptions.length === 0}
+            >
+              <option value="">Select a job…</option>
+              {jobOptions.map((j) => (
+                <option key={j} value={j}>
+                  {j}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="wire-report-primary"
+            disabled={!reportJob.trim() || loading}
+            onClick={handleCreateReport}
+          >
+            Create report
+          </button>
+          <button
+            type="button"
+            className="wire-report-secondary"
+            disabled={!reportRows}
+            onClick={handleDownloadCsv}
+          >
+            Download CSV
+          </button>
+          <button
+            type="button"
+            className="wire-report-secondary"
+            disabled={!reportRows}
+            onClick={handleDownloadHtml}
+          >
+            Download HTML
+          </button>
+        </div>
+        {reportRows && (
+          <div className="wire-report-preview">
+            <table className="wire-report-table">
+              <thead>
+                <tr>
+                  <th>Wire type</th>
+                  <th>Box ID</th>
+                  <th>Start (ft)</th>
+                  <th>End (ft)</th>
+                  <th>Used (ft)</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportRows.map((row, i) => (
+                  <tr key={`${row.wireType}-${row.boxId ?? i}-${i}`}>
+                    <td>{row.wireType}</td>
+                    <td>{row.boxId ?? '—'}</td>
+                    <td className="wire-report-num">{row.startFt === null ? '—' : row.startFt}</td>
+                    <td className="wire-report-num">{row.endFt === null ? '—' : row.endFt}</td>
+                    <td className="wire-report-num">{row.usedFt === null ? '—' : row.usedFt}</td>
+                    <td className="wire-report-notes">{row.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="wire-controls">
         <input
