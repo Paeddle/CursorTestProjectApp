@@ -24,6 +24,17 @@
   color: white;
 }
 
+/* /wire standalone: title only, no other module links */
+.sidebar-wire-only .sidebar-header {
+  border-bottom: none;
+}
+
+@media (min-width: 769px) {
+  .sidebar-wire-only {
+    padding-bottom: 1rem;
+  }
+}
+
 .sidebar-menu {
   list-style: none;
   padding: 1rem 0;

@@ -10,6 +10,7 @@ interface SidebarProps {
 function Sidebar({ activePage, onNavigate }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const isWireOnlyLayout = location.pathname === WIRE_ROUTE_PATH
 
   const menuItems = [
     { id: 'tracking', label: 'Order Tracking', icon: '📦' },
@@ -28,35 +29,38 @@ function Sidebar({ activePage, onNavigate }: SidebarProps) {
   }
 
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar${isWireOnlyLayout ? ' sidebar-wire-only' : ''}`} aria-label="Main navigation">
       <div className="sidebar-header">
-        <h2 className="sidebar-logo">Order Tracker</h2>
+        <h2 className="sidebar-logo">{isWireOnlyLayout ? 'Wire' : 'Order Tracker'}</h2>
       </div>
-      <ul className="sidebar-menu">
-        {menuItems.map(item =>
-          item.id === 'wire' ? (
-            <li key={item.id}>
-              <NavLink
-                to={WIRE_ROUTE_PATH}
-                className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-              >
-                <span className="menu-icon">{item.icon}</span>
-                <span className="menu-label">{item.label}</span>
-              </NavLink>
-            </li>
-          ) : (
-            <li key={item.id}>
-              <button
-                className={`menu-item ${location.pathname === '/' && activePage === item.id ? 'active' : ''}`}
-                onClick={() => goToInAppPage(item.id)}
-              >
-                <span className="menu-icon">{item.icon}</span>
-                <span className="menu-label">{item.label}</span>
-              </button>
-            </li>
-          )
-        )}
-      </ul>
+      {!isWireOnlyLayout && (
+        <ul className="sidebar-menu">
+          {menuItems.map(item =>
+            item.id === 'wire' ? (
+              <li key={item.id}>
+                <NavLink
+                  to={WIRE_ROUTE_PATH}
+                  className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+                >
+                  <span className="menu-icon">{item.icon}</span>
+                  <span className="menu-label">{item.label}</span>
+                </NavLink>
+              </li>
+            ) : (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={`menu-item ${location.pathname === '/' && activePage === item.id ? 'active' : ''}`}
+                  onClick={() => goToInAppPage(item.id)}
+                >
+                  <span className="menu-icon">{item.icon}</span>
+                  <span className="menu-label">{item.label}</span>
+                </button>
+              </li>
+            )
+          )}
+        </ul>
+      )}
     </nav>
   )
 }
