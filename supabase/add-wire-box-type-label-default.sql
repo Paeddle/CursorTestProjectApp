@@ -1,11 +1,27 @@
--- Human-readable wire type name and catalog default reel length (ft), stored on each scan row.
--- Run in Supabase SQL Editor if wire_box_scans already exists.
+-- Adds wire_type_label and wire_type_default_ft to wire_box_scans.
+-- Safe if columns already exist (e.g. you already ran add-wire-box-profile-columns.sql).
+-- Run in Supabase SQL Editor after wire_box_scans exists.
 
-alter table public.wire_box_scans
-  add column if not exists wire_type_label text,
-  add column if not exists wire_type_default_ft text;
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'wire_box_scans'
+      and column_name = 'wire_type_label'
+  ) then
+    alter table public.wire_box_scans add column wire_type_label text;
+  end if;
 
-comment on column public.wire_box_scans.wire_type is 'Wire type preset id from scanner (stable key)';
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'wire_box_scans'
+      and column_name = 'wire_type_default_ft'
+  ) then
+    alter table public.wire_box_scans add column wire_type_default_ft text;
+  end if;
+end $$;
+
 comment on column public.wire_box_scans.wire_type_label is 'Display name for the wire type (e.g. Cat6 550MHz Blue)';
 comment on column public.wire_box_scans.wire_type_default_ft is 'Catalog default full reel length in ft for that wire type at scan time';
-comment on column public.wire_box_scans.spool_capacity_ft is 'Actual full spool length in ft for this box (may differ from catalog default)';
