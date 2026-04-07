@@ -8,6 +8,7 @@ import {
   reportRowsToCsv,
   reportRowsToHtmlDocument,
   uniqueJobNamesFromScans,
+  wireTypeIdToLabel,
   type WireReportRow,
 } from './wireReport'
 import './WirePage.css'
@@ -417,9 +418,7 @@ export function WirePage() {
                             </td>
                             <td>{scan.job_name}</td>
                             <td>{formatFootageCell(scan)}</td>
-                            <td className="wire-scan-wire-type">
-                              {scan.wire_type ? scan.wire_type.replace(/-/g, ' ') : '—'}
-                            </td>
+                            <td className="wire-scan-wire-type">{wireTypeIdToLabel(scan.wire_type)}</td>
                             <td>{formatDateTime(scan.scanned_at)}</td>
                             <td className="wire-actions-col">
                               <button

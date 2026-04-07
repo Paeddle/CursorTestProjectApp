@@ -1,22 +1,101 @@
 import type { WireBoxScan } from '../../types/wireBox'
 
-/** Typical rough-in wire schedule row; `boxIdPatterns` match scanned `box_id` (case-insensitive, substring ok). */
-export const ROUGH_IN_WIRE_REPORT_ROWS: { label: string; boxIdPatterns: string[] }[] = [
-  { label: '14/2 NM-B w/ Gr', boxIdPatterns: ['14-2', '14/2', '142', 'nm142', 'nm-b-14-2'] },
-  { label: '14/3 NM-B w/ Gr', boxIdPatterns: ['14-3', '14/3', '143', 'nm143'] },
-  { label: '12/2 NM-B w/ Gr', boxIdPatterns: ['12-2', '12/2', '122', 'nm122'] },
-  { label: '12/3 NM-B w/ Gr', boxIdPatterns: ['12-3', '12/3', '123', 'nm123'] },
-  { label: '10/2 NM-B w/ Gr', boxIdPatterns: ['10-2', '10/2', '102', 'nm102'] },
-  { label: '10/3 NM-B w/ Gr', boxIdPatterns: ['10-3', '10/3', '103', 'nm103'] },
-  { label: '8/2 NM-B w/ Gr', boxIdPatterns: ['8-2', '8/2', '82', 'nm82'] },
-  { label: '8/3 NM-B w/ Gr', boxIdPatterns: ['8-3', '8/3', '83', 'nm83'] },
-  { label: '6/3 NM-B w/ Gr', boxIdPatterns: ['6-3', '6/3', '63', 'nm63'] },
-  { label: '12/2 NM-B (250)', boxIdPatterns: ['12-2-250', '122-250'] },
-  { label: '10/3 NM-B (250)', boxIdPatterns: ['10-3-250', '103-250'] },
-  { label: 'Low voltage / Cat6', boxIdPatterns: ['cat6', 'cat-6', 'lv-', 'low-volt', 'comm'] },
-  { label: '12/2 MC', boxIdPatterns: ['mc-12-2', 'mc122', '12-2-mc'] },
-  { label: '14/2 MC', boxIdPatterns: ['mc-14-2', 'mc142', '14-2-mc'] },
-  { label: '10 GA solid (ground)', boxIdPatterns: ['10ga', '10-ga', 'ground-wire', 'gr10'] },
+/** Report schedule row: match by `wire_type` (scanner preset id) and/or `box_id` substrings. */
+export type WireReportTemplateRow = {
+  label: string
+  boxIdPatterns: string[]
+  wireTypeIds?: string[]
+}
+
+export const ROUGH_IN_WIRE_REPORT_ROWS: WireReportTemplateRow[] = [
+  {
+    label: 'RG-6 Quad Shield',
+    wireTypeIds: ['rg6-quad-shield'],
+    boxIdPatterns: ['rg6-quad-shield', 'rg6-quad', 'quad-shield', 'rg-6q'],
+  },
+  {
+    label: 'Cat6 550MHz Blue',
+    wireTypeIds: ['cat6-550mhz-blue'],
+    boxIdPatterns: ['cat6-550mhz-blue', '550mhz-blue', 'cat6-blue'],
+  },
+  {
+    label: 'Cat6 550MHz Gray',
+    wireTypeIds: ['cat6-550mhz-gray'],
+    boxIdPatterns: ['cat6-550mhz-gray', '550mhz-gray', '550mhz-grey', 'cat6-gray', 'cat6-grey'],
+  },
+  {
+    label: 'Cat6 550MHz White',
+    wireTypeIds: ['cat6-550mhz-white'],
+    boxIdPatterns: ['cat6-550mhz-white', '550mhz-white', 'cat6-white'],
+  },
+  {
+    label: 'Cat6 550MHz Black',
+    wireTypeIds: ['cat6-550mhz-black'],
+    boxIdPatterns: ['cat6-550mhz-black', '550mhz-black', 'cat6-black'],
+  },
+  { label: 'Cat6A Slim', wireTypeIds: ['cat6a-slim'], boxIdPatterns: ['cat6a-slim', 'cat6a-s'] },
+  { label: 'Cat7', wireTypeIds: ['cat7'], boxIdPatterns: ['cat7', 'cat-7', 'cat7-'] },
+  { label: 'Cat8', wireTypeIds: ['cat8'], boxIdPatterns: ['cat8', 'cat-8', 'cat8-'] },
+  {
+    label: 'Lutron Green',
+    wireTypeIds: ['lutron-green'],
+    boxIdPatterns: ['lutron-green', 'lutron-grn', 'ltgrn'],
+  },
+  {
+    label: 'Lutron QS/M',
+    wireTypeIds: ['lutron-qs-m'],
+    boxIdPatterns: ['lutron-qs-m', 'lutron-qsm', 'lutron-qs'],
+  },
+  {
+    label: '18-4CS Security Wire',
+    wireTypeIds: ['18-4cs-security-wire'],
+    boxIdPatterns: ['18-4cs-security-wire', '18-4cs', '184cs'],
+  },
+  {
+    label: '18-2CS Security Wire',
+    wireTypeIds: ['18-2cs-security-wire'],
+    boxIdPatterns: ['18-2cs-security-wire', '18-2cs', '182cs'],
+  },
+  {
+    label: '22-4 Stranded Security Wire',
+    wireTypeIds: ['22-4-stranded-security-wire'],
+    boxIdPatterns: ['22-4-stranded-security-wire', '22-4-stranded', '224-stranded'],
+  },
+  {
+    label: '22-2 Stranded Security Wire',
+    wireTypeIds: ['22-2-stranded-security-wire'],
+    boxIdPatterns: ['22-2-stranded-security-wire', '22-2-stranded', '222-stranded'],
+  },
+  {
+    label: '16-2FX DB Speaker Wire',
+    wireTypeIds: ['16-2fx-db-speaker-wire'],
+    boxIdPatterns: ['16-2fx-db-speaker-wire', '16-2fx', '162fx'],
+  },
+  {
+    label: '16-4FX DB Speaker Wire',
+    wireTypeIds: ['16-4fx-db-speaker-wire'],
+    boxIdPatterns: ['16-4fx-db-speaker-wire', '16-4fx', '164fx'],
+  },
+  {
+    label: '14-2FX DB Speaker Wire',
+    wireTypeIds: ['14-2fx-db-speaker-wire'],
+    boxIdPatterns: ['14-2fx-db-speaker-wire', '14-2fx', '142fx'],
+  },
+  {
+    label: '14-4FX DB Speaker Wire',
+    wireTypeIds: ['14-4fx-db-speaker-wire'],
+    boxIdPatterns: ['14-4fx-db-speaker-wire', '14-4fx', '144fx'],
+  },
+  {
+    label: '12-2FX DB Speaker Wire',
+    wireTypeIds: ['12-2fx-db-speaker-wire'],
+    boxIdPatterns: ['12-2fx-db-speaker-wire', '12-2fx', '122fx'],
+  },
+  {
+    label: '12-4FX DB Speaker Wire',
+    wireTypeIds: ['12-4fx-db-speaker-wire'],
+    boxIdPatterns: ['12-4fx-db-speaker-wire', '12-4fx', '124fx'],
+  },
 ]
 
 export interface WireReportRow {
@@ -26,6 +105,14 @@ export interface WireReportRow {
   endFt: number | null
   usedFt: number | null
   notes: string
+}
+
+/** Display label for a scanner `wire_type` preset id (falls back to spaced id). */
+export function wireTypeIdToLabel(id: string | null | undefined): string {
+  const t = String(id ?? '').trim()
+  if (!t) return '—'
+  const row = ROUGH_IN_WIRE_REPORT_ROWS.find((r) => r.wireTypeIds?.includes(t))
+  return row?.label ?? t.replace(/-/g, ' ')
 }
 
 export function parseFootage(raw: string): number | null {
@@ -49,6 +136,17 @@ function boxMatchesTemplate(boxId: string, patterns: string[]): boolean {
     const pn = normalizeMatchKey(p)
     return b === pn || b.includes(pn) || pn.includes(b)
   })
+}
+
+function scansMatchWireType(list: WireBoxScan[], wireTypeIds: string[] | undefined): boolean {
+  if (!wireTypeIds?.length) return false
+  return list.some((s) => wireTypeIds.includes(String(s.wire_type ?? '').trim()))
+}
+
+function boxMatchesReportRow(list: WireBoxScan[], tpl: WireReportTemplateRow): boolean {
+  if (scansMatchWireType(list, tpl.wireTypeIds)) return true
+  const representativeId = list[0]!.box_id
+  return boxMatchesTemplate(representativeId, tpl.boxIdPatterns)
 }
 
 function scansForJob(scans: WireBoxScan[], jobName: string): WireBoxScan[] {
@@ -105,10 +203,7 @@ export function buildWireMaterialsReport(jobName: string, allScans: WireBoxScan[
   for (const tpl of ROUGH_IN_WIRE_REPORT_ROWS) {
     const matchingKeys: string[] = []
     for (const [key, list] of byBox) {
-      const representativeId = list[0]!.box_id
-      if (boxMatchesTemplate(representativeId, tpl.boxIdPatterns)) {
-        matchingKeys.push(key)
-      }
+      if (boxMatchesReportRow(list, tpl)) matchingKeys.push(key)
     }
     if (matchingKeys.length === 0) {
       rows.push({
