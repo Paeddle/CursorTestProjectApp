@@ -1,0 +1,70 @@
+OneDrive wire inventory CSV (auto-replaced on each change)
+================================================================
+
+What it does
+------------
+When a row is inserted/updated/deleted in public.wire_box_scans and wire_type is involved,
+Supabase calls an Edge Function that:
+  1) Queries ALL scans that have wire_type set
+  2) Builds one CSV (one row per box_id — newest scan with wire_type wins for that box)
+  3) Uploads to Microsoft OneDrive with PUT — the SAME path/file is overwritten each time
+
+So the file in your folder always reflects the current inventory, with added/updated boxes as
+users save wire types from the wire scanner.
+
+Prerequisites
+-------------
+- Microsoft Entra (Azure AD) app registration with client secret
+- Application permission: Files.ReadWrite.All (or narrower scope your admin approves)
+- Admin consent granted
+- Target OneDrive: a user mailbox (UPN like user@company.com) and a folder path that exists,
+  e.g. WireInventory/wire-boxes.csv (create the folder in OneDrive first)
+
+Supabase Edge Function secrets (Dashboard → Project Settings → Edge Functions → Secrets)
+------------------------------------------------------------------------------------------
+WIRE_INVENTORY_WEBHOOK_SECRET   = long random string (you choose)
+GRAPH_TENANT_ID                 = Directory (tenant) ID
+GRAPH_CLIENT_ID                 = Application (client) ID
+GRAPH_CLIENT_SECRET             = Client secret value
+GRAPH_ONEDRIVE_USER_UPN         = UPN of the OneDrive owner (e.g. ops@yourcompany.com)
+ONEDRIVE_INVENTORY_PATH         = path under Files, e.g. WireInventory/wire-boxes.csv
+SUPABASE_SERVICE_ROLE_KEY       = from Project Settings → API (often required explicitly)
+
+SUPABASE_URL is usually available automatically; add it manually if deploy errors.
+
+Deploy the function
+--------------------
+From repo root (Supabase CLI logged in):
+
+  supabase functions deploy sync-wire-inventory --project-ref YOUR_PROJECT_REF
+
+config.toml in this repo sets verify_jwt = false for this function; protect the URL with
+WIRE_INVENTORY_WEBHOOK_SECRET only (webhooks do not send a Supabase JWT).
+
+Database webhooks (Dashboard → Database → Webhooks)
+----------------------------------------------------
+Create THREE webhooks (same URL and header for each):
+
+  URL: https://YOUR_PROJECT_REF.supabase.co/functions/v1/sync-wire-inventory
+
+  HTTP Header:
+    Name:  x-wire-inventory-secret
+    Value: (same string as WIRE_INVENTORY_WEBHOOK_SECRET)
+
+  Webhook 1: Table wire_box_scans, Events: INSERT
+  Webhook 2: Table wire_box_scans, Events: UPDATE
+  Webhook 3: Table wire_box_scans, Events: DELETE
+
+Alternatively, if your Supabase plan supports one webhook with multiple events, use INSERT+UPDATE+DELETE together.
+
+Testing
+-------
+After the first qualifying insert (new box init with a wire type in the scanner), open the
+OneDrive folder — wire-boxes.csv should appear or update. Check Edge Function logs in Supabase
+if the file does not change.
+
+Notes
+-----
+- Inserts without wire_type (ordinary check-in without box profile) do not trigger an upload.
+- The CSV includes: box_id, wire_type, wire_type_label, wire_type_default_ft, spool_capacity_ft,
+  job_name, last_scanned_at, check_type, scan_id.

@@ -1,24 +1,13 @@
 /**
- * Rebuilds a CSV of all wire boxes (box_id + wire_type + spool size + metadata) and
- * uploads it to Microsoft OneDrive / SharePoint via Microsoft Graph.
+ * Rebuilds a full CSV of every box that has a wire_type (latest profile row per box) and
+ * **replaces** the same OneDrive file via Microsoft Graph PUT. Each qualifying DB event produces
+ * a new file snapshot with all boxes (not an append-only log).
  *
- * Trigger: Supabase Database Webhook on public.wire_box_scans INSERT (see setup below).
+ * Trigger: Supabase Database Webhooks on public.wire_box_scans — INSERT, UPDATE, DELETE.
+ * See supabase/ONEDRIVE_WIRE_CSV_SETUP.txt for full steps.
  *
- * SETUP (summary):
- * 1. Azure: App registration → Certificates & secrets → client secret.
- *    API permissions (Application): Files.ReadWrite.All or Sites.Selected as your admin allows.
- *    Grant admin consent.
- * 2. OneDrive: create folder (e.g. WireInventory) under the target user's Files; note path.
- * 3. Supabase Dashboard → Project Settings → Edge Functions → Secrets:
- *      SUPABASE_SERVICE_ROLE_KEY, GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET,
- *      GRAPH_ONEDRIVE_USER_UPN, ONEDRIVE_INVENTORY_PATH, WIRE_INVENTORY_WEBHOOK_SECRET
- *    (SUPABASE_URL is provided automatically.)
- * 4. Deploy: supabase functions deploy sync-wire-inventory --project-ref YOUR_REF
- * 5. Database → Webhooks → New: table wire_box_scans, event INSERT,
- *    URL: https://YOUR_REF.supabase.co/functions/v1/sync-wire-inventory
- *    HTTP Header: x-wire-inventory-secret: <same as WIRE_INVENTORY_WEBHOOK_SECRET>
- *
- * Only rows with non-null wire_type are included in the export. Latest scan per box wins.
+ * Skip (no upload): INSERT without wire_type; UPDATE where neither old nor new row has wire_type;
+ * DELETE of a row that had no wire_type.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -50,13 +39,42 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json().catch(() => ({}))
-    const record = body?.record ?? body
-    if (body?.type === 'INSERT' && record && (!record.wire_type || String(record.wire_type).trim() === '')) {
-      return new Response(JSON.stringify({ ok: true, skipped: 'insert has no wire_type' }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    const body = (await req.json().catch(() => ({}))) as {
+      type?: string
+      record?: Record<string, unknown> | null
+      old_record?: Record<string, unknown> | null
+    }
+
+    const hasWireType = (row: Record<string, unknown> | null | undefined): boolean => {
+      const wt = row?.wire_type
+      return typeof wt === 'string' && wt.trim() !== ''
+    }
+
+    const evt = body?.type
+    const record = body?.record
+    const oldRecord = body?.old_record
+
+    if (evt === 'INSERT') {
+      if (!hasWireType(record)) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'insert has no wire_type' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    } else if (evt === 'UPDATE') {
+      if (!hasWireType(record) && !hasWireType(oldRecord)) {
+        return new Response(
+          JSON.stringify({ ok: true, skipped: 'update did not involve wire_type rows' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+    } else if (evt === 'DELETE') {
+      if (!hasWireType(oldRecord)) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'deleted row had no wire_type' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     const csv = await buildInventoryCsv()
