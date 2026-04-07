@@ -45,6 +45,12 @@ function formatFootageCell(scan: WireBoxScan): string {
   return `${cur} / ${cap} ft`
 }
 
+function formatWireTypeDisplay(scan: WireBoxScan): string {
+  const label = (scan.wire_type_label || '').trim()
+  if (label) return label
+  return wireTypeIdToLabel(scan.wire_type)
+}
+
 async function fetchAllScans(): Promise<WireBoxScan[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
@@ -398,6 +404,7 @@ export function WirePage() {
                           <th>Job name</th>
                           <th>Footage (left / spool)</th>
                           <th>Wire type</th>
+                          <th>Cat. default (ft)</th>
                           <th>Scanned at</th>
                           <th className="wire-actions-col"> </th>
                         </tr>
@@ -418,7 +425,10 @@ export function WirePage() {
                             </td>
                             <td>{scan.job_name}</td>
                             <td>{formatFootageCell(scan)}</td>
-                            <td className="wire-scan-wire-type">{wireTypeIdToLabel(scan.wire_type)}</td>
+                            <td className="wire-scan-wire-type">{formatWireTypeDisplay(scan)}</td>
+                            <td className="wire-scan-wire-type">
+                              {(scan.wire_type_default_ft || '').trim() || '—'}
+                            </td>
                             <td>{formatDateTime(scan.scanned_at)}</td>
                             <td className="wire-actions-col">
                               <button

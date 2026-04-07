@@ -11,6 +11,10 @@ export interface WireBoxScan {
   created_at: string
   /** Preset id from wire scanner (after add-wire-box-profile-columns.sql). */
   wire_type?: string | null
+  /** Display name for wire type (add-wire-box-type-label-default.sql). */
+  wire_type_label?: string | null
+  /** Catalog default reel length in ft for that type at scan time. */
+  wire_type_default_ft?: string | null
   /** Full spool length in ft for this box (after add-wire-box-profile-columns.sql). */
   spool_capacity_ft?: string | null
 }

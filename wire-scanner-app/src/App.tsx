@@ -43,6 +43,8 @@ interface BoxProfile {
   wireTypeId: string
   capacityFt: string
   label: string
+  /** Catalog default reel size (ft) from wire type preset */
+  defaultFt: string
 }
 
 function FootageContextHint({
@@ -116,7 +118,7 @@ function App() {
           supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).eq('box_id', id),
           supabase
             .from('wire_box_scans')
-            .select('wire_type, spool_capacity_ft')
+            .select('wire_type, spool_capacity_ft, wire_type_label, wire_type_default_ft')
             .eq('box_id', id)
             .not('spool_capacity_ft', 'is', null)
             .order('scanned_at', { ascending: true })
@@ -133,13 +135,28 @@ function App() {
           setHasExistingScans((countRes.count ?? 0) > 0)
         }
 
-        const row = profileRes.data
+        const row = profileRes.data as {
+          wire_type: string
+          spool_capacity_ft: string
+          wire_type_label?: string | null
+          wire_type_default_ft?: string | null
+        } | null
         if (row?.wire_type && row?.spool_capacity_ft) {
           const preset = getWireTypePreset(row.wire_type)
+          const label =
+            (row.wire_type_label && String(row.wire_type_label).trim()) ||
+            preset?.label ||
+            row.wire_type
+          const defaultFtRaw = row.wire_type_default_ft
+          const defaultFt =
+            defaultFtRaw != null && String(defaultFtRaw).trim() !== ''
+              ? String(defaultFtRaw).trim()
+              : String(preset?.defaultCapacityFt ?? '')
           setBoxProfile({
             wireTypeId: row.wire_type,
             capacityFt: row.spool_capacity_ft,
-            label: preset?.label ?? row.wire_type,
+            label,
+            defaultFt,
           })
         } else {
           setBoxProfile(null)
@@ -201,17 +218,27 @@ function App() {
     }
   }, [])
 
-  const buildProfileInsert = (): { wire_type?: string; spool_capacity_ft?: string } => {
+  const buildProfileInsert = (): {
+    wire_type?: string
+    wire_type_label?: string
+    wire_type_default_ft?: string
+    spool_capacity_ft?: string
+  } => {
     if (hasExistingScans === false) {
       if (!selectedPresetId || !spoolCapacityStr.trim()) return {}
+      const p = getWireTypePreset(selectedPresetId)
       return {
         wire_type: selectedPresetId,
+        wire_type_label: p?.label ?? selectedPresetId,
+        wire_type_default_ft: String(p?.defaultCapacityFt ?? ''),
         spool_capacity_ft: spoolCapacityStr.trim(),
       }
     }
     if (hasExistingScans === true && boxProfile) {
       return {
         wire_type: boxProfile.wireTypeId,
+        wire_type_label: boxProfile.label,
+        wire_type_default_ft: boxProfile.defaultFt,
         spool_capacity_ft: boxProfile.capacityFt,
       }
     }
@@ -263,15 +290,17 @@ function App() {
       }
       if (profile.wire_type) {
         row.wire_type = profile.wire_type
+        row.wire_type_label = profile.wire_type_label ?? profile.wire_type
+        row.wire_type_default_ft = profile.wire_type_default_ft ?? ''
         row.spool_capacity_ft = profile.spool_capacity_ft!
       }
 
       const { error } = await supabase.from('wire_box_scans').insert(row)
       if (error) {
         const msg = error.message || 'Save failed'
-        if (/wire_type|spool_capacity|column/i.test(msg)) {
+        if (/wire_type|spool_capacity|wire_type_label|wire_type_default|column/i.test(msg)) {
           showError(
-            `${msg} If the database was created before wire profiles, run supabase/add-wire-box-profile-columns.sql in the Supabase SQL Editor.`
+            `${msg} Run supabase/add-wire-box-type-label-default.sql (and add-wire-box-profile-columns.sql if needed) in the Supabase SQL Editor.`
           )
         } else {
           showError(msg)
@@ -331,9 +360,9 @@ function App() {
             host&apos;s environment variables (e.g. DigitalOcean app env) and redeploy.
           </p>
           <p className="hint">
-            Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor. For check-in/out and reel size on
-            each box, also run <code>supabase/add-wire-box-check-type.sql</code> and{' '}
-            <code>supabase/add-wire-box-profile-columns.sql</code>.
+            Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor. Also run{' '}
+            <code>add-wire-box-check-type.sql</code>, <code>add-wire-box-profile-columns.sql</code>, and{' '}
+            <code>add-wire-box-type-label-default.sql</code> as needed.
           </p>
         </div>
       </div>
@@ -451,6 +480,9 @@ function App() {
                 <p>
                   {boxProfile.label}
                   <span className="profile-cap"> · Full spool {boxProfile.capacityFt} ft</span>
+                  {boxProfile.defaultFt ? (
+                    <span className="profile-cap"> · Catalog default {boxProfile.defaultFt} ft</span>
+                  ) : null}
                 </p>
               </div>
             )}
