@@ -141,11 +141,24 @@ export function WirePage() {
     ) {
       return
     }
+    if (!scan.id) {
+      setError('Cannot delete: this row has no id. Refresh and try again.')
+      return
+    }
     setDeleting(true)
     setError(null)
     try {
-      const { error: delErr } = await supabase.from('wire_box_scans').delete().eq('id', scan.id)
+      const { data, error: delErr } = await supabase
+        .from('wire_box_scans')
+        .delete()
+        .eq('id', scan.id)
+        .select('id')
       if (delErr) throw new Error(delErr.message)
+      if (!data?.length) {
+        throw new Error(
+          'No row was deleted. In Supabase, run supabase/fix-wire-box-scans-delete-rls.sql (RLS must allow delete for your JWT role).'
+        )
+      }
       await load({ silent: true })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to delete scan')
@@ -185,8 +198,17 @@ export function WirePage() {
     setDeleting(true)
     setError(null)
     try {
-      const { error: delErr } = await supabase.from('wire_box_scans').delete().eq('box_id', boxId)
+      const { data, error: delErr } = await supabase
+        .from('wire_box_scans')
+        .delete()
+        .eq('box_id', boxId)
+        .select('id')
       if (delErr) throw new Error(delErr.message)
+      if (!data?.length) {
+        throw new Error(
+          'No rows were deleted. In Supabase, run supabase/fix-wire-box-scans-delete-rls.sql (RLS must allow delete for your JWT role), or check the box ID matches.'
+        )
+      }
       setExpandedBox((prev) => {
         const next = new Set(prev)
         next.delete(boxId.toLowerCase())

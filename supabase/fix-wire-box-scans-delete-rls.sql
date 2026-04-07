@@ -1,0 +1,20 @@
+-- Fix Wire deletes: PostgREST returns success with 0 rows when RLS has no matching policy
+-- for your JWT role (e.g. only "anon" was allowed but the session is "authenticated").
+-- Run this in the Supabase SQL Editor once.
+
+drop policy if exists "Allow anonymous delete on wire_box_scans" on public.wire_box_scans;
+drop policy if exists "Allow delete on wire_box_scans" on public.wire_box_scans;
+
+create policy "Allow delete on wire_box_scans"
+  on public.wire_box_scans for delete
+  to anon, authenticated
+  using (true);
+
+-- Optional: same widening for inserts if the scanner ever runs as authenticated
+drop policy if exists "Allow anonymous insert on wire_box_scans" on public.wire_box_scans;
+drop policy if exists "Allow insert on wire_box_scans" on public.wire_box_scans;
+
+create policy "Allow insert on wire_box_scans"
+  on public.wire_box_scans for insert
+  to anon, authenticated
+  with check (true);
