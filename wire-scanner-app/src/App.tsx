@@ -300,7 +300,7 @@ function App() {
         const msg = error.message || 'Save failed'
         if (/wire_type|spool_capacity|wire_type_label|wire_type_default|column/i.test(msg)) {
           showError(
-            `${msg} Run supabase/add-wire-box-type-label-default.sql (and add-wire-box-profile-columns.sql if needed) in the Supabase SQL Editor.`
+            `${msg} Run supabase/add-wire-box-type-label-default.sql in the Supabase SQL Editor (adds wire_type, spool_capacity_ft, labels, and defaults if missing).`
           )
         } else {
           showError(msg)
@@ -361,8 +361,8 @@ function App() {
           </p>
           <p className="hint">
             Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor. Also run{' '}
-            <code>add-wire-box-check-type.sql</code>, <code>add-wire-box-profile-columns.sql</code>, and{' '}
-            <code>add-wire-box-type-label-default.sql</code> as needed.
+            <code>add-wire-box-check-type.sql</code> and <code>add-wire-box-type-label-default.sql</code> (profile columns
+            including <code>spool_capacity_ft</code>) as needed.
           </p>
         </div>
       </div>
