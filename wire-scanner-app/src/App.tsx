@@ -425,11 +425,6 @@ function App() {
             {!boxMetaLoading && hasExistingScans === false && (
               <div className="init-banner" role="region" aria-label="New box setup">
                 <strong>New box — first entry</strong>
-                <p>
-                  This box ID has no scans yet. Pick the wire type — full spool length comes from the in-app catalog for that
-                  type (same value is saved as the reel size and catalog default). Current footage defaults to that full
-                  amount; change it below if the box is already partial.
-                </p>
                 <div className="form-field">
                   <label className="label" htmlFor="wire-type-preset">
                     Wire type
@@ -449,28 +444,6 @@ function App() {
                     ))}
                   </select>
                 </div>
-
-                {(() => {
-                  const presetNew = selectedPresetId ? getWireTypePreset(selectedPresetId) : undefined
-                  if (!presetNew) return null
-                  return (
-                    <div className="form-field">
-                      <span className="label" id="spool-capacity-label">
-                        Full spool length (feet)
-                      </span>
-                      <div
-                        className="catalog-capacity-readonly"
-                        id="spool-capacity"
-                        role="status"
-                        aria-labelledby="spool-capacity-label"
-                      >
-                        <strong>{presetNew.defaultCapacityFt}</strong> ft{' '}
-                        <span className="field-hint subtle">(catalog default — not editable on first check-in)</span>
-                      </div>
-                      <p className="field-hint subtle">Used for &quot;ft left of full reel&quot; on future scans.</p>
-                    </div>
-                  )
-                })()}
               </div>
             )}
 
