@@ -62,7 +62,7 @@ function startPerFrameVideoQrDetect(opts: {
     if (video instanceof HTMLVideoElement && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       runDetect(video)
     }
-    intervalId = window.setTimeout(pollFallback, 14)
+    intervalId = window.setTimeout(pollFallback, 8)
   }
 
   const scheduleNext = () => {
@@ -148,7 +148,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     // No `qrbox`: decode the full camera preview (same idea as the system Camera app),
     // while a separate CSS reticle shows a square aiming guide only.
     const buildConfig = (videoConstraints?: MediaTrackConstraints): Html5QrcodeCameraScanConfig => ({
-      fps: 30,
+      // Higher FPS → less idle time before the next decode pass after each frame finishes.
+      fps: 60,
+      // Skip horizontal mirror retry after a miss (saves ~1 full decode per frame while hunting).
+      disableFlip: true,
       ...(videoConstraints ? { videoConstraints } : {}),
     })
 
@@ -169,7 +172,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           deviceId: { exact: cameraId },
           width: { ideal: 1920 },
           height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
+          frameRate: { ideal: 60 },
         })
 
         return scanner.start(cameraId, tryHighRes, onSuccess, onError).catch((firstErr: unknown) => {
@@ -201,8 +204,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         <div className="qr-scanner-header-text">
           <h3>Scan wire box QR code</h3>
           <p className="qr-scanner-hint">
-            Small movements are OK: we read on each camera frame when supported, and ask the camera for 30
-            fps when possible. Marks next to the QR can still slow decoding.
+            Small movements are OK: native reads run every camera frame when supported, and we request up to
+            60&nbsp;fps from the camera when the device allows. Marks next to the QR can still slow things
+            down.
           </p>
         </div>
         <button type="button" className="qr-scanner-close" onClick={onClose}>
