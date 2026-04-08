@@ -13,8 +13,6 @@ export interface WireBoxScan {
   wire_type?: string | null
   /** Display name for wire type (add-wire-box-type-label-default.sql). */
   wire_type_label?: string | null
-  /** Catalog default reel length in ft for that type at scan time. */
-  wire_type_default_ft?: string | null
   /** Full spool length in ft for this box (after add-wire-box-profile-columns.sql). */
   spool_capacity_ft?: string | null
 }

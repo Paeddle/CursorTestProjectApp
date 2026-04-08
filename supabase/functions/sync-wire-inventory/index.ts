@@ -110,7 +110,7 @@ async function buildInventoryCsv(): Promise<string> {
   const { data: rows, error } = await supabase
     .from('wire_box_scans')
     .select(
-      'id, box_id, wire_type, wire_type_label, wire_type_default_ft, spool_capacity_ft, job_name, check_type, scanned_at',
+      'id, box_id, wire_type, wire_type_label, spool_capacity_ft, job_name, check_type, scanned_at',
     )
     .not('wire_type', 'is', null)
     .order('scanned_at', { ascending: false })
@@ -124,7 +124,6 @@ async function buildInventoryCsv(): Promise<string> {
       box_id: string
       wire_type: string
       wire_type_label: string | null
-      wire_type_default_ft: string | null
       spool_capacity_ft: string | null
       job_name: string
       check_type: string | null
@@ -142,8 +141,6 @@ async function buildInventoryCsv(): Promise<string> {
         box_id: String(row.box_id).trim(),
         wire_type: wt,
         wire_type_label: row.wire_type_label != null ? String(row.wire_type_label) : null,
-        wire_type_default_ft:
-          row.wire_type_default_ft != null ? String(row.wire_type_default_ft) : null,
         spool_capacity_ft: row.spool_capacity_ft != null ? String(row.spool_capacity_ft) : null,
         job_name: String(row.job_name ?? ''),
         check_type: row.check_type != null ? String(row.check_type) : null,
@@ -156,7 +153,6 @@ async function buildInventoryCsv(): Promise<string> {
     'box_id',
     'wire_type',
     'wire_type_label',
-    'wire_type_default_ft',
     'spool_capacity_ft',
     'job_name',
     'last_scanned_at',
@@ -173,7 +169,6 @@ async function buildInventoryCsv(): Promise<string> {
       escapeCsvField(r.box_id),
       escapeCsvField(r.wire_type),
       escapeCsvField(r.wire_type_label),
-      escapeCsvField(r.wire_type_default_ft),
       escapeCsvField(r.spool_capacity_ft),
       escapeCsvField(r.job_name),
       escapeCsvField(r.scanned_at),

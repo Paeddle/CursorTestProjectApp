@@ -117,7 +117,7 @@ function App() {
           supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).eq('box_id', id),
           supabase
             .from('wire_box_scans')
-            .select('wire_type, spool_capacity_ft, wire_type_label, wire_type_default_ft')
+            .select('wire_type, spool_capacity_ft, wire_type_label')
             .eq('box_id', id)
             .not('spool_capacity_ft', 'is', null)
             .order('scanned_at', { ascending: false })
@@ -138,7 +138,6 @@ function App() {
           wire_type: string
           spool_capacity_ft: string
           wire_type_label?: string | null
-          wire_type_default_ft?: string | null
         } | null
         if (row?.wire_type && row?.spool_capacity_ft) {
           const wireRaw = String(row.wire_type).trim()
@@ -224,7 +223,6 @@ function App() {
   const buildProfileInsert = (): {
     wire_type?: string
     wire_type_label?: string
-    wire_type_default_ft?: string
     spool_capacity_ft?: string
   } => {
     if (hasExistingScans === false) {
@@ -235,7 +233,6 @@ function App() {
       return {
         wire_type: selectedPresetId,
         wire_type_label: p.label,
-        wire_type_default_ft: cap,
         spool_capacity_ft: cap,
       }
     }
@@ -243,7 +240,6 @@ function App() {
       return {
         wire_type: boxProfile.wireTypeId,
         wire_type_label: boxProfile.label,
-        wire_type_default_ft: boxProfile.capacityFt,
         spool_capacity_ft: boxProfile.capacityFt,
       }
     }
@@ -296,16 +292,15 @@ function App() {
       if (profile.wire_type) {
         row.wire_type = profile.wire_type
         row.wire_type_label = profile.wire_type_label ?? profile.wire_type
-        row.wire_type_default_ft = profile.wire_type_default_ft ?? ''
         row.spool_capacity_ft = profile.spool_capacity_ft!
       }
 
       const { error } = await supabase.from('wire_box_scans').insert(row)
       if (error) {
         const msg = error.message || 'Save failed'
-        if (/wire_type|spool_capacity|wire_type_label|wire_type_default|column/i.test(msg)) {
+        if (/wire_type|spool_capacity|wire_type_label|column/i.test(msg)) {
           showError(
-            `${msg} Run supabase/add-wire-box-type-label-default.sql in the Supabase SQL Editor (adds wire_type, spool_capacity_ft, labels, and defaults if missing).`
+            `${msg} Run supabase/add-wire-box-type-label-default.sql in the Supabase SQL Editor (adds wire_type, spool_capacity_ft, wire_type_label if missing).`
           )
         } else {
           showError(msg)

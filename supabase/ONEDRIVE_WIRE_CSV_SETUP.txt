@@ -66,5 +66,5 @@ if the file does not change.
 Notes
 -----
 - Inserts without wire_type (ordinary check-in without box profile) do not trigger an upload.
-- The CSV includes: box_id, wire_type, wire_type_label, wire_type_default_ft, spool_capacity_ft,
+- The CSV includes: box_id, wire_type, wire_type_label, spool_capacity_ft,
   job_name, last_scanned_at, check_type, scan_id.

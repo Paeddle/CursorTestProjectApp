@@ -115,7 +115,7 @@ export function wireTypeIdToLabel(id: string | null | undefined): string {
   return row?.label ?? t.replace(/-/g, ' ')
 }
 
-/** Catalog full-spool ft per preset id (keep aligned with wire-scanner-app `wireTypePresets.ts`). */
+/** Catalog full-spool ft per preset id for UI fallback when `spool_capacity_ft` is missing (aligned with wire-scanner-app `wireTypePresets.ts`). */
 const WIRE_TYPE_DEFAULT_FT: Record<string, number> = {
   'rg6-quad-shield': 500,
   'cat6-550mhz-blue': 1000,
