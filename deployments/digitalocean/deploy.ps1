@@ -168,6 +168,7 @@ $replacements = @{
 New-SpecFile -templatePath $specTemplate -outputPath $specGenerated -replacements $replacements
 
 $appIdFile = Join-Path $PSScriptRoot '.do-app-id'
+$newAppThisRun = $false
 
 if (Test-Path $appIdFile) {
   $appId = (Get-Content $appIdFile | Select-Object -First 1).Trim()
@@ -177,8 +178,10 @@ if (Test-Path $appIdFile) {
   }
   Write-Info "Updating existing DigitalOcean App ($appId)"
   & $doctlPath apps update $appId --spec $specGenerated | Out-Null
-  Write-Info "Creating new deployment to use latest commit..."
-  & $doctlPath apps create-deployment $appId --force-rebuild | Out-Null
+  Write-Info "Creating new deployment (waiting until this deploy is live)..."
+  # Use --wait on create-deployment so we wait for *this* deploy. Plain `apps wait <app>`
+  # can return while a newer build is still BUILDING, so the site keeps serving the old ACTIVE deploy.
+  & $doctlPath apps create-deployment $appId --force-rebuild --wait
 } else {
   Write-Info "Creating new DigitalOcean App ($appName in $region)"
   $createOut = & $doctlPath apps create --spec $specGenerated --format ID --no-header 2>&1
@@ -188,10 +191,13 @@ if (Test-Path $appIdFile) {
   }
   Set-Content -Path $appIdFile -Value $appId
   Write-Info "Created App with ID $appId (stored in $appIdFile)"
+  $newAppThisRun = $true
 }
 
-Write-Info "Waiting for deployment to finish..."
-& $doctlPath apps wait $appId | Out-Null
+if ($newAppThisRun) {
+  Write-Info "Waiting for initial deployment to finish..."
+  & $doctlPath apps wait $appId | Out-Null
+}
 
 $defaultIngress = (& $doctlPath apps get $appId --format DefaultIngress --no-header).Trim()
 if ($defaultIngress) {
