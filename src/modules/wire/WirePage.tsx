@@ -438,7 +438,6 @@ export function WirePage() {
                           <th>Job name</th>
                           <th>Footage (left / spool)</th>
                           <th>Wire type</th>
-                          <th>Cat. default (ft)</th>
                           <th>Scanned at</th>
                           <th className="wire-actions-col"> </th>
                         </tr>
@@ -460,9 +459,6 @@ export function WirePage() {
                             <td>{scan.job_name}</td>
                             <td>{formatFootageCell(scan)}</td>
                             <td className="wire-scan-wire-type">{formatWireTypeDisplay(scan)}</td>
-                            <td className="wire-scan-wire-type">
-                              {(scan.wire_type_default_ft || '').trim() || '—'}
-                            </td>
                             <td>{formatDateTime(scan.scanned_at)}</td>
                             <td className="wire-actions-col">
                               <button
