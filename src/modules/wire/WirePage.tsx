@@ -85,10 +85,12 @@ function boxHeaderWireType(scans: WireBoxScan[]): string {
 function boxHeaderDefaultWireDisplay(scans: WireBoxScan[]): string {
   const s = boxHeaderProfileScan(scans)
   if (!s) return '—'
+  // Live catalog wins for known preset ids (avoids stale wire_type_default_ft from older scans).
+  const fromCatalog = wireTypeIdToDefaultFt(s.wire_type)
+  if (fromCatalog) return `${fromCatalog} ft`
   const raw = (s.wire_type_default_ft || '').trim()
   if (raw) return /ft\.?/i.test(raw) ? raw : `${raw} ft`
-  const fromId = wireTypeIdToDefaultFt(s.wire_type)
-  return fromId ? `${fromId} ft` : '—'
+  return '—'
 }
 
 async function fetchAllScans(): Promise<WireBoxScan[]> {

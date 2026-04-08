@@ -139,12 +139,26 @@ const WIRE_TYPE_DEFAULT_FT: Record<string, number> = {
   '12-4fx-db-speaker-wire': 500,
 }
 
-/** Default reel length (ft) as string, or empty if unknown. */
+/**
+ * Default reel length (ft) as string, or empty if unknown.
+ * Resolves case-insensitive preset ids so DB casing quirks still match the catalog.
+ */
 export function wireTypeIdToDefaultFt(id: string | null | undefined): string {
   const t = String(id ?? '').trim()
   if (!t) return ''
-  const n = WIRE_TYPE_DEFAULT_FT[t]
-  return n !== undefined ? String(n) : ''
+  if (WIRE_TYPE_DEFAULT_FT[t] !== undefined) return String(WIRE_TYPE_DEFAULT_FT[t])
+  const tl = t.toLowerCase()
+  for (const [k, n] of Object.entries(WIRE_TYPE_DEFAULT_FT)) {
+    if (k.toLowerCase() === tl) return String(n)
+  }
+  const row = ROUGH_IN_WIRE_REPORT_ROWS.find((r) =>
+    r.wireTypeIds?.some((wid) => wid.toLowerCase() === tl),
+  )
+  const canon = row?.wireTypeIds?.[0]
+  if (canon != null && WIRE_TYPE_DEFAULT_FT[canon] !== undefined) {
+    return String(WIRE_TYPE_DEFAULT_FT[canon])
+  }
+  return ''
 }
 
 export function parseFootage(raw: string): number | null {
