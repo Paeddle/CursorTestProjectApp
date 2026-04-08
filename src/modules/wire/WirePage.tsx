@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
 import {
+  buildWireInventoryRows,
   buildWireMaterialsReport,
   downloadTextFile,
   parseFootage,
   reportRowsToCsv,
   reportRowsToHtmlDocument,
-  uniqueJobNamesFromScans,
+  uniqueJobNamesForMaterialsReport,
   wireTypeIdToLabel,
   wireTypeIdToDefaultFt,
   type WireReportRow,
@@ -129,7 +130,9 @@ export function WirePage() {
   const [reportJob, setReportJob] = useState('')
   const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
 
-  const jobOptions = useMemo(() => uniqueJobNamesFromScans(allScans), [allScans])
+  const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
+
+  const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
@@ -360,6 +363,42 @@ export function WirePage() {
                     <td className="wire-report-num">{row.endFt === null ? '—' : row.endFt}</td>
                     <td className="wire-report-num">{row.usedFt === null ? '—' : row.usedFt}</td>
                     <td className="wire-report-notes">{row.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="wire-inventory-section" aria-labelledby="wire-inventory-heading">
+        <h2 id="wire-inventory-heading" className="wire-inventory-title">
+          Wire inventory
+        </h2>
+        <p className="wire-inventory-hint">
+          Box counts by wire type for spools whose <strong>latest scan is a check-in</strong> (not
+          currently checked out on a job).
+        </p>
+        {loading ? (
+          <div className="wire-inventory-loading">Loading inventory…</div>
+        ) : inventoryRows.length === 0 ? (
+          <div className="wire-inventory-empty">No boxes are checked in right now.</div>
+        ) : (
+          <div className="wire-inventory-table-wrap">
+            <table className="wire-inventory-table">
+              <thead>
+                <tr>
+                  <th>Wire type</th>
+                  <th className="wire-inventory-num">Boxes</th>
+                  <th>Box IDs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventoryRows.map((row) => (
+                  <tr key={row.wireType}>
+                    <td>{row.wireType}</td>
+                    <td className="wire-inventory-num">{row.boxCount}</td>
+                    <td className="wire-inventory-box-ids">{row.boxIds.join(', ')}</td>
                   </tr>
                 ))}
               </tbody>

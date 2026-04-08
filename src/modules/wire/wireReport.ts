@@ -1,4 +1,4 @@
-import type { WireBoxScan } from '../../types/wireBox'
+import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
 
 /** Report schedule row: match by `wire_type` (scanner preset id) and/or `box_id` substrings. */
 export type WireReportTemplateRow = {
@@ -405,4 +405,71 @@ export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
     if (j) set.add(j)
   }
   return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+}
+
+/** Internal / scanner job name — excluded from “materials used” job picker. */
+const MATERIALS_REPORT_EXCLUDED_JOBS = new Set(['inventory'])
+
+export function uniqueJobNamesForMaterialsReport(scans: WireBoxScan[]): string[] {
+  return uniqueJobNamesFromScans(scans).filter(
+    (j) => !MATERIALS_REPORT_EXCLUDED_JOBS.has(j.trim().toLowerCase())
+  )
+}
+
+function scanTimeWireReport(scan: WireBoxScan): number {
+  return new Date(scan.scanned_at).getTime()
+}
+
+function newestScanInBox(scans: WireBoxScan[]): WireBoxScan | null {
+  if (!scans.length) return null
+  return scans.reduce((a, b) => (scanTimeWireReport(a) >= scanTimeWireReport(b) ? a : b))
+}
+
+/** True when the latest scan for the box is not a check-out (wire is in stock, not out on a job). */
+export function isBoxInInventory(scans: WireBoxScan[]): boolean {
+  const latest = newestScanInBox(scans)
+  if (!latest) return false
+  if (latest.check_type === 'check_out') return false
+  return true
+}
+
+function formatWireTypeCell(scan: WireBoxScan): string {
+  const label = (scan.wire_type_label || '').trim()
+  if (label) return label
+  return wireTypeIdToLabel(scan.wire_type)
+}
+
+/** Same wire-type label logic as Wire Tracker cards (newest scan with type info wins). */
+export function boxWireTypeDisplayLabel(scans: WireBoxScan[]): string {
+  const sorted = [...scans].sort((a, b) => scanTimeWireReport(b) - scanTimeWireReport(a))
+  for (const scan of sorted) {
+    const label = (scan.wire_type_label || '').trim()
+    const wt = String(scan.wire_type ?? '').trim()
+    if (label || wt) return formatWireTypeCell(scan)
+  }
+  return '—'
+}
+
+export interface WireInventoryRow {
+  wireType: string
+  boxCount: number
+  boxIds: string[]
+}
+
+/** One row per wire type: boxes currently checked in (latest scan is not check-out). */
+export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInventoryRow[] {
+  const map = new Map<string, string[]>()
+  for (const summary of summaries) {
+    if (!isBoxInInventory(summary.scans)) continue
+    const wire = boxWireTypeDisplayLabel(summary.scans)
+    if (!map.has(wire)) map.set(wire, [])
+    map.get(wire)!.push(summary.box_id)
+  }
+  const rows: WireInventoryRow[] = []
+  for (const [wireType, boxIds] of map) {
+    boxIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    rows.push({ wireType, boxCount: boxIds.length, boxIds })
+  }
+  rows.sort((a, b) => a.wireType.localeCompare(b.wireType, undefined, { sensitivity: 'base' }))
+  return rows
 }
