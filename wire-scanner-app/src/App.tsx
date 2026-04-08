@@ -5,6 +5,7 @@ import {
   WIRE_TYPE_PRESETS,
   getWireTypePreset,
   parseFootageNumber,
+  resolveWireTypePreset,
 } from './wireTypePresets'
 import './App.css'
 
@@ -43,8 +44,6 @@ interface BoxProfile {
   wireTypeId: string
   capacityFt: string
   label: string
-  /** Catalog default reel size (ft) from wire type preset */
-  defaultFt: string
 }
 
 function FootageContextHint({
@@ -121,7 +120,7 @@ function App() {
             .select('wire_type, spool_capacity_ft, wire_type_label, wire_type_default_ft')
             .eq('box_id', id)
             .not('spool_capacity_ft', 'is', null)
-            .order('scanned_at', { ascending: true })
+            .order('scanned_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
         ])
@@ -142,26 +141,20 @@ function App() {
           wire_type_default_ft?: string | null
         } | null
         if (row?.wire_type && row?.spool_capacity_ft) {
-          const preset = getWireTypePreset(row.wire_type)
+          const wireRaw = String(row.wire_type).trim()
+          const labelRaw = row.wire_type_label ? String(row.wire_type_label).trim() : ''
+          const preset =
+            resolveWireTypePreset(wireRaw) ?? (labelRaw ? resolveWireTypePreset(labelRaw) : undefined)
           const storedCap = String(row.spool_capacity_ft).trim()
           const label =
             (row.wire_type_label && String(row.wire_type_label).trim()) ||
             preset?.label ||
-            row.wire_type
-          // When `wire_type` matches `wireTypePresets.ts`, live catalog wins (not old DB snapshot).
-          const catalogCap = preset != null ? String(preset.defaultCapacityFt) : null
-          const capacityFt = catalogCap ?? storedCap
-          const defaultFtRaw = row.wire_type_default_ft
-          const defaultFt =
-            catalogCap ??
-            (defaultFtRaw != null && String(defaultFtRaw).trim() !== ''
-              ? String(defaultFtRaw).trim()
-              : storedCap)
+            wireRaw
+          const capacityFt = preset != null ? String(preset.defaultCapacityFt) : storedCap
           setBoxProfile({
-            wireTypeId: row.wire_type,
+            wireTypeId: preset?.id ?? wireRaw,
             capacityFt,
             label,
-            defaultFt,
           })
         } else {
           setBoxProfile(null)
@@ -245,7 +238,7 @@ function App() {
       return {
         wire_type: boxProfile.wireTypeId,
         wire_type_label: boxProfile.label,
-        wire_type_default_ft: boxProfile.defaultFt,
+        wire_type_default_ft: boxProfile.capacityFt,
         spool_capacity_ft: boxProfile.capacityFt,
       }
     }
@@ -492,9 +485,6 @@ function App() {
                 <p>
                   {boxProfile.label}
                   <span className="profile-cap"> · Full spool {boxProfile.capacityFt} ft</span>
-                  {boxProfile.defaultFt ? (
-                    <span className="profile-cap"> · Catalog default {boxProfile.defaultFt} ft</span>
-                  ) : null}
                 </p>
               </div>
             )}
