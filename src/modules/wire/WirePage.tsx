@@ -394,104 +394,106 @@ export function WirePage() {
           </p>
         </div>
       ) : (
-        <div className="wire-list">
-          {filtered.map((summary) => {
-            const key = summary.box_id.toLowerCase()
-            const isExpanded = expandedBox.has(key)
-            const headerWire = boxHeaderWireType(summary.scans)
-            const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
-            const nScans = summary.scans.length
-            return (
-              <div key={key} className="wire-card">
-                <div className="wire-card-header-row">
-                  <button
-                    type="button"
-                    className="wire-card-header"
-                    onClick={() => toggleExpanded(summary.box_id)}
-                    aria-expanded={isExpanded}
-                    aria-label={`${summary.box_id}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
-                  >
-                    <span className="wire-card-title-block">
-                      <span className="wire-card-title">{summary.box_id}</span>
-                      <span className="wire-card-meta">
-                        <span className="wire-card-wire-type">{headerWire}</span>
-                        <span className="wire-card-meta-sep" aria-hidden>
-                          {' · '}
+        <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
+          <div className="wire-list">
+            {filtered.map((summary) => {
+              const key = summary.box_id.toLowerCase()
+              const isExpanded = expandedBox.has(key)
+              const headerWire = boxHeaderWireType(summary.scans)
+              const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
+              const nScans = summary.scans.length
+              return (
+                <div key={key} className="wire-card">
+                  <div className="wire-card-header-row">
+                    <button
+                      type="button"
+                      className="wire-card-header"
+                      onClick={() => toggleExpanded(summary.box_id)}
+                      aria-expanded={isExpanded}
+                      aria-label={`${summary.box_id}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
+                    >
+                      <span className="wire-card-title-block">
+                        <span className="wire-card-title">{summary.box_id}</span>
+                        <span className="wire-card-meta">
+                          <span className="wire-card-wire-type">{headerWire}</span>
+                          <span className="wire-card-meta-sep" aria-hidden>
+                            {' · '}
+                          </span>
+                          <span className="wire-card-default-cap">Default {headerDefault}</span>
                         </span>
-                        <span className="wire-card-default-cap">Default {headerDefault}</span>
                       </span>
-                    </span>
-                    <span className="wire-card-badge">
-                      {nScans} scan{nScans !== 1 ? 's' : ''}
-                    </span>
-                    <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="wire-delete-box"
-                    title="Delete this box and all its scans"
-                    disabled={deleting}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteBox(summary.box_id, summary.scans.length)
-                    }}
-                  >
-                    Delete box
-                  </button>
-                </div>
-                {isExpanded && (
-                  <div className="wire-card-body">
-                    <table className="wire-scans-table">
-                      <thead>
-                        <tr>
-                          <th>Type</th>
-                          <th>Job name</th>
-                          <th>Footage left</th>
-                          <th>Scanned at</th>
-                          <th className="wire-actions-col"> </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {summary.scans.map((scan) => (
-                          <tr key={scan.id}>
-                            <td>
-                              {isIntakeScan(scan, summary.scans) ? (
-                                <span className="wire-check-badge wire-check-intake">Intake</span>
-                              ) : (
-                                <span
-                                  className={
-                                    scan.check_type === 'check_out'
-                                      ? 'wire-check-badge wire-check-out'
-                                      : 'wire-check-badge wire-check-in'
-                                  }
-                                >
-                                  {formatCheckType(scan.check_type)}
-                                </span>
-                              )}
-                            </td>
-                            <td>{scan.job_name}</td>
-                            <td>{formatFootageCell(scan)}</td>
-                            <td>{formatDateTime(scan.scanned_at)}</td>
-                            <td className="wire-actions-col">
-                              <button
-                                type="button"
-                                className="wire-delete-scan"
-                                title="Delete this scan"
-                                disabled={deleting}
-                                onClick={() => deleteScan(scan)}
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      <span className="wire-card-badge">
+                        {nScans} scan{nScans !== 1 ? 's' : ''}
+                      </span>
+                      <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="wire-delete-box"
+                      title="Delete this box and all its scans"
+                      disabled={deleting}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteBox(summary.box_id, summary.scans.length)
+                      }}
+                    >
+                      Delete box
+                    </button>
                   </div>
-                )}
-              </div>
-            )
-          })}
+                  {isExpanded && (
+                    <div className="wire-card-body">
+                      <table className="wire-scans-table">
+                        <thead>
+                          <tr>
+                            <th>Type</th>
+                            <th>Job name</th>
+                            <th>Footage left</th>
+                            <th>Scanned at</th>
+                            <th className="wire-actions-col"> </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {summary.scans.map((scan) => (
+                            <tr key={scan.id}>
+                              <td>
+                                {isIntakeScan(scan, summary.scans) ? (
+                                  <span className="wire-check-badge wire-check-intake">Intake</span>
+                                ) : (
+                                  <span
+                                    className={
+                                      scan.check_type === 'check_out'
+                                        ? 'wire-check-badge wire-check-out'
+                                        : 'wire-check-badge wire-check-in'
+                                    }
+                                  >
+                                    {formatCheckType(scan.check_type)}
+                                  </span>
+                                )}
+                              </td>
+                              <td>{scan.job_name}</td>
+                              <td>{formatFootageCell(scan)}</td>
+                              <td>{formatDateTime(scan.scanned_at)}</td>
+                              <td className="wire-actions-col">
+                                <button
+                                  type="button"
+                                  className="wire-delete-scan"
+                                  title="Delete this scan"
+                                  disabled={deleting}
+                                  onClick={() => deleteScan(scan)}
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -94,6 +94,18 @@
   font-size: 0.9em;
 }
 
+.wire-list-scroll {
+  max-height: min(65vh, 42rem);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 0.5rem;
+}
+
 .wire-list {
   display: flex;
   flex-direction: column;
