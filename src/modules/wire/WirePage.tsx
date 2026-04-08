@@ -295,12 +295,6 @@ export function WirePage() {
         <h2 id="wire-report-heading" className="wire-report-title">
           Materials used report
         </h2>
-        <p className="wire-report-hint">
-          Pick a job, then create a rough-in style table: for each wire box on that job,{' '}
-          <strong>used footage</strong> is the <strong>first</strong> scan&apos;s remaining length minus the{' '}
-          <strong>last</strong> scan&apos;s (typically check-in at the start of the job and check-out when you leave).
-          Unmatched boxes appear under &quot;Other&quot;; standard rows match common NM-B labels in the box ID.
-        </p>
         <div className="wire-report-toolbar">
           <label className="wire-report-job-label">
             <span>Job</span>
