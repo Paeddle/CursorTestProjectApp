@@ -143,18 +143,23 @@ function App() {
         } | null
         if (row?.wire_type && row?.spool_capacity_ft) {
           const preset = getWireTypePreset(row.wire_type)
+          const storedCap = String(row.spool_capacity_ft).trim()
           const label =
             (row.wire_type_label && String(row.wire_type_label).trim()) ||
             preset?.label ||
             row.wire_type
+          // When `wire_type` matches `wireTypePresets.ts`, live catalog wins (not old DB snapshot).
+          const catalogCap = preset != null ? String(preset.defaultCapacityFt) : null
+          const capacityFt = catalogCap ?? storedCap
           const defaultFtRaw = row.wire_type_default_ft
           const defaultFt =
-            defaultFtRaw != null && String(defaultFtRaw).trim() !== ''
+            catalogCap ??
+            (defaultFtRaw != null && String(defaultFtRaw).trim() !== ''
               ? String(defaultFtRaw).trim()
-              : String(preset?.defaultCapacityFt ?? '')
+              : storedCap)
           setBoxProfile({
             wireTypeId: row.wire_type,
-            capacityFt: row.spool_capacity_ft,
+            capacityFt,
             label,
             defaultFt,
           })
