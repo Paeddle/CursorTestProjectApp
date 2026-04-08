@@ -36,6 +36,24 @@ function formatCheckType(raw: string | undefined): string {
   return 'Check in'
 }
 
+function scanTimeMs(scan: WireBoxScan): number {
+  return new Date(scan.scanned_at).getTime()
+}
+
+/** Chronologically first scan in this box (initial intake). */
+function oldestScanInBox(scans: WireBoxScan[]): WireBoxScan | null {
+  if (!scans.length) return null
+  return scans.reduce((a, b) => (scanTimeMs(a) <= scanTimeMs(b) ? a : b))
+}
+
+function isIntakeScan(scan: WireBoxScan, boxScans: WireBoxScan[]): boolean {
+  if (scan.check_type === 'check_out') return false
+  const first = oldestScanInBox(boxScans)
+  if (!first) return false
+  if (scan.id && first.id) return scan.id === first.id
+  return scan.scanned_at === first.scanned_at
+}
+
 function formatFootageCell(scan: WireBoxScan): string {
   const cur = parseFootage(scan.current_footage)
   if (cur !== null) return `${cur} ft`
@@ -422,15 +440,19 @@ export function WirePage() {
                         {summary.scans.map((scan) => (
                           <tr key={scan.id}>
                             <td>
-                              <span
-                                className={
-                                  scan.check_type === 'check_out'
-                                    ? 'wire-check-badge wire-check-out'
-                                    : 'wire-check-badge wire-check-in'
-                                }
-                              >
-                                {formatCheckType(scan.check_type)}
-                              </span>
+                              {isIntakeScan(scan, summary.scans) ? (
+                                <span className="wire-check-badge wire-check-intake">Intake</span>
+                              ) : (
+                                <span
+                                  className={
+                                    scan.check_type === 'check_out'
+                                      ? 'wire-check-badge wire-check-out'
+                                      : 'wire-check-badge wire-check-in'
+                                  }
+                                >
+                                  {formatCheckType(scan.check_type)}
+                                </span>
+                              )}
                             </td>
                             <td>{scan.job_name}</td>
                             <td>{formatFootageCell(scan)}</td>

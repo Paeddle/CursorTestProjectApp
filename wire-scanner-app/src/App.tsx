@@ -176,6 +176,11 @@ function App() {
   }, [boxId])
 
   useEffect(() => {
+    if (boxMetaLoading || hasExistingScans !== false) return
+    setJobName('Inventory')
+  }, [boxMetaLoading, hasExistingScans, boxId])
+
+  useEffect(() => {
     if (hasExistingScans !== false || !selectedPresetId) return
     const p = getWireTypePreset(selectedPresetId)
     if (!p) return

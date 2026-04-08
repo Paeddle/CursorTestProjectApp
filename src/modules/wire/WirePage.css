@@ -216,6 +216,14 @@
   border: 1px solid rgba(251, 146, 60, 0.45);
 }
 
+.wire-check-intake {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  cursor: default;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
 .wire-scans-table {
   width: 100%;
   border-collapse: collapse;
