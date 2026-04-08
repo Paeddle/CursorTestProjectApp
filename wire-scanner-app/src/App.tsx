@@ -225,13 +225,15 @@ function App() {
     spool_capacity_ft?: string
   } => {
     if (hasExistingScans === false) {
-      if (!selectedPresetId || !spoolCapacityStr.trim()) return {}
+      if (!selectedPresetId) return {}
       const p = getWireTypePreset(selectedPresetId)
+      if (!p) return {}
+      const cap = String(p.defaultCapacityFt)
       return {
         wire_type: selectedPresetId,
-        wire_type_label: p?.label ?? selectedPresetId,
-        wire_type_default_ft: String(p?.defaultCapacityFt ?? ''),
-        spool_capacity_ft: spoolCapacityStr.trim(),
+        wire_type_label: p.label,
+        wire_type_default_ft: cap,
+        spool_capacity_ft: cap,
       }
     }
     if (hasExistingScans === true && boxProfile) {
@@ -263,8 +265,8 @@ function App() {
         showError('This box has no scans yet. Choose a wire type to initialize the box.')
         return
       }
-      if (!spoolCapacityStr.trim()) {
-        showError('Enter the full spool length (feet).')
+      if (!getWireTypePreset(selectedPresetId)) {
+        showError('Unknown wire type. Choose a wire type from the list.')
         return
       }
     }
@@ -431,8 +433,9 @@ function App() {
               <div className="init-banner" role="region" aria-label="New box setup">
                 <strong>New box — first entry</strong>
                 <p>
-                  This box ID has no scans yet. Pick the wire type and confirm the reel size. Current footage defaults to a
-                  full spool; change it if the box is already partial.
+                  This box ID has no scans yet. Pick the wire type — full spool length comes from the in-app catalog for that
+                  type (same value is saved as the reel size and catalog default). Current footage defaults to that full
+                  amount; change it below if the box is already partial.
                 </p>
                 <div className="form-field">
                   <label className="label" htmlFor="wire-type-preset">
@@ -454,23 +457,27 @@ function App() {
                   </select>
                 </div>
 
-                {selectedPresetId !== '' && (
-                  <div className="form-field">
-                    <label className="label" htmlFor="spool-capacity">
-                      Full spool length (feet)
-                    </label>
-                    <input
-                      id="spool-capacity"
-                      type="text"
-                      className="input"
-                      inputMode="decimal"
-                      value={spoolCapacityStr}
-                      onChange={(e) => setSpoolCapacityStr(e.target.value)}
-                      autoComplete="off"
-                    />
-                    <p className="field-hint subtle">Used to show &quot;ft left of full reel&quot; on future scans.</p>
-                  </div>
-                )}
+                {(() => {
+                  const presetNew = selectedPresetId ? getWireTypePreset(selectedPresetId) : undefined
+                  if (!presetNew) return null
+                  return (
+                    <div className="form-field">
+                      <span className="label" id="spool-capacity-label">
+                        Full spool length (feet)
+                      </span>
+                      <div
+                        className="catalog-capacity-readonly"
+                        id="spool-capacity"
+                        role="status"
+                        aria-labelledby="spool-capacity-label"
+                      >
+                        <strong>{presetNew.defaultCapacityFt}</strong> ft{' '}
+                        <span className="field-hint subtle">(catalog default — not editable on first check-in)</span>
+                      </div>
+                      <p className="field-hint subtle">Used for &quot;ft left of full reel&quot; on future scans.</p>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
