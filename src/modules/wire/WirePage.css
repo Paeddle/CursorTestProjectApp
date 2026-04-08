@@ -413,17 +413,6 @@
   color: #94a3b8;
 }
 
-.wire-inventory-tfoot td {
-  border-top: 2px solid #475569;
-  background: #0f172a;
-  font-weight: 600;
-  color: #f1f5f9;
-}
-
-.wire-inventory-tfoot td:first-child {
-  color: #cbd5e1;
-}
-
 .wire-report-title {
   font-size: 1.15rem;
   font-weight: 700;
