@@ -180,6 +180,12 @@
   line-height: 1.25;
 }
 
+.wire-card-wire-type-header {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
 .wire-card-badge {
   font-size: 0.85rem;
   color: #94a3b8;

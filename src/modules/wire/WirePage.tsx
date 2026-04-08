@@ -257,10 +257,6 @@ export function WirePage() {
   if (!isConfigured()) {
     return (
       <div className="wire-page">
-        <header className="wire-header">
-          <h1>Wire</h1>
-          <p className="wire-subtitle">Wire box scans from the wire scanner app</p>
-        </header>
         <div className="wire-setup">
           <p>Configure Supabase in your <code>.env</code> and run <code>supabase/add-wire-box-scans.sql</code>.</p>
         </div>
@@ -270,13 +266,6 @@ export function WirePage() {
 
   return (
     <div className="wire-page">
-      <header className="wire-header">
-        <h1>Wire</h1>
-        <p className="wire-subtitle">
-          Box numbers and scans from the wire scanner app (check-in or check-out, job name, and footage per scan).
-        </p>
-      </header>
-
       <section className="wire-report-section" aria-labelledby="wire-report-heading">
         <h2 id="wire-report-heading" className="wire-report-title">
           Materials used report
@@ -401,13 +390,10 @@ export function WirePage() {
                     className="wire-card-header"
                     onClick={() => toggleExpanded(summary.box_id)}
                     aria-expanded={isExpanded}
+                    aria-label={`${summary.box_id}, ${summary.scans.length} scan${summary.scans.length !== 1 ? 's' : ''}`}
                   >
                     <span className="wire-card-title-block">
-                      <span className="wire-card-title">Box {summary.box_id}</span>
-                      <span className="wire-card-wire-type">{headerWire}</span>
-                    </span>
-                    <span className="wire-card-badge">
-                      {summary.scans.length} scan{summary.scans.length !== 1 ? 's' : ''}
+                      <span className="wire-card-wire-type wire-card-wire-type-header">{headerWire}</span>
                     </span>
                     <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                   </button>

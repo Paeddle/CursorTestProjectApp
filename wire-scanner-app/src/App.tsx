@@ -357,7 +357,6 @@ function App() {
       <div className="app">
         <header className="app-header">
           <h1>Wire Box Scanner</h1>
-          <p className="app-subtitle">Scan wire box QR codes and log job + footage</p>
         </header>
         <div className="section section-error">
           <p>
@@ -378,10 +377,6 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Wire Box Scanner</h1>
-        <p className="app-subtitle">
-          Scan the box QR or open <code>/wire-scanner/?box=bx-1234</code>. New boxes need a wire type once; after that
-          footage shows versus full spool.
-        </p>
       </header>
 
       {status && (
