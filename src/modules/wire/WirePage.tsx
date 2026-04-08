@@ -48,6 +48,16 @@ function formatWireTypeDisplay(scan: WireBoxScan): string {
   return wireTypeIdToLabel(scan.wire_type)
 }
 
+/** Newest-first scans: first row with wire type or label wins (box profile). */
+function boxHeaderWireType(scans: WireBoxScan[]): string {
+  for (const scan of scans) {
+    const label = (scan.wire_type_label || '').trim()
+    const wt = String(scan.wire_type ?? '').trim()
+    if (label || wt) return formatWireTypeDisplay(scan)
+  }
+  return '—'
+}
+
 async function fetchAllScans(): Promise<WireBoxScan[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
@@ -364,6 +374,7 @@ export function WirePage() {
           {filtered.map((summary) => {
             const key = summary.box_id.toLowerCase()
             const isExpanded = expandedBox.has(key)
+            const headerWire = boxHeaderWireType(summary.scans)
             return (
               <div key={key} className="wire-card">
                 <div className="wire-card-header-row">
@@ -373,7 +384,10 @@ export function WirePage() {
                     onClick={() => toggleExpanded(summary.box_id)}
                     aria-expanded={isExpanded}
                   >
-                    <span className="wire-card-title">Box {summary.box_id}</span>
+                    <span className="wire-card-title-block">
+                      <span className="wire-card-title">Box {summary.box_id}</span>
+                      <span className="wire-card-wire-type">{headerWire}</span>
+                    </span>
                     <span className="wire-card-badge">
                       {summary.scans.length} scan{summary.scans.length !== 1 ? 's' : ''}
                     </span>
@@ -400,7 +414,6 @@ export function WirePage() {
                           <th>Type</th>
                           <th>Job name</th>
                           <th>Footage left</th>
-                          <th>Wire type</th>
                           <th>Scanned at</th>
                           <th className="wire-actions-col"> </th>
                         </tr>
@@ -421,7 +434,6 @@ export function WirePage() {
                             </td>
                             <td>{scan.job_name}</td>
                             <td>{formatFootageCell(scan)}</td>
-                            <td className="wire-scan-wire-type">{formatWireTypeDisplay(scan)}</td>
                             <td>{formatDateTime(scan.scanned_at)}</td>
                             <td className="wire-actions-col">
                               <button
