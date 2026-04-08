@@ -392,7 +392,6 @@ export function WirePage() {
                 <tr>
                   <th>Wire type</th>
                   <th className="wire-inventory-num">Boxes</th>
-                  <th>Box IDs</th>
                   <th className="wire-inventory-num">Total footage</th>
                 </tr>
               </thead>
@@ -401,7 +400,6 @@ export function WirePage() {
                   <tr key={row.wireType}>
                     <td>{row.wireType}</td>
                     <td className="wire-inventory-num">{row.boxCount}</td>
-                    <td className="wire-inventory-box-ids">{row.boxIds.join(', ')}</td>
                     <td className="wire-inventory-num wire-inventory-ft-cell">
                       {row.boxesWithUnknownFootage === row.boxCount ? (
                         '—'

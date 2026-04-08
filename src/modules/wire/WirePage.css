@@ -396,13 +396,6 @@
   width: 4.5rem;
 }
 
-.wire-inventory-box-ids {
-  color: #cbd5e1;
-  font-size: 0.88rem;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
 .wire-inventory-ft-cell {
   white-space: nowrap;
 }

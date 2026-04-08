@@ -453,7 +453,6 @@ export function boxWireTypeDisplayLabel(scans: WireBoxScan[]): string {
 export interface WireInventoryRow {
   wireType: string
   boxCount: number
-  boxIds: string[]
   /** Sum of `current_footage` on each box’s newest scan (latest check-in state). */
   totalRemainingFt: number
   /** Boxes where footage couldn’t be parsed (omitted from the sum). */
@@ -468,7 +467,7 @@ export function formatInventoryFtDisplay(n: number): string {
 export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInventoryRow[] {
   const map = new Map<
     string,
-    { boxIds: string[]; totalRemainingFt: number; boxesWithUnknownFootage: number }
+    { boxCount: number; totalRemainingFt: number; boxesWithUnknownFootage: number }
   >()
   for (const summary of summaries) {
     if (!isBoxInInventory(summary.scans)) continue
@@ -476,21 +475,19 @@ export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInvento
     if (!latest) continue
     const wire = boxWireTypeDisplayLabel(summary.scans)
     if (!map.has(wire)) {
-      map.set(wire, { boxIds: [], totalRemainingFt: 0, boxesWithUnknownFootage: 0 })
+      map.set(wire, { boxCount: 0, totalRemainingFt: 0, boxesWithUnknownFootage: 0 })
     }
     const entry = map.get(wire)!
-    entry.boxIds.push(summary.box_id)
+    entry.boxCount += 1
     const ft = parseFootage(latest.current_footage)
     if (ft === null) entry.boxesWithUnknownFootage += 1
     else entry.totalRemainingFt += ft
   }
   const rows: WireInventoryRow[] = []
   for (const [wireType, data] of map) {
-    data.boxIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     rows.push({
       wireType,
-      boxCount: data.boxIds.length,
-      boxIds: data.boxIds,
+      boxCount: data.boxCount,
       totalRemainingFt: data.totalRemainingFt,
       boxesWithUnknownFootage: data.boxesWithUnknownFootage,
     })
