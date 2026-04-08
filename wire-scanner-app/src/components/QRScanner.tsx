@@ -1,16 +1,57 @@
 import { useEffect, useRef, useState } from 'react'
 import { Html5Qrcode, Html5QrcodeCameraScanConfig, Html5QrcodeSupportedFormats } from 'html5-qrcode'
+import { ensureHtml5QrcodeRobustLiveDecode } from '../html5QrcodeRobustPatch'
 import './QRScanner.css'
+
+ensureHtml5QrcodeRobustLiveDecode()
 
 interface QRScannerProps {
   onScan: (value: string) => void
   onClose: () => void
 }
 
+function createQrBarcodeDetector(): BarcodeDetector | null {
+  if (typeof BarcodeDetector === 'undefined') return null
+  try {
+    return new BarcodeDetector({ formats: ['qr_code'] })
+  } catch {
+    return null
+  }
+}
+
 export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scannerRef = useRef<Html5Qrcode | null>(null)
+  const scanDoneRef = useRef(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
+
+  useEffect(() => {
+    scanDoneRef.current = false
+  }, [])
+
+  useEffect(() => {
+    const detector = createQrBarcodeDetector()
+    if (!detector || cameraError) return
+
+    const tick = () => {
+      if (scanDoneRef.current) return
+      const video = containerRef.current?.querySelector('video')
+      if (!(video instanceof HTMLVideoElement) || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return
+      }
+      detector.detect(video).then((codes) => {
+        if (scanDoneRef.current || !codes?.length) return
+        const raw = codes[0].rawValue
+        if (raw) {
+          scanDoneRef.current = true
+          onScan(raw.trim())
+        }
+      })
+    }
+
+    const id = window.setInterval(tick, 28)
+    return () => window.clearInterval(id)
+  }, [cameraError, onScan])
 
   useEffect(() => {
     const container = containerRef.current
@@ -23,13 +64,17 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     })
     scannerRef.current = scanner
 
-    const onSuccess = (decodedText: string) => onScan(decodedText.trim())
+    const onSuccess = (decodedText: string) => {
+      if (scanDoneRef.current) return
+      scanDoneRef.current = true
+      onScan(decodedText.trim())
+    }
     const onError = () => {}
 
     // No `qrbox`: decode the full camera preview (same idea as the system Camera app),
     // while a separate CSS reticle shows a square aiming guide only.
     const buildConfig = (videoConstraints?: MediaTrackConstraints): Html5QrcodeCameraScanConfig => ({
-      fps: 20,
+      fps: 24,
       ...(videoConstraints ? { videoConstraints } : {}),
     })
 
@@ -81,8 +126,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         <div className="qr-scanner-header-text">
           <h3>Scan wire box QR code</h3>
           <p className="qr-scanner-hint">
-            Like your built-in camera, the whole view is scanned. Center the QR in the square for best
-            results.
+            The full preview is scanned. Hold steady; sharpie or handwriting next to the code may need an
+            extra moment.
           </p>
         </div>
         <button type="button" className="qr-scanner-close" onClick={onClose}>
