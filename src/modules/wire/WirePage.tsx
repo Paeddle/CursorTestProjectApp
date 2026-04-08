@@ -275,7 +275,6 @@ export function WirePage() {
       <div className="wire-page">
         <header className="wire-header">
           <h1>Wire Tracker</h1>
-          <p className="wire-subtitle">Wire box scans from the wire scanner app</p>
         </header>
         <div className="wire-setup">
           <p>Configure Supabase in your <code>.env</code> and run <code>supabase/add-wire-box-scans.sql</code>.</p>
@@ -288,7 +287,6 @@ export function WirePage() {
     <div className="wire-page">
       <header className="wire-header">
         <h1>Wire Tracker</h1>
-        <p className="wire-subtitle">Wire box scans from the wire scanner app</p>
       </header>
 
       <section className="wire-report-section" aria-labelledby="wire-report-heading">
