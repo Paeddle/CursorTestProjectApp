@@ -16,7 +16,7 @@ function Sidebar({ activePage, onNavigate }: SidebarProps) {
     { id: 'tracking', label: 'Order Tracking', icon: '📦' },
     { id: 'order-history', label: 'Order History', icon: '📋' },
     { id: 'po-info', label: 'PO Info', icon: '📥' },
-    { id: 'wire', label: 'Wire', icon: '🔌' },
+    { id: 'wire', label: 'Wire Tracker', icon: '🔌' },
     { id: 'purchase-list', label: 'Purchase List', icon: '📑' },
     { id: 'analytics', label: 'Analytics', icon: '📊' },
   ]
@@ -31,7 +31,7 @@ function Sidebar({ activePage, onNavigate }: SidebarProps) {
   return (
     <nav className={`sidebar${isWireOnlyLayout ? ' sidebar-wire-only' : ''}`} aria-label="Main navigation">
       <div className="sidebar-header">
-        <h2 className="sidebar-logo">{isWireOnlyLayout ? 'Wire' : 'Order Tracker'}</h2>
+        <h2 className="sidebar-logo">{isWireOnlyLayout ? 'Wire Tracker' : 'Order Tracker'}</h2>
       </div>
       {!isWireOnlyLayout && (
         <ul className="sidebar-menu">
