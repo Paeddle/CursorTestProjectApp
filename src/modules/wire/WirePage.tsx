@@ -11,7 +11,6 @@ import {
   wireTypeIdToLabel,
   type WireReportRow,
 } from './wireReport'
-import { buildStickerSheetCsv, STICKER_BOX_INDEX_END, STICKER_BOX_INDEX_START } from './wireStickerSheet'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -192,15 +191,6 @@ export function WirePage() {
     downloadTextFile(`wire-materials-${safeReportFileStem()}.html`, html, 'text/html;charset=utf-8')
   }
 
-  const handleDownloadStickerSheet = () => {
-    const csv = buildStickerSheetCsv(allScans)
-    downloadTextFile(
-      `wire-box-stickers-BOX_${String(STICKER_BOX_INDEX_START).padStart(4, '0')}-BOX_${String(STICKER_BOX_INDEX_END).padStart(4, '0')}.csv`,
-      csv,
-      'text/csv;charset=utf-8',
-    )
-  }
-
   const deleteBox = async (boxId: string, scanCount: number) => {
     if (
       !window.confirm(
@@ -342,30 +332,6 @@ export function WirePage() {
             </table>
           </div>
         )}
-      </section>
-
-      <section className="wire-report-section" aria-labelledby="wire-sticker-heading">
-        <h2 id="wire-sticker-heading" className="wire-report-title">
-          Sticker printer sheet
-        </h2>
-        <p className="wire-report-hint">
-          Download a CSV with <strong>BOX_ID</strong> from BOX_
-          {String(STICKER_BOX_INDEX_START).padStart(4, '0')} through BOX_
-          {String(STICKER_BOX_INDEX_END).padStart(4, '0')} ({STICKER_BOX_INDEX_END - STICKER_BOX_INDEX_START + 1}{' '}
-          rows), plus <strong>WIRE_TYPE</strong> and <strong>DEFAULT_WIRE_FT</strong> filled from this app when a
-          box&apos;s scans include a wire type. Use the same BOX_nnnn format in the wire scanner so rows match.
-          Empty cells mean no wire profile is stored yet for that number.
-        </p>
-        <div className="wire-report-toolbar">
-          <button
-            type="button"
-            className="wire-report-primary"
-            disabled={loading}
-            onClick={handleDownloadStickerSheet}
-          >
-            Download sticker CSV
-          </button>
-        </div>
       </section>
 
       <div className="wire-controls">

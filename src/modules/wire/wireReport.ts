@@ -107,44 +107,12 @@ export interface WireReportRow {
   notes: string
 }
 
-/** Catalog default reel length (ft) per wire type preset id (matches wire scanner presets). */
-const WIRE_TYPE_DEFAULT_FT: Record<string, number> = {
-  'rg6-quad-shield': 1000,
-  'cat6-550mhz-blue': 1000,
-  'cat6-550mhz-gray': 1000,
-  'cat6-550mhz-white': 1000,
-  'cat6-550mhz-black': 1000,
-  'cat6a-slim': 1000,
-  cat7: 1000,
-  cat8: 1000,
-  'lutron-green': 500,
-  'lutron-qs-m': 500,
-  '18-4cs-security-wire': 500,
-  '18-2cs-security-wire': 500,
-  '22-4-stranded-security-wire': 500,
-  '22-2-stranded-security-wire': 500,
-  '16-2fx-db-speaker-wire': 500,
-  '16-4fx-db-speaker-wire': 500,
-  '14-2fx-db-speaker-wire': 500,
-  '14-4fx-db-speaker-wire': 500,
-  '12-2fx-db-speaker-wire': 500,
-  '12-4fx-db-speaker-wire': 500,
-}
-
 /** Display label for a scanner `wire_type` preset id (falls back to spaced id). */
 export function wireTypeIdToLabel(id: string | null | undefined): string {
   const t = String(id ?? '').trim()
   if (!t) return '—'
   const row = ROUGH_IN_WIRE_REPORT_ROWS.find((r) => r.wireTypeIds?.includes(t))
   return row?.label ?? t.replace(/-/g, ' ')
-}
-
-/** Default footage (ft) for a preset id; empty string if unknown. */
-export function wireTypeIdToDefaultFt(id: string | null | undefined): string {
-  const t = String(id ?? '').trim()
-  if (!t) return ''
-  const n = WIRE_TYPE_DEFAULT_FT[t]
-  return n !== undefined ? String(n) : ''
 }
 
 export function parseFootage(raw: string): number | null {
