@@ -62,24 +62,56 @@
   color: #94a3b8;
 }
 
-.qr-scanner-reader {
+/* Fills space under header; library measures video vs. this region. */
+.qr-scanner-stage {
   flex: 1;
-  min-height: 200px;
+  min-height: 0;
   position: relative;
+  background: #000;
+}
+
+.qr-scanner-reader {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 #qr-reader {
   width: 100%;
-  min-height: 280px;
+  height: 100%;
 }
 
 #qr-reader__scan_region {
+  width: 100%;
+  height: 100%;
   background: #000;
 }
 
-#qr-reader__scan_region video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain;
-  background: #000;
+/*
+ * Important: do not set object-fit or force both width+height on `video`.
+ * html5-qrcode maps qrRegion using videoWidth/clientWidth; letterboxing breaks alignment.
+ */
+
+/* Square aiming guide only — decoding uses the full frame (phone Camera–style). */
+.qr-scanner-reticle {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-scanner-reticle-square {
+  box-sizing: border-box;
+  width: min(76vmin, 100%);
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100% - 1.5rem);
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border-radius: 18px;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
 }

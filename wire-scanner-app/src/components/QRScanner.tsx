@@ -7,13 +7,6 @@ interface QRScannerProps {
   onClose: () => void
 }
 
-/** Scan region size: tighter crop keeps nearby text/logos out of the bitmap sent to the decoder. */
-function computeQrBoxSize(viewfinderWidth: number, viewfinderHeight: number) {
-  const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-  const size = Math.round(Math.min(300, Math.max(160, minEdge * 0.55)))
-  return { width: size, height: size }
-}
-
 export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scannerRef = useRef<Html5Qrcode | null>(null)
@@ -33,9 +26,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     const onSuccess = (decodedText: string) => onScan(decodedText.trim())
     const onError = () => {}
 
+    // No `qrbox`: decode the full camera preview (same idea as the system Camera app),
+    // while a separate CSS reticle shows a square aiming guide only.
     const buildConfig = (videoConstraints?: MediaTrackConstraints): Html5QrcodeCameraScanConfig => ({
-      fps: 15,
-      qrbox: computeQrBoxSize,
+      fps: 20,
       ...(videoConstraints ? { videoConstraints } : {}),
     })
 
@@ -87,8 +81,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         <div className="qr-scanner-header-text">
           <h3>Scan wire box QR code</h3>
           <p className="qr-scanner-hint">
-            Fill the square with only the QR code. If the label has text around it, move closer so the extra
-            printing stays outside the frame.
+            Like your built-in camera, the whole view is scanned. Center the QR in the square for best
+            results.
           </p>
         </div>
         <button type="button" className="qr-scanner-close" onClick={onClose}>
@@ -101,7 +95,12 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           <p className="qr-scanner-error-hint">Allow camera in browser settings and reload.</p>
         </div>
       ) : (
-        <div id="qr-reader" ref={containerRef} className="qr-scanner-reader" />
+        <div className="qr-scanner-stage">
+          <div id="qr-reader" ref={containerRef} className="qr-scanner-reader" />
+          <div className="qr-scanner-reticle" aria-hidden>
+            <div className="qr-scanner-reticle-square" />
+          </div>
+        </div>
       )}
     </div>
   )
