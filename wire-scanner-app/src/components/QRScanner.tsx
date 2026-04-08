@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { Html5Qrcode, Html5QrcodeCameraScanConfig, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { ensureHtml5QrcodeRobustLiveDecode } from '../html5QrcodeRobustPatch'
 import './QRScanner.css'
@@ -19,6 +19,92 @@ function createQrBarcodeDetector(): BarcodeDetector | null {
   }
 }
 
+type VideoFrameVideo = HTMLVideoElement & {
+  requestVideoFrameCallback: (callback: () => void) => number
+  cancelVideoFrameCallback: (handle: number) => void
+}
+
+function supportsRequestVideoFrameCallback(v: HTMLVideoElement): v is VideoFrameVideo {
+  return (
+    typeof (v as VideoFrameVideo).requestVideoFrameCallback === 'function' &&
+    typeof (v as VideoFrameVideo).cancelVideoFrameCallback === 'function'
+  )
+}
+
+/** Runs BarcodeDetector on (almost) every camera frame — better than a fixed timer when the hand drifts. */
+function startPerFrameVideoQrDetect(opts: {
+  getContainer: () => HTMLElement | null
+  detector: BarcodeDetector
+  scanDoneRef: MutableRefObject<boolean>
+  onFound: (text: string) => void
+}): () => void {
+  let cancelled = false
+  let rvfHandle: number | undefined
+  let intervalId = 0
+
+  const { getContainer, detector, scanDoneRef, onFound } = opts
+
+  const runDetect = (video: HTMLVideoElement) => {
+    if (scanDoneRef.current || cancelled) return
+    detector.detect(video).then((codes) => {
+      if (cancelled || scanDoneRef.current || !codes?.length) return
+      const raw = codes[0]?.rawValue
+      if (raw) {
+        scanDoneRef.current = true
+        onFound(raw.trim())
+      }
+    })
+  }
+
+  const pollFallback = () => {
+    if (cancelled || scanDoneRef.current) return
+    const video = getContainer()?.querySelector('video')
+    if (video instanceof HTMLVideoElement && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      runDetect(video)
+    }
+    intervalId = window.setTimeout(pollFallback, 14)
+  }
+
+  const scheduleNext = () => {
+    if (cancelled || scanDoneRef.current) return
+    const video = getContainer()?.querySelector('video')
+    if (!(video instanceof HTMLVideoElement)) {
+      requestAnimationFrame(scheduleNext)
+      return
+    }
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      requestAnimationFrame(scheduleNext)
+      return
+    }
+
+    if (supportsRequestVideoFrameCallback(video)) {
+      rvfHandle = video.requestVideoFrameCallback(() => {
+        if (!cancelled && !scanDoneRef.current) {
+          runDetect(video)
+          scheduleNext()
+        }
+      })
+    } else {
+      pollFallback()
+    }
+  }
+
+  scheduleNext()
+
+  return () => {
+    cancelled = true
+    window.clearTimeout(intervalId)
+    const video = getContainer()?.querySelector('video')
+    if (video != null && supportsRequestVideoFrameCallback(video) && rvfHandle != null) {
+      try {
+        video.cancelVideoFrameCallback(rvfHandle)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
 export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scannerRef = useRef<Html5Qrcode | null>(null)
@@ -33,24 +119,12 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     const detector = createQrBarcodeDetector()
     if (!detector || cameraError) return
 
-    const tick = () => {
-      if (scanDoneRef.current) return
-      const video = containerRef.current?.querySelector('video')
-      if (!(video instanceof HTMLVideoElement) || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        return
-      }
-      detector.detect(video).then((codes) => {
-        if (scanDoneRef.current || !codes?.length) return
-        const raw = codes[0].rawValue
-        if (raw) {
-          scanDoneRef.current = true
-          onScan(raw.trim())
-        }
-      })
-    }
-
-    const id = window.setInterval(tick, 28)
-    return () => window.clearInterval(id)
+    return startPerFrameVideoQrDetect({
+      getContainer: () => containerRef.current,
+      detector,
+      scanDoneRef,
+      onFound: onScan,
+    })
   }, [cameraError, onScan])
 
   useEffect(() => {
@@ -74,7 +148,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     // No `qrbox`: decode the full camera preview (same idea as the system Camera app),
     // while a separate CSS reticle shows a square aiming guide only.
     const buildConfig = (videoConstraints?: MediaTrackConstraints): Html5QrcodeCameraScanConfig => ({
-      fps: 24,
+      fps: 30,
       ...(videoConstraints ? { videoConstraints } : {}),
     })
 
@@ -95,6 +169,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           deviceId: { exact: cameraId },
           width: { ideal: 1920 },
           height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
         })
 
         return scanner.start(cameraId, tryHighRes, onSuccess, onError).catch((firstErr: unknown) => {
@@ -126,8 +201,8 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         <div className="qr-scanner-header-text">
           <h3>Scan wire box QR code</h3>
           <p className="qr-scanner-hint">
-            The full preview is scanned. Hold steady; sharpie or handwriting next to the code may need an
-            extra moment.
+            Small movements are OK: we read on each camera frame when supported, and ask the camera for 30
+            fps when possible. Marks next to the QR can still slow decoding.
           </p>
         </div>
         <button type="button" className="qr-scanner-close" onClick={onClose}>
