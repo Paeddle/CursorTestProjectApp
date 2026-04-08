@@ -9,6 +9,7 @@ import {
   reportRowsToHtmlDocument,
   uniqueJobNamesFromScans,
   wireTypeIdToLabel,
+  wireTypeIdToDefaultFt,
   type WireReportRow,
 } from './wireReport'
 import './WirePage.css'
@@ -67,13 +68,27 @@ function formatWireTypeDisplay(scan: WireBoxScan): string {
 }
 
 /** Newest-first scans: first row with wire type or label wins (box profile). */
-function boxHeaderWireType(scans: WireBoxScan[]): string {
+function boxHeaderProfileScan(scans: WireBoxScan[]): WireBoxScan | undefined {
   for (const scan of scans) {
     const label = (scan.wire_type_label || '').trim()
     const wt = String(scan.wire_type ?? '').trim()
-    if (label || wt) return formatWireTypeDisplay(scan)
+    if (label || wt) return scan
   }
-  return '—'
+  return undefined
+}
+
+function boxHeaderWireType(scans: WireBoxScan[]): string {
+  const s = boxHeaderProfileScan(scans)
+  return s ? formatWireTypeDisplay(s) : '—'
+}
+
+function boxHeaderDefaultWireDisplay(scans: WireBoxScan[]): string {
+  const s = boxHeaderProfileScan(scans)
+  if (!s) return '—'
+  const raw = (s.wire_type_default_ft || '').trim()
+  if (raw) return /ft\.?/i.test(raw) ? raw : `${raw} ft`
+  const fromId = wireTypeIdToDefaultFt(s.wire_type)
+  return fromId ? `${fromId} ft` : '—'
 }
 
 async function fetchAllScans(): Promise<WireBoxScan[]> {
@@ -257,6 +272,10 @@ export function WirePage() {
   if (!isConfigured()) {
     return (
       <div className="wire-page">
+        <header className="wire-header">
+          <h1>Wire Tracker</h1>
+          <p className="wire-subtitle">Wire box scans from the wire scanner app</p>
+        </header>
         <div className="wire-setup">
           <p>Configure Supabase in your <code>.env</code> and run <code>supabase/add-wire-box-scans.sql</code>.</p>
         </div>
@@ -266,6 +285,11 @@ export function WirePage() {
 
   return (
     <div className="wire-page">
+      <header className="wire-header">
+        <h1>Wire Tracker</h1>
+        <p className="wire-subtitle">Wire box scans from the wire scanner app</p>
+      </header>
+
       <section className="wire-report-section" aria-labelledby="wire-report-heading">
         <h2 id="wire-report-heading" className="wire-report-title">
           Materials used report
@@ -382,6 +406,8 @@ export function WirePage() {
             const key = summary.box_id.toLowerCase()
             const isExpanded = expandedBox.has(key)
             const headerWire = boxHeaderWireType(summary.scans)
+            const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
+            const nScans = summary.scans.length
             return (
               <div key={key} className="wire-card">
                 <div className="wire-card-header-row">
@@ -390,10 +416,20 @@ export function WirePage() {
                     className="wire-card-header"
                     onClick={() => toggleExpanded(summary.box_id)}
                     aria-expanded={isExpanded}
-                    aria-label={`${summary.box_id}, ${summary.scans.length} scan${summary.scans.length !== 1 ? 's' : ''}`}
+                    aria-label={`${summary.box_id}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
                   >
                     <span className="wire-card-title-block">
-                      <span className="wire-card-wire-type wire-card-wire-type-header">{headerWire}</span>
+                      <span className="wire-card-title">{summary.box_id}</span>
+                      <span className="wire-card-meta">
+                        <span className="wire-card-wire-type">{headerWire}</span>
+                        <span className="wire-card-meta-sep" aria-hidden>
+                          {' · '}
+                        </span>
+                        <span className="wire-card-default-cap">Default {headerDefault}</span>
+                      </span>
+                    </span>
+                    <span className="wire-card-badge">
+                      {nScans} scan{nScans !== 1 ? 's' : ''}
                     </span>
                     <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                   </button>

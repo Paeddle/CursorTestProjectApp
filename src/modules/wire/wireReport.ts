@@ -115,6 +115,38 @@ export function wireTypeIdToLabel(id: string | null | undefined): string {
   return row?.label ?? t.replace(/-/g, ' ')
 }
 
+/** Catalog full-spool ft per preset id (keep aligned with wire-scanner-app `wireTypePresets.ts`). */
+const WIRE_TYPE_DEFAULT_FT: Record<string, number> = {
+  'rg6-quad-shield': 500,
+  'cat6-550mhz-blue': 1000,
+  'cat6-550mhz-gray': 1000,
+  'cat6-550mhz-white': 1000,
+  'cat6-550mhz-black': 1000,
+  'cat6a-slim': 1000,
+  cat7: 1000,
+  cat8: 1000,
+  'lutron-green': 1000,
+  'lutron-qs-m': 1000,
+  '18-4cs-security-wire': 500,
+  '18-2cs-security-wire': 500,
+  '22-4-stranded-security-wire': 1000,
+  '22-2-stranded-security-wire': 1000,
+  '16-2fx-db-speaker-wire': 500,
+  '16-4fx-db-speaker-wire': 500,
+  '14-2fx-db-speaker-wire': 500,
+  '14-4fx-db-speaker-wire': 500,
+  '12-2fx-db-speaker-wire': 500,
+  '12-4fx-db-speaker-wire': 500,
+}
+
+/** Default reel length (ft) as string, or empty if unknown. */
+export function wireTypeIdToDefaultFt(id: string | null | undefined): string {
+  const t = String(id ?? '').trim()
+  if (!t) return ''
+  const n = WIRE_TYPE_DEFAULT_FT[t]
+  return n !== undefined ? String(n) : ''
+}
+
 export function parseFootage(raw: string): number | null {
   const s = String(raw ?? '')
     .replace(/,/g, '')
