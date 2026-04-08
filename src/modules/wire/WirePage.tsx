@@ -38,12 +38,9 @@ function formatCheckType(raw: string | undefined): string {
 }
 
 function formatFootageCell(scan: WireBoxScan): string {
-  const capRaw = scan.spool_capacity_ft
-  if (!capRaw) return scan.current_footage
   const cur = parseFootage(scan.current_footage)
-  const cap = parseFootage(capRaw)
-  if (cur === null || cap === null) return scan.current_footage
-  return `${cur} / ${cap} ft`
+  if (cur !== null) return `${cur} ft`
+  return (scan.current_footage || '').trim() || '—'
 }
 
 function formatWireTypeDisplay(scan: WireBoxScan): string {
@@ -436,7 +433,7 @@ export function WirePage() {
                         <tr>
                           <th>Type</th>
                           <th>Job name</th>
-                          <th>Footage (left / spool)</th>
+                          <th>Footage left</th>
                           <th>Wire type</th>
                           <th>Scanned at</th>
                           <th className="wire-actions-col"> </th>
