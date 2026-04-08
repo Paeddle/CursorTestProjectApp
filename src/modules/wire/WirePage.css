@@ -403,6 +403,27 @@
   word-break: break-word;
 }
 
+.wire-inventory-ft-cell {
+  white-space: nowrap;
+}
+
+.wire-inventory-ft-gap {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.wire-inventory-tfoot td {
+  border-top: 2px solid #475569;
+  background: #0f172a;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.wire-inventory-tfoot td:first-child {
+  color: #cbd5e1;
+}
+
 .wire-report-title {
   font-size: 1.15rem;
   font-weight: 700;

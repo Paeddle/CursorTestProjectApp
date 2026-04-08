@@ -454,21 +454,46 @@ export interface WireInventoryRow {
   wireType: string
   boxCount: number
   boxIds: string[]
+  /** Sum of `current_footage` on each box’s newest scan (latest check-in state). */
+  totalRemainingFt: number
+  /** Boxes where footage couldn’t be parsed (omitted from the sum). */
+  boxesWithUnknownFootage: number
+}
+
+export function formatInventoryFtDisplay(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '')
 }
 
 /** One row per wire type: boxes currently checked in (latest scan is not check-out). */
 export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInventoryRow[] {
-  const map = new Map<string, string[]>()
+  const map = new Map<
+    string,
+    { boxIds: string[]; totalRemainingFt: number; boxesWithUnknownFootage: number }
+  >()
   for (const summary of summaries) {
     if (!isBoxInInventory(summary.scans)) continue
+    const latest = newestScanInBox(summary.scans)
+    if (!latest) continue
     const wire = boxWireTypeDisplayLabel(summary.scans)
-    if (!map.has(wire)) map.set(wire, [])
-    map.get(wire)!.push(summary.box_id)
+    if (!map.has(wire)) {
+      map.set(wire, { boxIds: [], totalRemainingFt: 0, boxesWithUnknownFootage: 0 })
+    }
+    const entry = map.get(wire)!
+    entry.boxIds.push(summary.box_id)
+    const ft = parseFootage(latest.current_footage)
+    if (ft === null) entry.boxesWithUnknownFootage += 1
+    else entry.totalRemainingFt += ft
   }
   const rows: WireInventoryRow[] = []
-  for (const [wireType, boxIds] of map) {
-    boxIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-    rows.push({ wireType, boxCount: boxIds.length, boxIds })
+  for (const [wireType, data] of map) {
+    data.boxIds.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    rows.push({
+      wireType,
+      boxCount: data.boxIds.length,
+      boxIds: data.boxIds,
+      totalRemainingFt: data.totalRemainingFt,
+      boxesWithUnknownFootage: data.boxesWithUnknownFootage,
+    })
   }
   rows.sort((a, b) => a.wireType.localeCompare(b.wireType, undefined, { sensitivity: 'base' }))
   return rows

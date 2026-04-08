@@ -5,6 +5,7 @@ import {
   buildWireInventoryRows,
   buildWireMaterialsReport,
   downloadTextFile,
+  formatInventoryFtDisplay,
   parseFootage,
   reportRowsToCsv,
   reportRowsToHtmlDocument,
@@ -133,6 +134,18 @@ export function WirePage() {
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
 
   const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
+
+  const inventoryTotals = useMemo(() => {
+    let boxes = 0
+    let totalFt = 0
+    let unknownFtBoxes = 0
+    for (const r of inventoryRows) {
+      boxes += r.boxCount
+      totalFt += r.totalRemainingFt
+      unknownFtBoxes += r.boxesWithUnknownFootage
+    }
+    return { boxes, totalFt, unknownFtBoxes }
+  }, [inventoryRows])
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
@@ -376,8 +389,9 @@ export function WirePage() {
           Wire inventory
         </h2>
         <p className="wire-inventory-hint">
-          Box counts by wire type for spools whose <strong>latest scan is a check-in</strong> (not
-          currently checked out on a job).
+          For each wire type, <strong>Boxes</strong> are spools whose latest scan is a check-in.{' '}
+          <strong>Sum remaining (ft)</strong> adds the footage left on each of those spools from that
+          newest scan (remaining length on the reel).
         </p>
         {loading ? (
           <div className="wire-inventory-loading">Loading inventory…</div>
@@ -390,6 +404,7 @@ export function WirePage() {
                 <tr>
                   <th>Wire type</th>
                   <th className="wire-inventory-num">Boxes</th>
+                  <th className="wire-inventory-num">Sum remaining (ft)</th>
                   <th>Box IDs</th>
                 </tr>
               </thead>
@@ -398,10 +413,47 @@ export function WirePage() {
                   <tr key={row.wireType}>
                     <td>{row.wireType}</td>
                     <td className="wire-inventory-num">{row.boxCount}</td>
+                    <td className="wire-inventory-num wire-inventory-ft-cell">
+                      {row.boxesWithUnknownFootage === row.boxCount ? (
+                        '—'
+                      ) : (
+                        <>
+                          {formatInventoryFtDisplay(row.totalRemainingFt)} ft
+                          {row.boxesWithUnknownFootage > 0 ? (
+                            <span className="wire-inventory-ft-gap" title="Footage missing on latest scan">
+                              {' '}
+                              (+{row.boxesWithUnknownFootage} no ft)
+                            </span>
+                          ) : null}
+                        </>
+                      )}
+                    </td>
                     <td className="wire-inventory-box-ids">{row.boxIds.join(', ')}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="wire-inventory-tfoot">
+                  <td>Total</td>
+                  <td className="wire-inventory-num">{inventoryTotals.boxes}</td>
+                  <td className="wire-inventory-num">
+                    {inventoryTotals.unknownFtBoxes === inventoryTotals.boxes ? (
+                      '—'
+                    ) : (
+                      <>
+                        {formatInventoryFtDisplay(inventoryTotals.totalFt)} ft
+                        {inventoryTotals.unknownFtBoxes > 0 ? (
+                          <span className="wire-inventory-ft-gap" title="Some boxes omitted from sum">
+                            {' '}
+                            (+{inventoryTotals.unknownFtBoxes} no ft)
+                          </span>
+                        ) : null}
+                      </>
+                    )}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
