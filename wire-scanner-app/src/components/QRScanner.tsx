@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeCameraScanConfig, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import './QRScanner.css'
 
 interface QRScannerProps {
   onScan: (value: string) => void
   onClose: () => void
+}
+
+/** Scan region size: tighter crop keeps nearby text/logos out of the bitmap sent to the decoder. */
+function computeQrBoxSize(viewfinderWidth: number, viewfinderHeight: number) {
+  const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+  const size = Math.round(Math.min(300, Math.max(160, minEdge * 0.55)))
+  return { width: size, height: size }
 }
 
 export default function QRScanner({ onScan, onClose }: QRScannerProps) {
@@ -17,20 +24,20 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     if (!container) return
 
     setCameraError(null)
-    const scanner = new Html5Qrcode(container.id)
+    const scanner = new Html5Qrcode(container.id, {
+      verbose: false,
+      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+    })
     scannerRef.current = scanner
 
-    const config = {
-      fps: 10,
-      qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-        const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-        const size = Math.min(260, minEdge * 0.85)
-        return { width: size, height: size }
-      },
-      aspectRatio: 1,
-    }
     const onSuccess = (decodedText: string) => onScan(decodedText.trim())
     const onError = () => {}
+
+    const buildConfig = (videoConstraints?: MediaTrackConstraints): Html5QrcodeCameraScanConfig => ({
+      fps: 15,
+      qrbox: computeQrBoxSize,
+      ...(videoConstraints ? { videoConstraints } : {}),
+    })
 
     Html5Qrcode.getCameras()
       .then((cameras) => {
@@ -44,7 +51,18 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
             (c as { facingMode?: string }).facingMode === 'environment'
         )
         const cameraId = back?.id ?? cameras[0].id
-        return scanner.start(cameraId, config, onSuccess, onError)
+
+        const tryHighRes = buildConfig({
+          deviceId: { exact: cameraId },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        })
+
+        return scanner.start(cameraId, tryHighRes, onSuccess, onError).catch((firstErr: unknown) => {
+          console.warn('Camera start with high-res constraints failed, retrying with defaults:', firstErr)
+          scanner.clear()
+          return scanner.start(cameraId, buildConfig(), onSuccess, onError)
+        })
       })
       .catch((err: unknown) => {
         console.error('Camera start failed:', err)
@@ -66,7 +84,13 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   return (
     <div className="qr-scanner-overlay">
       <div className="qr-scanner-header">
-        <h3>Scan wire box QR code</h3>
+        <div className="qr-scanner-header-text">
+          <h3>Scan wire box QR code</h3>
+          <p className="qr-scanner-hint">
+            Fill the square with only the QR code. If the label has text around it, move closer so the extra
+            printing stays outside the frame.
+          </p>
+        </div>
         <button type="button" className="qr-scanner-close" onClick={onClose}>
           Close
         </button>
