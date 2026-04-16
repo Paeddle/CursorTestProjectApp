@@ -132,6 +132,7 @@ export function WirePage() {
   const [reportJob, setReportJob] = useState('')
   const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
   const [pdfWorking, setPdfWorking] = useState(false)
+  const [countEmptyBoxes, setCountEmptyBoxes] = useState(false)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
 
@@ -170,6 +171,17 @@ export function WirePage() {
       setReportRows(null)
     }
   }, [jobOptions, reportJob])
+
+  useEffect(() => {
+    if (!reportJob.trim()) return
+    setReportRows((prev) =>
+      prev === null
+        ? null
+        : buildWireMaterialsReport(reportJob.trim(), allScans, {
+            countEmptyTossedBoxes: countEmptyBoxes,
+          })
+    )
+  }, [countEmptyBoxes, allScans, reportJob])
 
   const filtered = searchBox.trim()
     ? summaries.filter((s) =>
@@ -223,7 +235,11 @@ export function WirePage() {
 
   const handleCreateReport = () => {
     if (!reportJob.trim()) return
-    setReportRows(buildWireMaterialsReport(reportJob.trim(), allScans))
+    setReportRows(
+      buildWireMaterialsReport(reportJob.trim(), allScans, {
+        countEmptyTossedBoxes: countEmptyBoxes,
+      })
+    )
   }
 
   const safeReportFileStem = () =>
@@ -312,58 +328,76 @@ export function WirePage() {
         <h2 id="wire-report-heading" className="wire-report-title">
           Materials used report
         </h2>
+        <p className="wire-report-hint">
+          <strong>Count empty boxes</strong> (toggle): spools whose <em>latest scan</em> is still a
+          check-out on the selected job are treated as tossed empty—end footage is set to 0 and used equals
+          the last check-out reading.
+        </p>
         <div className="wire-report-toolbar">
-          <label className="wire-report-job-label">
-            <span>Job</span>
-            <select
-              className="wire-report-select"
-              value={reportJob}
-              onChange={(e) => {
-                setReportJob(e.target.value)
-                setReportRows(null)
-              }}
-              disabled={loading || jobOptions.length === 0}
+          <div className="wire-report-toolbar-main">
+            <label className="wire-report-job-label">
+              <span>Job</span>
+              <select
+                className="wire-report-select"
+                value={reportJob}
+                onChange={(e) => {
+                  setReportJob(e.target.value)
+                  setReportRows(null)
+                }}
+                disabled={loading || jobOptions.length === 0}
+              >
+                <option value="">Select a job…</option>
+                {jobOptions.map((j) => (
+                  <option key={j} value={j}>
+                    {j}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="wire-report-primary"
+              disabled={!reportJob.trim() || loading}
+              onClick={handleCreateReport}
             >
-              <option value="">Select a job…</option>
-              {jobOptions.map((j) => (
-                <option key={j} value={j}>
-                  {j}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="wire-report-primary"
-            disabled={!reportJob.trim() || loading}
-            onClick={handleCreateReport}
-          >
-            Create report
-          </button>
-          <button
-            type="button"
-            className="wire-report-secondary"
-            disabled={!reportRows}
-            onClick={handleDownloadCsv}
-          >
-            Download CSV
-          </button>
-          <button
-            type="button"
-            className="wire-report-secondary"
-            disabled={!reportRows}
-            onClick={handleDownloadHtml}
-          >
-            Download HTML
-          </button>
-          <button
-            type="button"
-            className="wire-report-secondary"
-            disabled={!reportRows || pdfWorking}
-            onClick={() => void handleDownloadPdf()}
-          >
-            {pdfWorking ? 'Preparing PDF…' : 'Download PDF'}
-          </button>
+              Create report
+            </button>
+            <button
+              type="button"
+              className={countEmptyBoxes ? 'wire-report-primary' : 'wire-report-secondary'}
+              disabled={loading}
+              aria-pressed={countEmptyBoxes}
+              onClick={() => setCountEmptyBoxes((v) => !v)}
+            >
+              Count empty boxes
+            </button>
+          </div>
+          <div className="wire-report-toolbar-downloads">
+            <button
+              type="button"
+              className="wire-report-secondary"
+              disabled={!reportRows}
+              onClick={handleDownloadCsv}
+            >
+              Download CSV
+            </button>
+            <button
+              type="button"
+              className="wire-report-secondary"
+              disabled={!reportRows}
+              onClick={handleDownloadHtml}
+            >
+              Download HTML
+            </button>
+            <button
+              type="button"
+              className="wire-report-secondary"
+              disabled={!reportRows || pdfWorking}
+              onClick={() => void handleDownloadPdf()}
+            >
+              {pdfWorking ? 'Preparing PDF…' : 'Download PDF'}
+            </button>
+          </div>
         </div>
         {reportRows && (
           <div className="wire-report-preview">

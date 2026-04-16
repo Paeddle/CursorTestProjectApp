@@ -200,6 +200,60 @@ function scansForJob(scans: WireBoxScan[], jobName: string): WireBoxScan[] {
   return scans.filter((s) => (s.job_name || '').trim().toLowerCase() === want)
 }
 
+function jobNameMatchesReport(scan: WireBoxScan, jobName: string): boolean {
+  return (scan.job_name || '').trim().toLowerCase() === jobName.trim().toLowerCase()
+}
+
+function scansForBoxId(allScans: WireBoxScan[], boxId: string): WireBoxScan[] {
+  const key = boxId.trim().toLowerCase()
+  return allScans.filter((s) => (s.box_id || '').trim().toLowerCase() === key)
+}
+
+/**
+ * Latest event for the box is still a check-out on this job (spool never checked back in).
+ * Treat as tossed empty when counting usage.
+ */
+export function isTossedEmptyAfterJobCheckout(boxAllScans: WireBoxScan[], jobName: string): boolean {
+  if (!boxAllScans.length) return false
+  const sorted = [...boxAllScans].sort(
+    (a, c) => new Date(a.scanned_at).getTime() - new Date(c.scanned_at).getTime()
+  )
+  const latest = sorted[sorted.length - 1]!
+  if (latest.check_type !== 'check_out') return false
+  return jobNameMatchesReport(latest, jobName)
+}
+
+/** Footage on last check-out row for this job; end = 0, used = start (all wire assumed used / tossed). */
+function usageForBoxTossedEmpty(jobScans: WireBoxScan[], jobName: string): {
+  startFt: number | null
+  endFt: number | null
+  usedFt: number | null
+  notes: string
+} {
+  const sortedJob = [...jobScans].sort(
+    (a, c) => new Date(a.scanned_at).getTime() - new Date(c.scanned_at).getTime()
+  )
+  const checkouts = sortedJob.filter((s) => s.check_type === 'check_out' && jobNameMatchesReport(s, jobName))
+  const ref =
+    checkouts.length > 0 ? checkouts[checkouts.length - 1]! : sortedJob[sortedJob.length - 1]!
+  const startFt = parseFootage(ref.current_footage)
+  const endFt = 0
+  if (startFt === null) {
+    return {
+      startFt: null,
+      endFt: 0,
+      usedFt: null,
+      notes: 'Assumed empty (tossed); could not read check-out footage.',
+    }
+  }
+  return {
+    startFt,
+    endFt,
+    usedFt: startFt,
+    notes: 'Assumed empty (tossed); end footage set to 0.',
+  }
+}
+
 function usageForBoxScans(boxScans: WireBoxScan[]): {
   startFt: number | null
   endFt: number | null
@@ -232,7 +286,17 @@ function usageForBoxScans(boxScans: WireBoxScan[]): {
   return { startFt, endFt, usedFt, notes }
 }
 
-export function buildWireMaterialsReport(jobName: string, allScans: WireBoxScan[]): WireReportRow[] {
+export type BuildWireMaterialsReportOptions = {
+  /** When true, boxes whose latest scan is still check-out on this job use end ft = 0 (tossed empty). */
+  countEmptyTossedBoxes?: boolean
+}
+
+export function buildWireMaterialsReport(
+  jobName: string,
+  allScans: WireBoxScan[],
+  options?: BuildWireMaterialsReportOptions
+): WireReportRow[] {
+  const countTossed = options?.countEmptyTossedBoxes === true
   const jobScans = scansForJob(allScans, jobName)
   const byBox = new Map<string, WireBoxScan[]>()
   for (const s of jobScans) {
@@ -241,6 +305,14 @@ export function buildWireMaterialsReport(jobName: string, allScans: WireBoxScan[
     const key = id.toLowerCase()
     if (!byBox.has(key)) byBox.set(key, [])
     byBox.get(key)!.push(s)
+  }
+
+  const usageForReportBox = (list: WireBoxScan[]) => {
+    const boxAll = scansForBoxId(allScans, list[0]!.box_id)
+    if (countTossed && isTossedEmptyAfterJobCheckout(boxAll, jobName)) {
+      return usageForBoxTossedEmpty(list, jobName)
+    }
+    return usageForBoxScans(list)
   }
 
   const assignedBoxes = new Set<string>()
@@ -271,7 +343,7 @@ export function buildWireMaterialsReport(jobName: string, allScans: WireBoxScan[
       assignedBoxes.add(key)
       const list = byBox.get(key)!
       const boxId = list[0]!.box_id
-      const { startFt, endFt, usedFt, notes } = usageForBoxScans(list)
+      const { startFt, endFt, usedFt, notes } = usageForReportBox(list)
       rows.push({
         wireType: tpl.label,
         boxId,
@@ -287,7 +359,7 @@ export function buildWireMaterialsReport(jobName: string, allScans: WireBoxScan[
   for (const [key, list] of byBox) {
     if (assignedBoxes.has(key)) continue
     const boxId = list[0]!.box_id
-    const { startFt, endFt, usedFt, notes } = usageForBoxScans(list)
+    const { startFt, endFt, usedFt, notes } = usageForReportBox(list)
     otherRows.push({
       wireType: 'Other (scan)',
       boxId,

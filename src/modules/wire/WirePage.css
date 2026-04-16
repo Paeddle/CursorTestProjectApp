@@ -422,10 +422,23 @@
 
 .wire-report-toolbar {
   display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.wire-report-toolbar-main {
+  display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.65rem 0.75rem;
-  margin-bottom: 1rem;
+}
+
+.wire-report-toolbar-downloads {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.65rem;
 }
 
 .wire-report-job-label {
@@ -529,9 +542,13 @@
 }
 
 @media (max-width: 768px) {
-  .wire-report-toolbar {
+  .wire-report-toolbar-main {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .wire-report-toolbar-downloads {
+    flex-wrap: wrap;
   }
 
   .wire-report-select {
