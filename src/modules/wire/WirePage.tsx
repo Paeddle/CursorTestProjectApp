@@ -5,6 +5,7 @@ import {
   buildWireInventoryRows,
   buildWireMaterialsReport,
   downloadTextFile,
+  downloadWireMaterialsReportPdf,
   formatInventoryFtDisplay,
   parseFootage,
   reportRowsToCsv,
@@ -130,6 +131,7 @@ export function WirePage() {
   const [deleting, setDeleting] = useState(false)
   const [reportJob, setReportJob] = useState('')
   const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
+  const [pdfWorking, setPdfWorking] = useState(false)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
 
@@ -239,6 +241,19 @@ export function WirePage() {
     downloadTextFile(`wire-materials-${safeReportFileStem()}.html`, html, 'text/html;charset=utf-8')
   }
 
+  const handleDownloadPdf = async () => {
+    if (!reportRows || !reportJob.trim()) return
+    setPdfWorking(true)
+    setError(null)
+    try {
+      await downloadWireMaterialsReportPdf(reportJob.trim(), reportRows, safeReportFileStem())
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not create PDF')
+    } finally {
+      setPdfWorking(false)
+    }
+  }
+
   const deleteBox = async (boxId: string, scanCount: number) => {
     if (
       !window.confirm(
@@ -340,6 +355,14 @@ export function WirePage() {
             onClick={handleDownloadHtml}
           >
             Download HTML
+          </button>
+          <button
+            type="button"
+            className="wire-report-secondary"
+            disabled={!reportRows || pdfWorking}
+            onClick={() => void handleDownloadPdf()}
+          >
+            {pdfWorking ? 'Preparing PDF…' : 'Download PDF'}
           </button>
         </div>
         {reportRows && (

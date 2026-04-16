@@ -398,6 +398,69 @@ export function downloadTextFile(filename: string, content: string, mime: string
   URL.revokeObjectURL(url)
 }
 
+/** Landscape PDF with the same columns as the on-screen materials report (loads jspdf on demand). */
+export async function downloadWireMaterialsReportPdf(
+  jobName: string,
+  rows: WireReportRow[],
+  filenameStem: string
+): Promise<void> {
+  const [{ default: jsPDF }, autoTableMod] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ])
+  const autoTable = autoTableMod.default
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' })
+  const pageW = doc.internal.pageSize.getWidth()
+  const margin = 14
+  let y = 16
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(15)
+  doc.text('Wire materials used report', margin, y)
+  y += 7
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.text(`Job: ${jobName}`, margin, y)
+  y += 5
+  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y)
+  y += 5
+  doc.setFontSize(9)
+  const explain =
+    'Used = footage on the first scan for each box on this job minus footage on the last scan (remaining on spool).'
+  const splitExplain = doc.splitTextToSize(explain, pageW - margin * 2)
+  doc.text(splitExplain, margin, y)
+  y += splitExplain.length * 4 + 6
+
+  const head = [['Wire type', 'Box ID', 'Start (ft)', 'End (ft)', 'Used (ft)', 'Notes']]
+  const body = rows.map((r) => [
+    r.wireType,
+    r.boxId ?? '—',
+    r.startFt === null ? '—' : formatNum(r.startFt),
+    r.endFt === null ? '—' : formatNum(r.endFt),
+    r.usedFt === null ? '—' : formatNum(r.usedFt),
+    r.notes || '',
+  ])
+
+  autoTable(doc, {
+    startY: y,
+    head,
+    body,
+    styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
+    headStyles: { fillColor: [41, 49, 63], textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 48 },
+      1: { cellWidth: 32 },
+      2: { cellWidth: 22, halign: 'right' },
+      3: { cellWidth: 22, halign: 'right' },
+      4: { cellWidth: 22, halign: 'right' },
+      5: { cellWidth: 'auto' },
+    },
+    margin: { left: margin, right: margin },
+  })
+
+  doc.save(`wire-materials-${filenameStem}.pdf`)
+}
+
 export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
   const set = new Set<string>()
   for (const s of scans) {
