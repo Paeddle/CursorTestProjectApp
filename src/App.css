@@ -1010,7 +1010,8 @@
 @media (max-width: 768px) {
   .main-content {
     margin-left: 70px;
-    padding: 2rem 1.5rem;
+    padding: 1.25rem max(0.75rem, env(safe-area-inset-right, 0px))
+      max(1.25rem, env(safe-area-inset-bottom, 0px)) max(0.75rem, env(safe-area-inset-left, 0px));
   }
 
   .header h1 {
