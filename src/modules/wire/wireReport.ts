@@ -568,6 +568,66 @@ export function isBoxInInventory(scans: WireBoxScan[]): boolean {
   return true
 }
 
+/** Newest-first scan that carries wire profile fields (for inserts when latest row omits them). */
+function newestProfileScanForBox(scans: WireBoxScan[]): WireBoxScan | null {
+  const sorted = [...scans].sort((a, b) => scanTimeWireReport(b) - scanTimeWireReport(a))
+  for (const scan of sorted) {
+    const wt = String(scan.wire_type ?? '').trim()
+    const lbl = (scan.wire_type_label || '').trim()
+    if (wt || lbl) return scan
+  }
+  return null
+}
+
+export type WireBulkCheckoutInsertRow = {
+  box_id: string
+  job_name: string
+  current_footage: string
+  check_type: 'check_out'
+  wire_type: string | null
+  wire_type_label: string | null
+  spool_capacity_ft: string | null
+}
+
+/**
+ * Build one Supabase insert row for a bulk web check-out: latest on-hand scan’s footage,
+ * same job name, check_out. Returns null if the box is not in inventory or footage is missing.
+ */
+export function buildWireBulkCheckoutInsert(
+  summary: WireBoxSummary,
+  jobName: string
+): WireBulkCheckoutInsertRow | null {
+  if (!isBoxInInventory(summary.scans)) return null
+  const latest = newestScanInBox(summary.scans)
+  if (!latest || latest.check_type === 'check_out') return null
+  const job = jobName.trim()
+  if (!job) return null
+  const footage = (latest.current_footage || '').trim()
+  if (!footage) return null
+
+  const row: WireBulkCheckoutInsertRow = {
+    box_id: summary.box_id.trim(),
+    job_name: job,
+    current_footage: footage,
+    check_type: 'check_out',
+    wire_type: null,
+    wire_type_label: null,
+    spool_capacity_ft: null,
+  }
+
+  const profile = newestProfileScanForBox(summary.scans)
+  if (profile) {
+    const wt = String(profile.wire_type ?? '').trim()
+    const lbl = (profile.wire_type_label || '').trim()
+    if (wt) row.wire_type = wt
+    if (lbl || wt) row.wire_type_label = lbl || wt
+    const cap = (profile.spool_capacity_ft || '').trim()
+    if (cap) row.spool_capacity_ft = cap
+  }
+
+  return row
+}
+
 function formatWireTypeCell(scan: WireBoxScan): string {
   const label = (scan.wire_type_label || '').trim()
   if (label) return label

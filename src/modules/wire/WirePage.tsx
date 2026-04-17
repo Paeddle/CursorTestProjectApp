@@ -1,18 +1,22 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
 import {
+  buildWireBulkCheckoutInsert,
   buildWireInventoryRows,
   buildWireMaterialsReport,
   downloadTextFile,
   downloadWireMaterialsReportPdf,
   formatInventoryFtDisplay,
+  isBoxInInventory,
   parseFootage,
   reportRowsToCsv,
   reportRowsToHtmlDocument,
   uniqueJobNamesForMaterialsReport,
+  uniqueJobNamesFromScans,
   wireTypeIdToLabel,
   wireTypeIdToDefaultFt,
+  type WireBulkCheckoutInsertRow,
   type WireReportRow,
 } from './wireReport'
 import './WirePage.css'
@@ -104,6 +108,22 @@ async function fetchAllScans(): Promise<WireBoxScan[]> {
   return (data ?? []) as WireBoxScan[]
 }
 
+function toSupabaseWireInsert(
+  row: WireBulkCheckoutInsertRow & { scanned_at: string }
+): Record<string, string> {
+  const o: Record<string, string> = {
+    box_id: row.box_id,
+    job_name: row.job_name,
+    current_footage: row.current_footage,
+    check_type: row.check_type,
+    scanned_at: row.scanned_at,
+  }
+  if (row.wire_type) o.wire_type = row.wire_type
+  if (row.wire_type_label) o.wire_type_label = row.wire_type_label
+  if (row.spool_capacity_ft) o.spool_capacity_ft = row.spool_capacity_ft
+  return o
+}
+
 function scansToSummaries(rows: WireBoxScan[]): WireBoxSummary[] {
   const byBox = new Map<string, WireBoxScan[]>()
   for (const row of rows) {
@@ -133,8 +153,13 @@ export function WirePage() {
   const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
   const [pdfWorking, setPdfWorking] = useState(false)
   const [countEmptyBoxes, setCountEmptyBoxes] = useState(false)
+  const [selectedBoxKeys, setSelectedBoxKeys] = useState<Set<string>>(() => new Set())
+  const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
+  const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
+  const selectionAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
+  const allJobNameSuggestions = useMemo(() => uniqueJobNamesFromScans(allScans), [allScans])
 
   const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
 
@@ -183,11 +208,27 @@ export function WirePage() {
     )
   }, [countEmptyBoxes, allScans, reportJob])
 
-  const filtered = searchBox.trim()
-    ? summaries.filter((s) =>
-        s.box_id.toLowerCase().includes(searchBox.trim().toLowerCase())
-      )
-    : summaries
+  const filtered = useMemo(() => {
+    return searchBox.trim()
+      ? summaries.filter((s) =>
+          s.box_id.toLowerCase().includes(searchBox.trim().toLowerCase())
+        )
+      : summaries
+  }, [summaries, searchBox])
+
+  useEffect(() => {
+    const allowed = new Set(filtered.map((s) => s.box_id.toLowerCase()))
+    setSelectedBoxKeys((prev) => {
+      let changed = false
+      const next = new Set<string>()
+      for (const k of prev) {
+        if (allowed.has(k)) next.add(k)
+        else changed = true
+      }
+      if (!changed && next.size === prev.size) return prev
+      return next
+    })
+  }, [filtered])
 
   const toggleExpanded = (boxId: string) => {
     const key = boxId.toLowerCase()
@@ -302,6 +343,82 @@ export function WirePage() {
       setError(e instanceof Error ? e.message : 'Failed to delete box')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleBoxCheckboxClick = (
+    e: MouseEvent<HTMLInputElement>,
+    indexInFiltered: number,
+    boxKey: string,
+    inInventory: boolean
+  ) => {
+    if (!inInventory) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.shiftKey && selectionAnchorIndexRef.current !== null) {
+      const anchor = selectionAnchorIndexRef.current
+      const lo = Math.min(anchor, indexInFiltered)
+      const hi = Math.max(anchor, indexInFiltered)
+      setSelectedBoxKeys((prev) => {
+        const next = new Set(prev)
+        for (let i = lo; i <= hi; i++) {
+          const s = filtered[i]
+          if (s && isBoxInInventory(s.scans)) next.add(s.box_id.toLowerCase())
+        }
+        return next
+      })
+    } else {
+      setSelectedBoxKeys((prev) => {
+        const next = new Set(prev)
+        if (next.has(boxKey)) next.delete(boxKey)
+        else next.add(boxKey)
+        return next
+      })
+      selectionAnchorIndexRef.current = indexInFiltered
+    }
+  }
+
+  const handleBulkCheckout = async () => {
+    const job = bulkCheckoutJob.trim()
+    if (!job || selectedBoxKeys.size === 0) return
+    const selectedSummaries = summaries.filter((s) => selectedBoxKeys.has(s.box_id.toLowerCase()))
+    const skips: string[] = []
+    const payloads: Record<string, string>[] = []
+    for (const s of selectedSummaries) {
+      const built = buildWireBulkCheckoutInsert(s, job)
+      if (!built) {
+        skips.push(s.box_id)
+        continue
+      }
+      payloads.push(
+        toSupabaseWireInsert({ ...built, scanned_at: new Date().toISOString() })
+      )
+    }
+    if (skips.length > 0) {
+      setError(
+        `Cannot check out: ${skips.join(', ')} — each box must be checked in (in stock) and have footage on its latest scan.`
+      )
+      return
+    }
+    if (
+      !window.confirm(
+        `Check out ${payloads.length} box${payloads.length !== 1 ? 'es' : ''} to “${job}” using each box’s latest on-hand footage?`
+      )
+    ) {
+      return
+    }
+    setBulkCheckoutWorking(true)
+    setError(null)
+    try {
+      const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
+      if (insErr) throw new Error(insErr.message)
+      setSelectedBoxKeys(new Set())
+      selectionAnchorIndexRef.current = null
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Bulk check out failed')
+    } finally {
+      setBulkCheckoutWorking(false)
     }
   }
 
@@ -480,6 +597,53 @@ export function WirePage() {
         )}
       </section>
 
+      <section className="wire-bulk-checkout-section" aria-labelledby="wire-bulk-checkout-heading">
+        <h2 id="wire-bulk-checkout-heading" className="wire-bulk-checkout-title">
+          Bulk check out to a job
+        </h2>
+        <p className="wire-bulk-checkout-hint">
+          Select boxes with the checkboxes (only <strong>in-stock</strong> boxes can be selected).{' '}
+          <strong>Shift+click</strong> another checkbox to select every in-stock box in between.{' '}
+          Each check-out uses the <strong>latest check-in or intake footage</strong> on that box. Job name can be
+          new or chosen from past scans.
+        </p>
+        <div className="wire-bulk-checkout-toolbar">
+          <label className="wire-bulk-checkout-job-label">
+            <span>Job name</span>
+            <input
+              type="text"
+              className="wire-bulk-checkout-job-input"
+              list="wire-bulk-checkout-job-datalist"
+              value={bulkCheckoutJob}
+              onChange={(e) => setBulkCheckoutJob(e.target.value)}
+              placeholder="e.g. Smith residence"
+              disabled={loading || bulkCheckoutWorking}
+              autoComplete="off"
+            />
+            <datalist id="wire-bulk-checkout-job-datalist">
+              {allJobNameSuggestions.map((j) => (
+                <option key={j} value={j} />
+              ))}
+            </datalist>
+          </label>
+          <button
+            type="button"
+            className="wire-bulk-checkout-submit"
+            disabled={
+              loading ||
+              bulkCheckoutWorking ||
+              selectedBoxKeys.size === 0 ||
+              !bulkCheckoutJob.trim()
+            }
+            onClick={() => void handleBulkCheckout()}
+          >
+            {bulkCheckoutWorking
+              ? 'Checking out…'
+              : `Check out selected (${selectedBoxKeys.size})`}
+          </button>
+        </div>
+      </section>
+
       <div className="wire-controls">
         <input
           type="text"
@@ -508,22 +672,44 @@ export function WirePage() {
       ) : (
         <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
           <div className="wire-list">
-            {filtered.map((summary) => {
+            {filtered.map((summary, indexInFiltered) => {
               const key = summary.box_id.toLowerCase()
               const isExpanded = expandedBox.has(key)
               const headerWire = boxHeaderWireType(summary.scans)
               const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
               const nScans = summary.scans.length
+              const inInventory = isBoxInInventory(summary.scans)
               return (
                 <div key={key} className="wire-card">
                   <div className="wire-card-header-row">
-                    <button
-                      type="button"
-                      className="wire-card-header"
-                      onClick={() => toggleExpanded(summary.box_id)}
-                      aria-expanded={isExpanded}
-                      aria-label={`${summary.box_id}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
-                    >
+                    <div className="wire-card-header-main">
+                      <label
+                        className={`wire-card-select${inInventory ? '' : ' wire-card-select-disabled'}`}
+                        title={
+                          inInventory
+                            ? 'Select for bulk check out. Shift+click another row to select a range.'
+                            : 'Only boxes checked in (in stock) can be selected.'
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedBoxKeys.has(key)}
+                          disabled={!inInventory || deleting}
+                          onClick={(e) =>
+                            handleBoxCheckboxClick(e, indexInFiltered, key, inInventory && !deleting)
+                          }
+                          onChange={() => {}}
+                          aria-label={`Select ${summary.box_id} for bulk check out`}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="wire-card-header"
+                        onClick={() => toggleExpanded(summary.box_id)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${summary.box_id}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
+                      >
                       <span className="wire-card-title-block">
                         <span className="wire-card-title">{summary.box_id}</span>
                         <span className="wire-card-meta">
@@ -539,6 +725,7 @@ export function WirePage() {
                       </span>
                       <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                     </button>
+                    </div>
                     <button
                       type="button"
                       className="wire-delete-box"

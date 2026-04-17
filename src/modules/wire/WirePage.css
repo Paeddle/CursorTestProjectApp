@@ -97,7 +97,7 @@
 }
 
 .wire-list-scroll {
-  max-height: min(65vh, 42rem);
+  max-height: min(78vh, 54rem);
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -125,6 +125,39 @@
 .wire-card-header-row {
   display: flex;
   align-items: stretch;
+}
+
+.wire-card-header-main {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+}
+
+.wire-card-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.35rem 0 0.65rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.wire-card-select input[type='checkbox'] {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+.wire-card-select-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wire-card-select-disabled input {
+  cursor: not-allowed;
 }
 
 .wire-card-header {
@@ -330,6 +363,84 @@
   max-width: 1100px;
   margin-left: auto;
   margin-right: auto;
+}
+
+.wire-bulk-checkout-section {
+  margin-bottom: 2rem;
+  padding: 1.25rem 1.5rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.wire-bulk-checkout-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.5rem 0;
+}
+
+.wire-bulk-checkout-hint {
+  color: #94a3b8;
+  font-size: 0.88rem;
+  margin: 0 0 1rem 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.wire-bulk-checkout-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.wire-bulk-checkout-job-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.wire-bulk-checkout-job-input {
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.wire-bulk-checkout-job-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.wire-bulk-checkout-submit {
+  padding: 0.5rem 1.1rem;
+  border-radius: 6px;
+  border: 1px solid #3b82f6;
+  background: #2563eb;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wire-bulk-checkout-submit:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.wire-bulk-checkout-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .wire-inventory-title {
@@ -584,20 +695,50 @@
   }
 
   .wire-list-scroll {
-    max-height: min(52vh, 36rem);
+    max-height: min(66vh, 48rem);
     touch-action: pan-y;
   }
 
   @supports (height: 1dvh) {
     .wire-list-scroll {
-      max-height: min(52dvh, 36rem);
+      max-height: min(66dvh, 48rem);
     }
   }
 
   .wire-report-section,
-  .wire-inventory-section {
+  .wire-inventory-section,
+  .wire-bulk-checkout-section {
     padding: 1rem 0.85rem;
     margin-bottom: 1.25rem;
+  }
+
+  .wire-bulk-checkout-job-input {
+    min-height: 44px;
+    font-size: 16px;
+    width: 100%;
+  }
+
+  .wire-bulk-checkout-submit {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .wire-bulk-checkout-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wire-bulk-checkout-job-label {
+    min-width: 0;
+  }
+
+  .wire-card-select {
+    padding: 0 0.25rem 0 0.5rem;
+  }
+
+  .wire-card-select input[type='checkbox'] {
+    width: 1.35rem;
+    height: 1.35rem;
   }
 
   .wire-card-header-row {
