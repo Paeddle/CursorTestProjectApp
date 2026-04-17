@@ -169,24 +169,25 @@
   border-radius: 2px;
   background: #0f172a;
   pointer-events: none;
+  z-index: 2;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-.wire-card-select-input:checked + .wire-card-select-face {
+/* Visual state follows React (class on label), not :checked — avoids invisible ticks with overlay input. */
+.wire-card-select--on .wire-card-select-face {
   background: #2563eb;
   border-color: #93c5fd;
 }
 
-.wire-card-select-input:checked + .wire-card-select-face::after {
+.wire-card-select--on .wire-card-select-face::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: 42%;
-  width: 0.14rem;
-  height: 0.3rem;
-  margin-left: -0.02rem;
-  border: solid #f8fafc;
-  border-width: 0 1.5px 1.5px 0;
+  top: 45%;
+  width: 2px;
+  height: 6px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
   transform: translate(-50%, -50%) rotate(45deg);
   box-sizing: border-box;
 }
@@ -425,16 +426,7 @@
   font-size: 1.15rem;
   font-weight: 700;
   color: #f1f5f9;
-  margin: 0 0 0.5rem 0;
-}
-
-.wire-bulk-checkout-hint {
-  color: #94a3b8;
-  font-size: 0.88rem;
-  margin: 0 0 1rem 0;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  margin: 0 0 0.75rem 0;
 }
 
 .wire-bulk-checkout-toolbar {

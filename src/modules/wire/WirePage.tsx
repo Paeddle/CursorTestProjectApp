@@ -209,11 +209,12 @@ export function WirePage() {
   }, [countEmptyBoxes, allScans, reportJob])
 
   const filtered = useMemo(() => {
-    return searchBox.trim()
-      ? summaries.filter((s) =>
-          s.box_id.toLowerCase().includes(searchBox.trim().toLowerCase())
-        )
-      : summaries
+    const q = searchBox.trim().toLowerCase()
+    if (!q) return summaries
+    return summaries.filter((s) => {
+      if (s.box_id.toLowerCase().includes(q)) return true
+      return s.scans.some((scan) => (scan.job_name || '').toLowerCase().includes(q))
+    })
   }, [summaries, searchBox])
 
   useEffect(() => {
@@ -599,14 +600,8 @@ export function WirePage() {
 
       <section className="wire-bulk-checkout-section" aria-labelledby="wire-bulk-checkout-heading">
         <h2 id="wire-bulk-checkout-heading" className="wire-bulk-checkout-title">
-          Bulk check out to a job
+          Bulk check-out
         </h2>
-        <p className="wire-bulk-checkout-hint">
-          Select boxes with the checkboxes (only <strong>in-stock</strong> boxes can be selected).{' '}
-          <strong>Shift+click</strong> another checkbox to select every in-stock box in between.{' '}
-          Each check-out uses the <strong>latest check-in or intake footage</strong> on that box. Job name can be
-          new or chosen from past scans.
-        </p>
         <div className="wire-bulk-checkout-toolbar">
           <label className="wire-bulk-checkout-job-label">
             <span>Job name</span>
@@ -648,7 +643,7 @@ export function WirePage() {
         <input
           type="text"
           className="wire-search"
-          placeholder="Filter by box number..."
+          placeholder="Filter by box or job…"
           value={searchBox}
           onChange={(e) => setSearchBox(e.target.value)}
         />
@@ -684,10 +679,16 @@ export function WirePage() {
                   <div className="wire-card-header-row">
                     <div className="wire-card-header-main">
                       <label
-                        className={`wire-card-select${inInventory ? '' : ' wire-card-select-disabled'}`}
+                        className={[
+                          'wire-card-select',
+                          selectedBoxKeys.has(key) ? 'wire-card-select--on' : '',
+                          inInventory ? '' : 'wire-card-select-disabled',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         title={
                           inInventory
-                            ? 'Select for bulk check out. Shift+click another row to select a range.'
+                            ? 'Select for bulk check-out. Shift+click another row to select a range.'
                             : 'Only boxes checked in (in stock) can be selected.'
                         }
                         onClick={(e) => e.stopPropagation()}
@@ -701,7 +702,7 @@ export function WirePage() {
                             handleBoxCheckboxClick(e, indexInFiltered, key, inInventory && !deleting)
                           }
                           onChange={() => {}}
-                          aria-label={`Select ${summary.box_id} for bulk check out`}
+                          aria-label={`Select ${summary.box_id} for bulk check-out`}
                         />
                         <span className="wire-card-select-face" aria-hidden="true" />
                       </label>
