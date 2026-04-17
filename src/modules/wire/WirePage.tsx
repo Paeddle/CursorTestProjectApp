@@ -694,6 +694,7 @@ export function WirePage() {
                       >
                         <input
                           type="checkbox"
+                          className="wire-card-select-input"
                           checked={selectedBoxKeys.has(key)}
                           disabled={!inInventory || deleting}
                           onClick={(e) =>
@@ -702,6 +703,7 @@ export function WirePage() {
                           onChange={() => {}}
                           aria-label={`Select ${summary.box_id} for bulk check out`}
                         />
+                        <span className="wire-card-select-face" aria-hidden="true" />
                       </label>
                       <button
                         type="button"

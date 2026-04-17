@@ -135,20 +135,65 @@
 }
 
 .wire-card-select {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0.35rem 0 0.65rem;
   flex-shrink: 0;
+  width: 2rem;
+  min-width: 2rem;
+  min-height: 2.75rem;
+  padding: 0.15rem 0 0.45rem;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
-.wire-card-select input[type='checkbox'] {
-  width: 1.2rem;
-  height: 1.2rem;
+.wire-card-select-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
+  opacity: 0;
   cursor: pointer;
-  accent-color: #3b82f6;
+  z-index: 1;
+}
+
+.wire-card-select-face {
+  position: relative;
+  width: 0.6rem;
+  height: 0.6rem;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 2px;
+  background: #0f172a;
+  pointer-events: none;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.wire-card-select-input:checked + .wire-card-select-face {
+  background: #2563eb;
+  border-color: #93c5fd;
+}
+
+.wire-card-select-input:checked + .wire-card-select-face::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 0.14rem;
+  height: 0.3rem;
+  margin-left: -0.02rem;
+  border: solid #f8fafc;
+  border-width: 0 1.5px 1.5px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+  box-sizing: border-box;
+}
+
+.wire-card-select-input:focus-visible + .wire-card-select-face {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 .wire-card-select-disabled {
@@ -156,7 +201,7 @@
   opacity: 0.55;
 }
 
-.wire-card-select-disabled input {
+.wire-card-select-disabled .wire-card-select-input {
   cursor: not-allowed;
 }
 
@@ -733,12 +778,10 @@
   }
 
   .wire-card-select {
-    padding: 0 0.25rem 0 0.5rem;
-  }
-
-  .wire-card-select input[type='checkbox'] {
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 44px;
+    padding: 0 0.1rem 0 0.35rem;
   }
 
   .wire-card-header-row {
