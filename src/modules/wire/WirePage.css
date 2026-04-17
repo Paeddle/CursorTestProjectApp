@@ -276,6 +276,7 @@
 .wire-card-meta-sep {
   color: #64748b;
   user-select: none;
+  margin: 0 0.55rem;
 }
 
 .wire-card-wire-type {
@@ -879,7 +880,7 @@
   .wire-card-meta {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.15rem;
+    gap: 0.4rem;
   }
 
   .wire-card-meta-sep {
