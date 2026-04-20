@@ -100,7 +100,11 @@ export const ROUGH_IN_WIRE_REPORT_ROWS: WireReportTemplateRow[] = [
 
 export interface WireReportRow {
   wireType: string
-  /** Total feet used on this job for this wire type (sum over boxes). */
+  /** Sum of per-box “start” footage (first scan on this job for each spool). */
+  startFt: number | null
+  /** Sum of per-box “end” footage (last scan on this job, or 0 when tossed-empty). */
+  endFt: number | null
+  /** Total feet used on this job for this wire type (sum over boxes; usually start − end per box). */
   usedFt: number | null
   notes: string
 }
@@ -294,32 +298,50 @@ function usageForBoxScans(boxScans: WireBoxScan[]): {
   return { startFt, endFt, usedFt, notes }
 }
 
-function aggregateBoxUsagesForReport(
-  usages: { usedFt: number | null; notes: string }[]
-): { usedFt: number | null; notes: string } {
-  if (usages.length === 0) return { usedFt: null, notes: '' }
-  const vals = usages.map((u) => u.usedFt)
+function sumNullableField(
+  vals: (number | null)[]
+): { total: number | null; anyMissing: boolean; anyPresent: boolean } {
   const nums = vals.filter((v): v is number => v !== null)
-  const missing = vals.filter((v) => v === null).length
-  let usedFt: number | null = null
-  if (nums.length > 0) usedFt = nums.reduce((a, b) => a + b, 0)
-  if (missing > 0 && nums.length === 0) usedFt = null
+  const anyMissing = vals.some((v) => v === null)
+  const anyPresent = nums.length > 0
+  const total = anyPresent ? nums.reduce((a, b) => a + b, 0) : null
+  return { total, anyMissing, anyPresent }
+}
 
-  const uniqNotes = [...new Set(usages.map((u) => u.notes.trim()).filter(Boolean))]
+function aggregateBoxUsagesForReport(
+  usages: { startFt: number | null; endFt: number | null; usedFt: number | null; notes: string }[]
+): { startFt: number | null; endFt: number | null; usedFt: number | null; notes: string } {
+  if (usages.length === 0) return { startFt: null, endFt: null, usedFt: null, notes: '' }
+
+  const s = sumNullableField(usages.map((u) => u.startFt))
+  const e = sumNullableField(usages.map((u) => u.endFt))
+  const u = sumNullableField(usages.map((u) => u.usedFt))
+
+  const uniqNotes = [...new Set(usages.map((n) => n.notes.trim()).filter(Boolean))]
   let notes = ''
   if (uniqNotes.length === 1) notes = uniqNotes[0]!
   else if (uniqNotes.length > 1 && uniqNotes.length <= 3) notes = uniqNotes.join(' · ')
   else if (uniqNotes.length > 3) notes = `${uniqNotes[0]} · (+${uniqNotes.length - 1} other cases)`
 
-  if (missing > 0 && nums.length > 0) {
-    const suffix = `Partial total: ${missing} box(es) had missing footage.`
+  const partialParts: string[] = []
+  if (s.anyMissing && s.anyPresent) partialParts.push('start')
+  if (e.anyMissing && e.anyPresent) partialParts.push('end')
+  if (u.anyMissing && u.anyPresent) partialParts.push('used')
+  if (partialParts.length > 0) {
+    const suffix = `Partial totals (${partialParts.join(', ')}): some boxes missing footage.`
     notes = notes ? `${notes} ${suffix}` : suffix
-  } else if (missing > 0 && nums.length === 0) {
+  }
+  if (!u.anyPresent && usages.length > 0) {
     const suffix = 'Could not total usage (footage missing on all matching boxes).'
     notes = notes ? `${notes} ${suffix}` : suffix
   }
 
-  return { usedFt, notes: notes.trim() }
+  return {
+    startFt: s.total,
+    endFt: e.total,
+    usedFt: u.total,
+    notes: notes.trim(),
+  }
 }
 
 /** Combine rows that share the same wire type (e.g. schedule row + “other” with same label). */
@@ -335,15 +357,40 @@ function mergeReportRowsByWireType(rows: WireReportRow[]): WireReportRow[] {
       merged.set(label, list[0]!)
       continue
     }
-    const substantive = list.filter((r) => !(r.usedFt === null && r.notes.trim() === ''))
+    const substantive = list.filter(
+      (r) =>
+        !(
+          r.usedFt === null &&
+          r.startFt === null &&
+          r.endFt === null &&
+          r.notes.trim() === ''
+        )
+    )
     if (substantive.length === 0) {
-      merged.set(label, { wireType: label, usedFt: null, notes: '' })
+      merged.set(label, {
+        wireType: label,
+        startFt: null,
+        endFt: null,
+        usedFt: null,
+        notes: '',
+      })
       continue
     }
     const agg = aggregateBoxUsagesForReport(
-      substantive.map((r) => ({ usedFt: r.usedFt, notes: r.notes }))
+      substantive.map((r) => ({
+        startFt: r.startFt,
+        endFt: r.endFt,
+        usedFt: r.usedFt,
+        notes: r.notes,
+      }))
     )
-    merged.set(label, { wireType: label, usedFt: agg.usedFt, notes: agg.notes })
+    merged.set(label, {
+      wireType: label,
+      startFt: agg.startFt,
+      endFt: agg.endFt,
+      usedFt: agg.usedFt,
+      notes: agg.notes,
+    })
   }
   const ordered: WireReportRow[] = []
   const seen = new Set<string>()
@@ -402,6 +449,8 @@ export function buildWireMaterialsReport(
     if (matchingKeys.length === 0) {
       rows.push({
         wireType: tpl.label,
+        startFt: null,
+        endFt: null,
         usedFt: null,
         notes: '',
       })
@@ -416,13 +465,18 @@ export function buildWireMaterialsReport(
     const agg = aggregateBoxUsagesForReport(usages)
     rows.push({
       wireType: tpl.label,
+      startFt: agg.startFt,
+      endFt: agg.endFt,
       usedFt: agg.usedFt,
       notes: agg.notes,
     })
     for (const key of matchingKeys) assignedBoxes.add(key)
   }
 
-  const otherGroups = new Map<string, { usedFt: number | null; notes: string }[]>()
+  const otherGroups = new Map<
+    string,
+    { startFt: number | null; endFt: number | null; usedFt: number | null; notes: string }[]
+  >()
   for (const [key, list] of byBox) {
     if (assignedBoxes.has(key)) continue
     const boxAll = scansForBoxId(allScans, list[0]!.box_id)
@@ -430,6 +484,8 @@ export function buildWireMaterialsReport(
     const label = labelRaw && labelRaw !== '—' ? labelRaw : 'Other (untyped)'
     const u = usageForReportBox(list)
     const entry = {
+      startFt: u.startFt,
+      endFt: u.endFt,
       usedFt: u.usedFt,
       notes: u.notes || 'Box not matched to standard schedule row.',
     }
@@ -443,6 +499,8 @@ export function buildWireMaterialsReport(
     const agg = aggregateBoxUsagesForReport(parts)
     otherRows.push({
       wireType,
+      startFt: agg.startFt,
+      endFt: agg.endFt,
       usedFt: agg.usedFt,
       notes: agg.notes,
     })
@@ -459,10 +517,12 @@ export function reportRowsToCsv(jobName: string, rows: WireReportRow[]): string 
     if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
     return s
   }
-  const header = ['Wire type', 'Total used (ft)', 'Notes']
+  const header = ['Wire type', 'Start (ft)', 'End (ft)', 'Total used (ft)', 'Notes']
   const lines = [
     header.join(','),
-    ...rows.map((r) => [r.wireType, r.usedFt, r.notes].map(esc).join(',')),
+    ...rows.map((r) =>
+      [r.wireType, r.startFt, r.endFt, r.usedFt, r.notes].map(esc).join(',')
+    ),
   ]
   return `Job,"${jobName.replace(/"/g, '""')}"\n` + lines.join('\n')
 }
@@ -473,6 +533,8 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
     .map(
       (r) => `<tr>
   <td>${escapeHtml(r.wireType)}</td>
+  <td class="num">${r.startFt === null ? '—' : formatNum(r.startFt)}</td>
+  <td class="num">${r.endFt === null ? '—' : formatNum(r.endFt)}</td>
   <td class="num">${r.usedFt === null ? '—' : formatNum(r.usedFt)}</td>
   <td class="notes">${escapeHtml(r.notes)}</td>
 </tr>`
@@ -499,12 +561,14 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
 <body>
   <h1>Wire materials used report</h1>
   <p class="meta">Job: <strong>${escapeHtml(jobName)}</strong> · Generated ${escapeHtml(dateStr)}</p>
-  <p class="meta">Each row is the <strong>total feet used</strong> for that wire type on this job (per box: first scan minus last scan on the job, or tossed-empty rule when enabled), summed across all spools of that type.</p>
+  <p class="meta">Per wire type: <strong>Start</strong> and <strong>end</strong> are the sums of each spool’s first and last footage on this job; <strong>used</strong> is the sum of (start − end) per spool (or tossed-empty when enabled).</p>
   <table>
     <caption>Rough-in wire schedule</caption>
     <thead>
       <tr>
         <th>Wire type</th>
+        <th>Start (ft)</th>
+        <th>End (ft)</th>
         <th>Total used (ft)</th>
         <th>Notes</th>
       </tr>
@@ -567,13 +631,19 @@ export async function downloadWireMaterialsReportPdf(
   y += 5
   doc.setFontSize(9)
   const explain =
-    'Each row is total feet used for that wire type on this job (per box: first minus last scan on the job, or tossed-empty when enabled), summed across spools.'
+    'Start/End: sums of first/last job scan footage per spool. Used: sum of per-spool usage (or tossed-empty when enabled).'
   const splitExplain = doc.splitTextToSize(explain, pageW - margin * 2)
   doc.text(splitExplain, margin, y)
   y += splitExplain.length * 4 + 6
 
-  const head = [['Wire type', 'Total used (ft)', 'Notes']]
-  const body = rows.map((r) => [r.wireType, r.usedFt === null ? '—' : formatNum(r.usedFt), r.notes || ''])
+  const head = [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)', 'Notes']]
+  const body = rows.map((r) => [
+    r.wireType,
+    r.startFt === null ? '—' : formatNum(r.startFt),
+    r.endFt === null ? '—' : formatNum(r.endFt),
+    r.usedFt === null ? '—' : formatNum(r.usedFt),
+    r.notes || '',
+  ])
 
   autoTable(doc, {
     startY: y,
@@ -582,9 +652,11 @@ export async function downloadWireMaterialsReportPdf(
     styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
     headStyles: { fillColor: [41, 49, 63], textColor: 255, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 62 },
-      1: { cellWidth: 28, halign: 'right' },
-      2: { cellWidth: 'auto' },
+      0: { cellWidth: 48 },
+      1: { cellWidth: 22, halign: 'right' },
+      2: { cellWidth: 22, halign: 'right' },
+      3: { cellWidth: 22, halign: 'right' },
+      4: { cellWidth: 'auto' },
     },
     margin: { left: margin, right: margin },
   })
