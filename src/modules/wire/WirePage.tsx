@@ -99,6 +99,20 @@ function boxHeaderDefaultWireDisplay(scans: WireBoxScan[]): string {
   return '—'
 }
 
+function summaryMatchesWireTypeQuery(summary: WireBoxSummary, q: string): boolean {
+  const header = boxHeaderWireType(summary.scans).toLowerCase()
+  if (header !== '—' && header.includes(q)) return true
+  return summary.scans.some((scan) => {
+    const label = (scan.wire_type_label || '').trim().toLowerCase()
+    if (label.includes(q)) return true
+    const preset = String(scan.wire_type ?? '').trim().toLowerCase()
+    if (preset.includes(q)) return true
+    const resolved = wireTypeIdToLabel(scan.wire_type).toLowerCase()
+    if (resolved !== '—' && resolved.includes(q)) return true
+    return false
+  })
+}
+
 async function fetchAllScans(): Promise<WireBoxScan[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
@@ -213,7 +227,9 @@ export function WirePage() {
     if (!q) return summaries
     return summaries.filter((s) => {
       if (s.box_id.toLowerCase().includes(q)) return true
-      return s.scans.some((scan) => (scan.job_name || '').toLowerCase().includes(q))
+      if (s.scans.some((scan) => (scan.job_name || '').toLowerCase().includes(q))) return true
+      if (summaryMatchesWireTypeQuery(s, q)) return true
+      return false
     })
   }, [summaries, searchBox])
 
@@ -643,7 +659,7 @@ export function WirePage() {
         <input
           type="text"
           className="wire-search"
-          placeholder="Filter by box or job…"
+          placeholder="Filter by box, job, or wire type…"
           value={searchBox}
           onChange={(e) => setSearchBox(e.target.value)}
         />
