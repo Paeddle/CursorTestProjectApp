@@ -187,10 +187,20 @@ function scansMatchWireType(list: WireBoxScan[], wireTypeIds: string[] | undefin
   return list.some((s) => wireTypeIds.includes(String(s.wire_type ?? '').trim()))
 }
 
-function boxMatchesReportRow(list: WireBoxScan[], tpl: WireReportTemplateRow): boolean {
-  if (scansMatchWireType(list, tpl.wireTypeIds)) return true
-  const representativeId = list[0]!.box_id
-  return boxMatchesTemplate(representativeId, tpl.boxIdPatterns)
+/**
+ * Whether this box belongs on the schedule row. Uses **all** scans for the box for wire_type so
+ * intake / other-job rows still classify the spool; box_id patterns use the physical box id.
+ */
+function boxMatchesReportRow(
+  jobList: WireBoxScan[],
+  tpl: WireReportTemplateRow,
+  allScans: WireBoxScan[]
+): boolean {
+  const boxId = (jobList[0]?.box_id || '').trim()
+  if (!boxId) return false
+  const boxAll = scansForBoxId(allScans, boxId)
+  if (scansMatchWireType(boxAll, tpl.wireTypeIds)) return true
+  return boxMatchesTemplate(boxId, tpl.boxIdPatterns)
 }
 
 function scansForJob(scans: WireBoxScan[], jobName: string): WireBoxScan[] {
@@ -312,6 +322,45 @@ function aggregateBoxUsagesForReport(
   return { usedFt, notes: notes.trim() }
 }
 
+/** Combine rows that share the same wire type (e.g. schedule row + “other” with same label). */
+function mergeReportRowsByWireType(rows: WireReportRow[]): WireReportRow[] {
+  const byLabel = new Map<string, WireReportRow[]>()
+  for (const r of rows) {
+    if (!byLabel.has(r.wireType)) byLabel.set(r.wireType, [])
+    byLabel.get(r.wireType)!.push(r)
+  }
+  const merged = new Map<string, WireReportRow>()
+  for (const [label, list] of byLabel) {
+    if (list.length === 1) {
+      merged.set(label, list[0]!)
+      continue
+    }
+    const substantive = list.filter((r) => !(r.usedFt === null && r.notes.trim() === ''))
+    if (substantive.length === 0) {
+      merged.set(label, { wireType: label, usedFt: null, notes: '' })
+      continue
+    }
+    const agg = aggregateBoxUsagesForReport(
+      substantive.map((r) => ({ usedFt: r.usedFt, notes: r.notes }))
+    )
+    merged.set(label, { wireType: label, usedFt: agg.usedFt, notes: agg.notes })
+  }
+  const ordered: WireReportRow[] = []
+  const seen = new Set<string>()
+  for (const tpl of ROUGH_IN_WIRE_REPORT_ROWS) {
+    const r = merged.get(tpl.label)
+    if (r) {
+      ordered.push(r)
+      seen.add(tpl.label)
+    }
+  }
+  const rest = [...merged.keys()]
+    .filter((k) => !seen.has(k))
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))
+  for (const k of rest) ordered.push(merged.get(k)!)
+  return ordered
+}
+
 export type BuildWireMaterialsReportOptions = {
   /** When true, boxes whose latest scan is still check-out on this job use end ft = 0 (tossed empty). */
   countEmptyTossedBoxes?: boolean
@@ -347,7 +396,8 @@ export function buildWireMaterialsReport(
   for (const tpl of ROUGH_IN_WIRE_REPORT_ROWS) {
     const matchingKeys: string[] = []
     for (const [key, list] of byBox) {
-      if (boxMatchesReportRow(list, tpl)) matchingKeys.push(key)
+      if (assignedBoxes.has(key)) continue
+      if (boxMatchesReportRow(list, tpl, allScans)) matchingKeys.push(key)
     }
     if (matchingKeys.length === 0) {
       rows.push({
@@ -399,7 +449,7 @@ export function buildWireMaterialsReport(
   }
   rows.push(...otherRows)
 
-  return rows
+  return mergeReportRowsByWireType(rows)
 }
 
 export function reportRowsToCsv(jobName: string, rows: WireReportRow[]): string {
