@@ -100,9 +100,7 @@ export const ROUGH_IN_WIRE_REPORT_ROWS: WireReportTemplateRow[] = [
 
 export interface WireReportRow {
   wireType: string
-  boxId: string | null
-  startFt: number | null
-  endFt: number | null
+  /** Total feet used on this job for this wire type (sum over boxes). */
   usedFt: number | null
   notes: string
 }
@@ -286,6 +284,34 @@ function usageForBoxScans(boxScans: WireBoxScan[]): {
   return { startFt, endFt, usedFt, notes }
 }
 
+function aggregateBoxUsagesForReport(
+  usages: { usedFt: number | null; notes: string }[]
+): { usedFt: number | null; notes: string } {
+  if (usages.length === 0) return { usedFt: null, notes: '' }
+  const vals = usages.map((u) => u.usedFt)
+  const nums = vals.filter((v): v is number => v !== null)
+  const missing = vals.filter((v) => v === null).length
+  let usedFt: number | null = null
+  if (nums.length > 0) usedFt = nums.reduce((a, b) => a + b, 0)
+  if (missing > 0 && nums.length === 0) usedFt = null
+
+  const uniqNotes = [...new Set(usages.map((u) => u.notes.trim()).filter(Boolean))]
+  let notes = ''
+  if (uniqNotes.length === 1) notes = uniqNotes[0]!
+  else if (uniqNotes.length > 1 && uniqNotes.length <= 3) notes = uniqNotes.join(' · ')
+  else if (uniqNotes.length > 3) notes = `${uniqNotes[0]} · (+${uniqNotes.length - 1} other cases)`
+
+  if (missing > 0 && nums.length > 0) {
+    const suffix = `Partial total: ${missing} box(es) had missing footage.`
+    notes = notes ? `${notes} ${suffix}` : suffix
+  } else if (missing > 0 && nums.length === 0) {
+    const suffix = 'Could not total usage (footage missing on all matching boxes).'
+    notes = notes ? `${notes} ${suffix}` : suffix
+  }
+
+  return { usedFt, notes: notes.trim() }
+}
+
 export type BuildWireMaterialsReportOptions = {
   /** When true, boxes whose latest scan is still check-out on this job use end ft = 0 (tossed empty). */
   countEmptyTossedBoxes?: boolean
@@ -326,9 +352,6 @@ export function buildWireMaterialsReport(
     if (matchingKeys.length === 0) {
       rows.push({
         wireType: tpl.label,
-        boxId: null,
-        startFt: null,
-        endFt: null,
         usedFt: null,
         notes: '',
       })
@@ -339,37 +362,41 @@ export function buildWireMaterialsReport(
       const idb = byBox.get(b)![0]!.box_id
       return ida.localeCompare(idb, undefined, { numeric: true })
     })
-    for (const key of matchingKeys) {
-      assignedBoxes.add(key)
-      const list = byBox.get(key)!
-      const boxId = list[0]!.box_id
-      const { startFt, endFt, usedFt, notes } = usageForReportBox(list)
-      rows.push({
-        wireType: tpl.label,
-        boxId,
-        startFt,
-        endFt,
-        usedFt,
-        notes,
-      })
-    }
+    const usages = matchingKeys.map((key) => usageForReportBox(byBox.get(key)!))
+    const agg = aggregateBoxUsagesForReport(usages)
+    rows.push({
+      wireType: tpl.label,
+      usedFt: agg.usedFt,
+      notes: agg.notes,
+    })
+    for (const key of matchingKeys) assignedBoxes.add(key)
   }
 
-  const otherRows: WireReportRow[] = []
+  const otherGroups = new Map<string, { usedFt: number | null; notes: string }[]>()
   for (const [key, list] of byBox) {
     if (assignedBoxes.has(key)) continue
-    const boxId = list[0]!.box_id
-    const { startFt, endFt, usedFt, notes } = usageForReportBox(list)
+    const boxAll = scansForBoxId(allScans, list[0]!.box_id)
+    const labelRaw = boxWireTypeDisplayLabel(boxAll).trim()
+    const label = labelRaw && labelRaw !== '—' ? labelRaw : 'Other (untyped)'
+    const u = usageForReportBox(list)
+    const entry = {
+      usedFt: u.usedFt,
+      notes: u.notes || 'Box not matched to standard schedule row.',
+    }
+    if (!otherGroups.has(label)) otherGroups.set(label, [])
+    otherGroups.get(label)!.push(entry)
+  }
+  const otherRows: WireReportRow[] = []
+  for (const [wireType, parts] of [...otherGroups.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0], undefined, { sensitivity: 'base', numeric: true })
+  )) {
+    const agg = aggregateBoxUsagesForReport(parts)
     otherRows.push({
-      wireType: 'Other (scan)',
-      boxId,
-      startFt,
-      endFt,
-      usedFt,
-      notes: notes || 'Box ID not matched to standard schedule row.',
+      wireType,
+      usedFt: agg.usedFt,
+      notes: agg.notes,
     })
   }
-  otherRows.sort((a, b) => (a.boxId || '').localeCompare(b.boxId || '', undefined, { numeric: true }))
   rows.push(...otherRows)
 
   return rows
@@ -382,12 +409,10 @@ export function reportRowsToCsv(jobName: string, rows: WireReportRow[]): string 
     if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
     return s
   }
-  const header = ['Wire type', 'Box ID', 'Start footage (ft)', 'End footage (ft)', 'Used (ft)', 'Notes']
+  const header = ['Wire type', 'Total used (ft)', 'Notes']
   const lines = [
     header.join(','),
-    ...rows.map((r) =>
-      [r.wireType, r.boxId, r.startFt, r.endFt, r.usedFt, r.notes].map(esc).join(',')
-    ),
+    ...rows.map((r) => [r.wireType, r.usedFt, r.notes].map(esc).join(',')),
   ]
   return `Job,"${jobName.replace(/"/g, '""')}"\n` + lines.join('\n')
 }
@@ -398,9 +423,6 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
     .map(
       (r) => `<tr>
   <td>${escapeHtml(r.wireType)}</td>
-  <td>${escapeHtml(r.boxId ?? '—')}</td>
-  <td class="num">${r.startFt === null ? '—' : formatNum(r.startFt)}</td>
-  <td class="num">${r.endFt === null ? '—' : formatNum(r.endFt)}</td>
   <td class="num">${r.usedFt === null ? '—' : formatNum(r.usedFt)}</td>
   <td class="notes">${escapeHtml(r.notes)}</td>
 </tr>`
@@ -427,16 +449,13 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
 <body>
   <h1>Wire materials used report</h1>
   <p class="meta">Job: <strong>${escapeHtml(jobName)}</strong> · Generated ${escapeHtml(dateStr)}</p>
-  <p class="meta">Used = footage on the <strong>first</strong> scan for each box on this job minus footage on the <strong>last</strong> scan (remaining length on spool).</p>
+  <p class="meta">Each row is the <strong>total feet used</strong> for that wire type on this job (per box: first scan minus last scan on the job, or tossed-empty rule when enabled), summed across all spools of that type.</p>
   <table>
     <caption>Rough-in wire schedule</caption>
     <thead>
       <tr>
         <th>Wire type</th>
-        <th>Box ID</th>
-        <th>Start (ft)</th>
-        <th>End (ft)</th>
-        <th>Used (ft)</th>
+        <th>Total used (ft)</th>
         <th>Notes</th>
       </tr>
     </thead>
@@ -470,7 +489,7 @@ export function downloadTextFile(filename: string, content: string, mime: string
   URL.revokeObjectURL(url)
 }
 
-/** Landscape PDF with the same columns as the on-screen materials report (loads jspdf on demand). */
+/** Landscape PDF matching the on-screen materials report (loads jspdf on demand). */
 export async function downloadWireMaterialsReportPdf(
   jobName: string,
   rows: WireReportRow[],
@@ -498,20 +517,13 @@ export async function downloadWireMaterialsReportPdf(
   y += 5
   doc.setFontSize(9)
   const explain =
-    'Used = footage on the first scan for each box on this job minus footage on the last scan (remaining on spool).'
+    'Each row is total feet used for that wire type on this job (per box: first minus last scan on the job, or tossed-empty when enabled), summed across spools.'
   const splitExplain = doc.splitTextToSize(explain, pageW - margin * 2)
   doc.text(splitExplain, margin, y)
   y += splitExplain.length * 4 + 6
 
-  const head = [['Wire type', 'Box ID', 'Start (ft)', 'End (ft)', 'Used (ft)', 'Notes']]
-  const body = rows.map((r) => [
-    r.wireType,
-    r.boxId ?? '—',
-    r.startFt === null ? '—' : formatNum(r.startFt),
-    r.endFt === null ? '—' : formatNum(r.endFt),
-    r.usedFt === null ? '—' : formatNum(r.usedFt),
-    r.notes || '',
-  ])
+  const head = [['Wire type', 'Total used (ft)', 'Notes']]
+  const body = rows.map((r) => [r.wireType, r.usedFt === null ? '—' : formatNum(r.usedFt), r.notes || ''])
 
   autoTable(doc, {
     startY: y,
@@ -520,12 +532,9 @@ export async function downloadWireMaterialsReportPdf(
     styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
     headStyles: { fillColor: [41, 49, 63], textColor: 255, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 48 },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 22, halign: 'right' },
-      3: { cellWidth: 22, halign: 'right' },
-      4: { cellWidth: 22, halign: 'right' },
-      5: { cellWidth: 'auto' },
+      0: { cellWidth: 62 },
+      1: { cellWidth: 28, halign: 'right' },
+      2: { cellWidth: 'auto' },
     },
     margin: { left: margin, right: margin },
   })

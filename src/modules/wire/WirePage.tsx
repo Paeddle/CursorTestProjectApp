@@ -447,7 +447,8 @@ export function WirePage() {
           Materials used report
         </h2>
         <p className="wire-report-hint">
-          <strong>Count empty boxes</strong> (toggle): spools whose <em>latest scan</em> is still a
+          Report shows <strong>total feet used per wire type</strong> on the job (all spools of that type
+          combined). <strong>Count empty boxes</strong> (toggle): spools whose <em>latest scan</em> is still a
           check-out on the selected job are treated as tossed empty—end footage is set to 0 and used equals
           the last check-out reading.
         </p>
@@ -523,20 +524,14 @@ export function WirePage() {
               <thead>
                 <tr>
                   <th>Wire type</th>
-                  <th>Box ID</th>
-                  <th>Start (ft)</th>
-                  <th>End (ft)</th>
-                  <th>Used (ft)</th>
+                  <th>Total used (ft)</th>
                   <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {reportRows.map((row, i) => (
-                  <tr key={`${row.wireType}-${row.boxId ?? i}-${i}`}>
+                  <tr key={`${row.wireType}-${i}`}>
                     <td>{row.wireType}</td>
-                    <td>{row.boxId ?? '—'}</td>
-                    <td className="wire-report-num">{row.startFt === null ? '—' : row.startFt}</td>
-                    <td className="wire-report-num">{row.endFt === null ? '—' : row.endFt}</td>
                     <td className="wire-report-num">{row.usedFt === null ? '—' : row.usedFt}</td>
                     <td className="wire-report-notes">{row.notes || '—'}</td>
                   </tr>
