@@ -349,11 +349,12 @@ function App() {
         })
       }
       const modeLabel = checkType === 'check_out' ? 'Check out' : 'Check in'
+      const remainingLabel = `Remaining ${footage} ft`
       const capHint =
         profile.spool_capacity_ft && parseFootageNumber(footage) !== null
-          ? ` (${footage} ft of ${profile.spool_capacity_ft} ft on spool)`
+          ? ` of ${profile.spool_capacity_ft} ft`
           : ''
-      showSuccess(`Saved: ${modeLabel} — ${id} — ${job} — ${footage} ft${capHint}`)
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${job} — ${remainingLabel}${capHint}`)
       setBoxId('')
       setJobName('')
       setCurrentFootage('')
