@@ -48,6 +48,7 @@ interface BoxProfile {
   wireTypeId: string
   capacityFt: string
   label: string
+  remainingFt: string | null
 }
 
 function FootageContextHint({
@@ -147,7 +148,7 @@ function App() {
           supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).eq('box_id', id),
           supabase
             .from('wire_box_scans')
-            .select('wire_type, spool_capacity_ft, wire_type_label')
+            .select('wire_type, spool_capacity_ft, wire_type_label, current_footage')
             .eq('box_id', id)
             .not('spool_capacity_ft', 'is', null)
             .order('scanned_at', { ascending: false })
@@ -168,6 +169,7 @@ function App() {
           wire_type: string
           spool_capacity_ft: string
           wire_type_label?: string | null
+          current_footage?: string | null
         } | null
         if (row?.wire_type && row?.spool_capacity_ft) {
           const wireRaw = String(row.wire_type).trim()
@@ -180,10 +182,12 @@ function App() {
             preset?.label ||
             wireRaw
           const capacityFt = preset != null ? String(preset.defaultCapacityFt) : storedCap
+          const remainingRaw = row.current_footage ? String(row.current_footage).trim() : ''
           setBoxProfile({
             wireTypeId: preset?.id ?? wireRaw,
             capacityFt,
             label,
+            remainingFt: remainingRaw || null,
           })
         } else {
           setBoxProfile(null)
@@ -495,6 +499,10 @@ function App() {
                 <p>
                   {boxProfile.label}
                   <span className="profile-cap"> · Full spool {boxProfile.capacityFt} ft</span>
+                  <span className="profile-cap">
+                    {' '}
+                    · Current {boxProfile.remainingFt ? `${boxProfile.remainingFt} ft` : '—'}
+                  </span>
                 </p>
               </div>
             )}
