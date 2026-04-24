@@ -102,6 +102,13 @@ function boxHeaderDefaultWireDisplay(scans: WireBoxScan[]): string {
   return '—'
 }
 
+function boxHeaderRemainingFootage(scans: WireBoxScan[]): string {
+  if (!scans.length) return '—'
+  const newest = scans[0]
+  if (!newest) return '—'
+  return formatFootageCell(newest)
+}
+
 function summaryMatchesWireTypeQuery(summary: WireBoxSummary, q: string): boolean {
   const header = boxHeaderWireType(summary.scans).toLowerCase()
   if (header !== '—' && header.includes(q)) return true
@@ -836,6 +843,7 @@ export function WirePage() {
               const isExpanded = expandedBox.has(key)
               const headerWire = boxHeaderWireType(summary.scans)
               const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
+              const headerRemaining = boxHeaderRemainingFootage(summary.scans)
               const nScans = summary.scans.length
               const inInventory = isBoxInInventory(summary.scans)
               return (
@@ -885,6 +893,10 @@ export function WirePage() {
                             {' · '}
                           </span>
                           <span className="wire-card-default-cap">Default {headerDefault}</span>
+                          <span className="wire-card-meta-sep" aria-hidden>
+                            {' · '}
+                          </span>
+                          <span className="wire-card-default-cap">Remaining {headerRemaining}</span>
                         </span>
                       </span>
                       <span className="wire-card-badge">
