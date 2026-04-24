@@ -574,6 +574,58 @@
   line-height: 1.45;
 }
 
+.wire-jobs-manager {
+  margin: 0 0 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.wire-jobs-header {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.55rem;
+}
+
+.wire-jobs-toolbar {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.wire-jobs-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 0.92rem;
+}
+
+.wire-jobs-empty {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.wire-jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wire-jobs-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+  color: #e2e8f0;
+}
+
 .wire-report-toolbar {
   display: flex;
   flex-direction: column;
@@ -838,6 +890,11 @@
   }
 
   .wire-report-toolbar-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wire-jobs-toolbar {
     flex-direction: column;
     align-items: stretch;
   }

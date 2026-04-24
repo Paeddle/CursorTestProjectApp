@@ -44,6 +44,10 @@ function formatCheckType(raw: string | undefined): string {
   return 'Check in'
 }
 
+function normalizeJobNameKey(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
 function scanTimeMs(scan: WireBoxScan): number {
   return new Date(scan.scanned_at).getTime()
 }
@@ -169,10 +173,17 @@ export function WirePage() {
   const [selectedBoxKeys, setSelectedBoxKeys] = useState<Set<string>>(() => new Set())
   const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
   const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
+  const [managedJobs, setManagedJobs] = useState<string[]>([])
+  const [newManagedJob, setNewManagedJob] = useState('')
+  const [jobsWorking, setJobsWorking] = useState(false)
   const selectionAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
-  const allJobNameSuggestions = useMemo(() => uniqueJobNamesFromScans(allScans), [allScans])
+  const allJobNameSuggestions = useMemo(() => {
+    const merged = new Set<string>(managedJobs)
+    for (const j of uniqueJobNamesFromScans(allScans)) merged.add(j)
+    return Array.from(merged).sort((a, b) => a.localeCompare(b))
+  }, [allScans, managedJobs])
 
   const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
 
@@ -194,6 +205,23 @@ export function WirePage() {
     }
   }, [])
 
+  const loadManagedJobs = useCallback(async () => {
+    try {
+      const { data, error: qErr } = await supabase
+        .from('wire_jobs')
+        .select('name, is_active')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+      if (qErr) throw qErr
+      const names = (data ?? [])
+        .map((r) => (typeof r.name === 'string' ? r.name.trim() : ''))
+        .filter(Boolean)
+      setManagedJobs(names)
+    } catch {
+      setManagedJobs([])
+    }
+  }, [])
+
   useEffect(() => {
     if (!isConfigured()) {
       setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env')
@@ -202,6 +230,11 @@ export function WirePage() {
     }
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!isConfigured()) return
+    void loadManagedJobs()
+  }, [loadManagedJobs])
 
   useEffect(() => {
     if (reportJob && !jobOptions.includes(reportJob)) {
@@ -453,13 +486,62 @@ export function WirePage() {
     try {
       const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
       if (insErr) throw new Error(insErr.message)
+      const jobKey = normalizeJobNameKey(job)
+      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
+        { name: job, name_key: jobKey, is_active: true },
+        { onConflict: 'name_key' }
+      )
+      if (jobErr) throw new Error(jobErr.message)
       setSelectedBoxKeys(new Set())
       selectionAnchorIndexRef.current = null
+      await loadManagedJobs()
       await load({ silent: true })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Bulk check out failed')
     } finally {
       setBulkCheckoutWorking(false)
+    }
+  }
+
+  const handleAddManagedJob = async () => {
+    const name = newManagedJob.trim().replace(/\s+/g, ' ')
+    if (!name) return
+    setJobsWorking(true)
+    setError(null)
+    try {
+      const key = normalizeJobNameKey(name)
+      const { error: insErr } = await supabase.from('wire_jobs').upsert(
+        { name, name_key: key, is_active: true },
+        { onConflict: 'name_key' }
+      )
+      if (insErr) throw new Error(insErr.message)
+      setNewManagedJob('')
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not add job')
+    } finally {
+      setJobsWorking(false)
+    }
+  }
+
+  const handleDeleteManagedJob = async (name: string) => {
+    const key = normalizeJobNameKey(name)
+    if (!window.confirm(`Delete job “${name}”?`)) return
+    setJobsWorking(true)
+    setError(null)
+    try {
+      const { error: delErr } = await supabase.from('wire_jobs').delete().eq('name_key', key)
+      if (delErr) throw new Error(delErr.message)
+      if (reportJob === name) {
+        setReportJob('')
+        setReportRows(null)
+      }
+      if (bulkCheckoutJob.trim() === name) setBulkCheckoutJob('')
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not delete job')
+    } finally {
+      setJobsWorking(false)
     }
   }
 
@@ -486,13 +568,46 @@ export function WirePage() {
         <h2 id="wire-report-heading" className="wire-report-title">
           Materials used report
         </h2>
-        <p className="wire-report-hint">
-          Per wire type: <strong>Start</strong> and <strong>end</strong> are totals of each spool’s first and
-          last footage on this job; <strong>used</strong> is total wire consumed (usually start minus end per
-          spool). <strong>Count empty boxes</strong> (toggle): spools whose <em>latest scan</em> is still a
-          check-out on the selected job are treated as tossed empty—end footage is set to 0 and used equals
-          the last check-out reading.
-        </p>
+        <div className="wire-jobs-manager" role="region" aria-label="Ongoing jobs">
+          <div className="wire-jobs-header">Ongoing jobs</div>
+          <div className="wire-jobs-toolbar">
+            <input
+              type="text"
+              className="wire-jobs-input"
+              value={newManagedJob}
+              onChange={(e) => setNewManagedJob(e.target.value)}
+              placeholder="Add job name…"
+              disabled={loading || jobsWorking}
+            />
+            <button
+              type="button"
+              className="wire-report-secondary"
+              disabled={loading || jobsWorking || !newManagedJob.trim()}
+              onClick={() => void handleAddManagedJob()}
+            >
+              Add job
+            </button>
+          </div>
+          {managedJobs.length === 0 ? (
+            <div className="wire-jobs-empty">No ongoing jobs added yet.</div>
+          ) : (
+            <div className="wire-jobs-list">
+              {managedJobs.map((job) => (
+                <div key={job} className="wire-jobs-item">
+                  <span>{job}</span>
+                  <button
+                    type="button"
+                    className="wire-delete-scan"
+                    disabled={loading || jobsWorking}
+                    onClick={() => void handleDeleteManagedJob(job)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="wire-report-toolbar">
           <div className="wire-report-toolbar-main">
             <label className="wire-report-job-label">
@@ -690,6 +805,15 @@ export function WirePage() {
         <button type="button" className="wire-refresh" onClick={() => load()} disabled={loading}>
           Refresh
         </button>
+        {filtered.length > 0 && (
+          <button
+            type="button"
+            className="wire-refresh"
+            onClick={areAllFilteredExpanded ? collapseAllFiltered : expandAllFiltered}
+          >
+            {areAllFilteredExpanded ? 'Collapse all boxes' : 'Expand all boxes'}
+          </button>
+        )}
       </div>
 
       {error && <div className="wire-error">{error}</div>}
@@ -705,17 +829,7 @@ export function WirePage() {
           </p>
         </div>
       ) : (
-        <>
-          <div className="wire-controls">
-            <button
-              type="button"
-              className="wire-refresh"
-              onClick={areAllFilteredExpanded ? collapseAllFiltered : expandAllFiltered}
-            >
-              {areAllFilteredExpanded ? 'Collapse all boxes' : 'Expand all boxes'}
-            </button>
-          </div>
-          <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
+        <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
           <div className="wire-list">
             {filtered.map((summary, indexInFiltered) => {
               const key = summary.box_id.toLowerCase()
@@ -846,8 +960,7 @@ export function WirePage() {
               )
             })}
           </div>
-          </div>
-        </>
+        </div>
       )}
     </div>
   )

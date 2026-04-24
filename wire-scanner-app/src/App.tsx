@@ -13,6 +13,10 @@ function normalizeBoxId(raw: string): string {
   return raw.trim()
 }
 
+function normalizeJobNameKey(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
 function isValidBoxIdFormat(id: string): boolean {
   if (!id) return false
   return /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/.test(id) || /^[a-zA-Z][a-zA-Z0-9-]*\d+$/.test(id)
@@ -81,6 +85,7 @@ function App() {
   const [boxId, setBoxId] = useState(getInitialBoxIdFromWindow)
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
+  const [jobOptions, setJobOptions] = useState<string[]>([])
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -94,6 +99,31 @@ function App() {
   useEffect(() => {
     const fromUrl = getInitialBoxIdFromWindow()
     if (fromUrl) setBoxId(fromUrl)
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('wire_jobs')
+          .select('name, is_active')
+          .eq('is_active', true)
+          .order('name', { ascending: true })
+        if (error) throw error
+        if (cancelled) return
+        const names = (data ?? [])
+          .map((r) => (typeof r.name === 'string' ? r.name.trim() : ''))
+          .filter(Boolean)
+        setJobOptions(names)
+      } catch {
+        if (!cancelled) setJobOptions([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -307,6 +337,17 @@ function App() {
         }
         return
       }
+      const jobKey = normalizeJobNameKey(job)
+      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
+        { name: job, name_key: jobKey, is_active: true },
+        { onConflict: 'name_key' }
+      )
+      if (!jobErr) {
+        setJobOptions((prev) => {
+          if (prev.some((x) => normalizeJobNameKey(x) === jobKey)) return prev
+          return [...prev, job].sort((a, b) => a.localeCompare(b))
+        })
+      }
       const modeLabel = checkType === 'check_out' ? 'Check out' : 'Check in'
       const capHint =
         profile.spool_capacity_ft && parseFootageNumber(footage) !== null
@@ -502,11 +543,17 @@ function App() {
                 id="job-name"
                 type="text"
                 className="input"
+                list="job-name-options"
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
                 placeholder="e.g. Smith Residence"
                 autoComplete="off"
               />
+              <datalist id="job-name-options">
+                {jobOptions.map((j) => (
+                  <option key={j} value={j} />
+                ))}
+              </datalist>
             </div>
             <div className="form-field">
               <label className="label" htmlFor="current-footage">
