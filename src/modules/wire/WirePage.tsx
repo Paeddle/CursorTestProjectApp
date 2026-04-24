@@ -55,7 +55,6 @@ function oldestScanInBox(scans: WireBoxScan[]): WireBoxScan | null {
 }
 
 function isIntakeScan(scan: WireBoxScan, boxScans: WireBoxScan[]): boolean {
-  if (scan.check_type === 'check_out') return false
   const first = oldestScanInBox(boxScans)
   if (!first) return false
   if (scan.id && first.id) return scan.id === first.id
@@ -233,6 +232,15 @@ export function WirePage() {
     })
   }, [summaries, searchBox])
 
+  const filteredBoxKeys = useMemo(
+    () => filtered.map((s) => s.box_id.toLowerCase()),
+    [filtered]
+  )
+  const areAllFilteredExpanded = useMemo(
+    () => filteredBoxKeys.length > 0 && filteredBoxKeys.every((k) => expandedBox.has(k)),
+    [filteredBoxKeys, expandedBox]
+  )
+
   useEffect(() => {
     const allowed = new Set(filtered.map((s) => s.box_id.toLowerCase()))
     setSelectedBoxKeys((prev) => {
@@ -253,6 +261,22 @@ export function WirePage() {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
+      return next
+    })
+  }
+
+  const expandAllFiltered = () => {
+    setExpandedBox((prev) => {
+      const next = new Set(prev)
+      for (const key of filteredBoxKeys) next.add(key)
+      return next
+    })
+  }
+
+  const collapseAllFiltered = () => {
+    setExpandedBox((prev) => {
+      const next = new Set(prev)
+      for (const key of filteredBoxKeys) next.delete(key)
       return next
     })
   }
@@ -681,7 +705,17 @@ export function WirePage() {
           </p>
         </div>
       ) : (
-        <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
+        <>
+          <div className="wire-controls">
+            <button
+              type="button"
+              className="wire-refresh"
+              onClick={areAllFilteredExpanded ? collapseAllFiltered : expandAllFiltered}
+            >
+              {areAllFilteredExpanded ? 'Collapse all boxes' : 'Expand all boxes'}
+            </button>
+          </div>
+          <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
           <div className="wire-list">
             {filtered.map((summary, indexInFiltered) => {
               const key = summary.box_id.toLowerCase()
@@ -812,7 +846,8 @@ export function WirePage() {
               )
             })}
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   )
