@@ -233,6 +233,21 @@ function App() {
     setStatus({ type: 'error', message: msg })
   }
 
+  const persistJobOption = useCallback(async (rawName: string) => {
+    if (!supabase) return
+    const name = rawName.trim().replace(/\s+/g, ' ')
+    if (!name) return
+    const jobKey = normalizeJobNameKey(name)
+    const { error } = await supabase
+      .from('wire_jobs')
+      .upsert({ name, name_key: jobKey, is_active: true }, { onConflict: 'name_key' })
+    if (error) return
+    setJobOptions((prev) => {
+      if (prev.some((x) => normalizeJobNameKey(x) === jobKey)) return prev
+      return [...prev, name].sort((a, b) => a.localeCompare(b))
+    })
+  }, [])
+
   const handleQRScanned = useCallback((value: string) => {
     const raw = (value || '').trim()
     if (!raw) return
@@ -253,6 +268,16 @@ function App() {
       setShowScanner(false)
     }
   }, [])
+
+  useEffect(() => {
+    if (!supabase) return
+    const normalized = jobName.trim().replace(/\s+/g, ' ')
+    if (!normalized) return
+    const t = window.setTimeout(() => {
+      void persistJobOption(normalized)
+    }, 500)
+    return () => window.clearTimeout(t)
+  }, [jobName, persistJobOption])
 
   const buildProfileInsert = (): {
     wire_type?: string
@@ -341,17 +366,7 @@ function App() {
         }
         return
       }
-      const jobKey = normalizeJobNameKey(job)
-      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
-        { name: job, name_key: jobKey, is_active: true },
-        { onConflict: 'name_key' }
-      )
-      if (!jobErr) {
-        setJobOptions((prev) => {
-          if (prev.some((x) => normalizeJobNameKey(x) === jobKey)) return prev
-          return [...prev, job].sort((a, b) => a.localeCompare(b))
-        })
-      }
+      await persistJobOption(job)
       const modeLabel = checkType === 'check_out' ? 'Check out' : 'Check in'
       const remainingLabel = `Remaining ${footage} ft`
       const capHint =
@@ -555,6 +570,9 @@ function App() {
                 list="job-name-options"
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
+                onBlur={() => {
+                  void persistJobOption(jobName)
+                }}
                 placeholder="e.g. Smith Residence"
                 autoComplete="off"
               />

@@ -575,8 +575,8 @@ export function WirePage() {
         <h2 id="wire-report-heading" className="wire-report-title">
           Materials used report
         </h2>
-        <div className="wire-jobs-manager" role="region" aria-label="Ongoing jobs">
-          <div className="wire-jobs-header">Ongoing jobs</div>
+        <div className="wire-jobs-manager" role="region" aria-label="Existing jobs">
+          <div className="wire-jobs-header">Existing Jobs</div>
           <div className="wire-jobs-toolbar">
             <input
               type="text"
