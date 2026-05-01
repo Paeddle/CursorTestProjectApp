@@ -517,12 +517,10 @@ export function reportRowsToCsv(jobName: string, rows: WireReportRow[]): string 
     if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
     return s
   }
-  const header = ['Wire type', 'Start (ft)', 'End (ft)', 'Total used (ft)', 'Notes']
+  const header = ['Wire type', 'Start (ft)', 'End (ft)', 'Total used (ft)']
   const lines = [
     header.join(','),
-    ...rows.map((r) =>
-      [r.wireType, r.startFt, r.endFt, r.usedFt, r.notes].map(esc).join(',')
-    ),
+    ...rows.map((r) => [r.wireType, r.startFt, r.endFt, r.usedFt].map(esc).join(',')),
   ]
   return `Job,"${jobName.replace(/"/g, '""')}"\n` + lines.join('\n')
 }
@@ -536,7 +534,6 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
   <td class="num">${r.startFt === null ? '—' : formatNum(r.startFt)}</td>
   <td class="num">${r.endFt === null ? '—' : formatNum(r.endFt)}</td>
   <td class="num">${r.usedFt === null ? '—' : formatNum(r.usedFt)}</td>
-  <td class="notes">${escapeHtml(r.notes)}</td>
 </tr>`
     )
     .join('\n')
@@ -554,7 +551,6 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
     th, td { border: 1px solid #333; padding: 6px 8px; text-align: left; vertical-align: top; }
     th { background: #e8e8e8; font-weight: 600; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
-    .notes { font-size: 0.82rem; color: #444; }
     caption { text-align: left; font-weight: 600; margin-bottom: 8px; }
   </style>
 </head>
@@ -570,7 +566,6 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
         <th>Start (ft)</th>
         <th>End (ft)</th>
         <th>Total used (ft)</th>
-        <th>Notes</th>
       </tr>
     </thead>
     <tbody>
@@ -636,13 +631,12 @@ export async function downloadWireMaterialsReportPdf(
   doc.text(splitExplain, margin, y)
   y += splitExplain.length * 4 + 6
 
-  const head = [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)', 'Notes']]
+  const head = [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)']]
   const body = rows.map((r) => [
     r.wireType,
     r.startFt === null ? '—' : formatNum(r.startFt),
     r.endFt === null ? '—' : formatNum(r.endFt),
     r.usedFt === null ? '—' : formatNum(r.usedFt),
-    r.notes || '',
   ])
 
   autoTable(doc, {
@@ -652,11 +646,10 @@ export async function downloadWireMaterialsReportPdf(
     styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
     headStyles: { fillColor: [41, 49, 63], textColor: 255, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 48 },
-      1: { cellWidth: 22, halign: 'right' },
-      2: { cellWidth: 22, halign: 'right' },
-      3: { cellWidth: 22, halign: 'right' },
-      4: { cellWidth: 'auto' },
+      0: { cellWidth: 70 },
+      1: { cellWidth: 28, halign: 'right' },
+      2: { cellWidth: 28, halign: 'right' },
+      3: { cellWidth: 28, halign: 'right' },
     },
     margin: { left: margin, right: margin },
   })

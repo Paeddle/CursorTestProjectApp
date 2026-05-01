@@ -690,7 +690,6 @@ export function WirePage() {
                   <th>Start (ft)</th>
                   <th>End (ft)</th>
                   <th>Total used (ft)</th>
-                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
@@ -700,7 +699,6 @@ export function WirePage() {
                     <td className="wire-report-num">{row.startFt === null ? '—' : row.startFt}</td>
                     <td className="wire-report-num">{row.endFt === null ? '—' : row.endFt}</td>
                     <td className="wire-report-num">{row.usedFt === null ? '—' : row.usedFt}</td>
-                    <td className="wire-report-notes">{row.notes || '—'}</td>
                   </tr>
                 ))}
               </tbody>
