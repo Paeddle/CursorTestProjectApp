@@ -557,28 +557,38 @@ export function WirePage() {
 
   const handleUpdateBoxWireType = async (summary: WireBoxSummary, presetId: string) => {
     const key = summary.box_id.toLowerCase()
-    const latest = summary.scans[0]
-    if (!latest?.id) {
-      setError(`Cannot update wire type for ${summary.box_id}: latest scan row has no id.`)
-      return
-    }
-    const preset = getWireTypePreset(presetId)
+    const trimmedId = presetId.trim()
+    if (!trimmedId) return
+
+    const preset = getWireTypePreset(trimmedId)
     if (!preset) {
       setError('Unknown wire type selected.')
       return
     }
+
+    const boxId = summary.box_id.trim()
+    if (!boxId) return
+
     setUpdatingTypeBoxKey(key)
     setError(null)
     try {
-      const { error: upErr } = await supabase
+      const { data, error: upErr } = await supabase
         .from('wire_box_scans')
         .update({
           wire_type: preset.id,
           wire_type_label: preset.label,
           spool_capacity_ft: String(preset.defaultCapacityFt),
         })
-        .eq('id', latest.id)
+        .eq('box_id', boxId)
+        .select('id')
+
       if (upErr) throw new Error(upErr.message)
+      if (!data?.length) {
+        throw new Error(
+          'Wire type was not saved (no rows updated). Supabase may be missing an UPDATE policy on wire_box_scans. Run supabase/fix-wire-box-scans-update-rls.sql in the SQL Editor, then try again.'
+        )
+      }
+
       setEditingTypeBoxKey(null)
       await load({ silent: true })
     } catch (e: unknown) {

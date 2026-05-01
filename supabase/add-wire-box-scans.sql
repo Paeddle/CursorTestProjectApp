@@ -39,3 +39,10 @@ create policy "Allow delete on wire_box_scans"
   on public.wire_box_scans for delete
   to anon, authenticated
   using (true);
+
+drop policy if exists "Allow update on wire_box_scans" on public.wire_box_scans;
+create policy "Allow update on wire_box_scans"
+  on public.wire_box_scans for update
+  to anon, authenticated
+  using (true)
+  with check (true);
