@@ -603,7 +603,7 @@ export function downloadTextFile(filename: string, content: string, mime: string
   URL.revokeObjectURL(url)
 }
 
-/** Landscape PDF matching the on-screen materials report (loads jspdf on demand). */
+/** US Letter (8.5" × 11") portrait PDF; table spans nearly full page width, centered via equal side margins. */
 export async function downloadWireMaterialsReportPdf(
   jobName: string,
   rows: WireReportRow[],
@@ -615,18 +615,23 @@ export async function downloadWireMaterialsReportPdf(
   ])
   const autoTable = autoTableMod.default
 
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' })
-  const margin = 14
-  let y = 16
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  const pageW = doc.internal.pageSize.getWidth()
+  const marginMm = 12
+  const tableWidth = pageW - 2 * marginMm
+  const numColW = 26
+  const wireColW = Math.max(48, tableWidth - 3 * numColW)
+
+  let y = 18
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(15)
-  doc.text('Wire materials used report', margin, y)
-  y += 7
+  doc.text('Wire materials used report', pageW / 2, y, { align: 'center' })
+  y += 8
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.text(`Job: ${jobName}`, margin, y)
+  doc.text(`Job: ${jobName}`, pageW / 2, y, { align: 'center' })
   y += 5
-  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y)
+  doc.text(`Generated: ${new Date().toLocaleString()}`, pageW / 2, y, { align: 'center' })
   y += 10
 
   const head = [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)']]
@@ -641,15 +646,22 @@ export async function downloadWireMaterialsReportPdf(
     startY: y,
     head,
     body,
-    styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
+    tableWidth,
+    styles: {
+      fontSize: 9,
+      cellPadding: 2,
+      overflow: 'linebreak',
+      halign: 'left',
+      valign: 'middle',
+    },
     headStyles: { fillColor: [41, 49, 63], textColor: 255, fontStyle: 'bold' },
     columnStyles: {
-      0: { cellWidth: 70 },
-      1: { cellWidth: 28, halign: 'right' },
-      2: { cellWidth: 28, halign: 'right' },
-      3: { cellWidth: 28, halign: 'right' },
+      0: { cellWidth: wireColW },
+      1: { cellWidth: numColW, halign: 'right' },
+      2: { cellWidth: numColW, halign: 'right' },
+      3: { cellWidth: numColW, halign: 'right' },
     },
-    margin: { left: margin, right: margin },
+    margin: { left: marginMm, right: marginMm },
   })
 
   doc.save(`wire-materials-${filenameStem}.pdf`)
