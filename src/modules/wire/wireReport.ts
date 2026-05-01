@@ -563,7 +563,6 @@ export function reportRowsToHtmlDocument(jobName: string, rows: WireReportRow[])
 <body>
   <h1>Wire materials used report</h1>
   <p class="meta">Job: <strong>${escapeHtml(jobName)}</strong> · Generated ${escapeHtml(dateStr)}</p>
-  <p class="meta">Per wire type: <strong>Start</strong> and <strong>end</strong> are the sums of each spool’s first and last footage on this job; <strong>used</strong> is the sum of (start − end) per spool (or tossed-empty when enabled).</p>
   <table>
     <caption>Rough-in wire schedule</caption>
     <thead>
@@ -617,7 +616,6 @@ export async function downloadWireMaterialsReportPdf(
   const autoTable = autoTableMod.default
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' })
-  const pageW = doc.internal.pageSize.getWidth()
   const margin = 14
   let y = 16
   doc.setFont('helvetica', 'bold')
@@ -629,13 +627,7 @@ export async function downloadWireMaterialsReportPdf(
   doc.text(`Job: ${jobName}`, margin, y)
   y += 5
   doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y)
-  y += 5
-  doc.setFontSize(9)
-  const explain =
-    'Start/End: sums of first/last job scan footage per spool. Used: sum of per-spool usage (or tossed-empty when enabled).'
-  const splitExplain = doc.splitTextToSize(explain, pageW - margin * 2)
-  doc.text(splitExplain, margin, y)
-  y += splitExplain.length * 4 + 6
+  y += 10
 
   const head = [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)']]
   const body = rows.map((r) => [
