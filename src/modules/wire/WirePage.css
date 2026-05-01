@@ -286,6 +286,23 @@
   line-height: 1.25;
 }
 
+.wire-card-wire-type-editable {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 0.16em;
+}
+
+.wire-card-wire-type-editable:hover {
+  color: #c7d2fe;
+}
+
+.wire-card-wire-type-editable:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .wire-card-default-cap {
   color: #cbd5e1;
 }
@@ -306,6 +323,36 @@
   border-top: 1px solid #334155;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.wire-type-inline-editor {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 1rem 0.65rem;
+  border-top: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.wire-type-inline-label {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.wire-type-inline-select {
+  min-width: 240px;
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.wire-type-inline-select:focus {
+  outline: none;
+  border-color: #3b82f6;
 }
 
 .wire-check-badge {

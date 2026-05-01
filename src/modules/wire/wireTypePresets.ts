@@ -1,7 +1,6 @@
 export interface WireTypePreset {
   id: string
   label: string
-  /** Typical full-spool length (ft) when the box is new */
   defaultCapacityFt: number
 }
 
@@ -33,32 +32,3 @@ export function getWireTypePreset(id: string): WireTypePreset | undefined {
   return WIRE_TYPE_PRESETS.find((p) => p.id === id)
 }
 
-/**
- * Match a value from the DB or UI to a preset (trim, case-insensitive id, label).
- * Use this when resolving `wire_box_scans.wire_type`; stored values may not exactly match `id`.
- */
-export function resolveWireTypePreset(raw: string | null | undefined): WireTypePreset | undefined {
-  const t = String(raw ?? '').trim()
-  if (!t) return undefined
-  const byExactId = WIRE_TYPE_PRESETS.find((p) => p.id === t)
-  if (byExactId) return byExactId
-  const lower = t.toLowerCase()
-  const byIdCi = WIRE_TYPE_PRESETS.find((p) => p.id.toLowerCase() === lower)
-  if (byIdCi) return byIdCi
-  const normLabel = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
-  const nl = normLabel(t)
-  const byLabel = WIRE_TYPE_PRESETS.find((p) => normLabel(p.label) === nl)
-  if (byLabel) return byLabel
-  return undefined
-}
-
-export function parseFootageNumber(raw: string): number | null {
-  const s = String(raw ?? '')
-    .replace(/,/g, '')
-    .replace(/ft\.?/gi, '')
-    .trim()
-  const m = s.match(/-?[\d.]+/)
-  if (!m) return null
-  const n = Number(m[0])
-  return Number.isFinite(n) ? n : null
-}

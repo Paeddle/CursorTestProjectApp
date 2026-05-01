@@ -47,6 +47,11 @@ export const ROUGH_IN_WIRE_REPORT_ROWS: WireReportTemplateRow[] = [
     boxIdPatterns: ['lutron-qs-m', 'lutron-qsm', 'lutron-qs'],
   },
   {
+    label: 'Optical Fiber Cable',
+    wireTypeIds: ['optical-fiber-cable'],
+    boxIdPatterns: ['optical-fiber-cable', 'optical-fiber', 'fiber-optic', 'fiber'],
+  },
+  {
     label: '18-4CS Security Wire',
     wireTypeIds: ['18-4cs-security-wire'],
     boxIdPatterns: ['18-4cs-security-wire', '18-4cs', '184cs'],
@@ -127,6 +132,7 @@ const WIRE_TYPE_DEFAULT_FT: Record<string, number> = {
   'cat6a-slim': 1000,
   cat7: 1000,
   cat8: 1000,
+  'optical-fiber-cable': 1000,
   'lutron-green': 1000,
   'lutron-qs-m': 1000,
   '18-4cs-security-wire': 500,

@@ -19,6 +19,7 @@ import {
   type WireBulkCheckoutInsertRow,
   type WireReportRow,
 } from './wireReport'
+import { WIRE_TYPE_PRESETS, getWireTypePreset } from './wireTypePresets'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -183,6 +184,8 @@ export function WirePage() {
   const [managedJobs, setManagedJobs] = useState<string[]>([])
   const [newManagedJob, setNewManagedJob] = useState('')
   const [jobsWorking, setJobsWorking] = useState(false)
+  const [editingTypeBoxKey, setEditingTypeBoxKey] = useState<string | null>(null)
+  const [updatingTypeBoxKey, setUpdatingTypeBoxKey] = useState<string | null>(null)
   const selectionAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
@@ -552,6 +555,39 @@ export function WirePage() {
     }
   }
 
+  const handleUpdateBoxWireType = async (summary: WireBoxSummary, presetId: string) => {
+    const key = summary.box_id.toLowerCase()
+    const latest = summary.scans[0]
+    if (!latest?.id) {
+      setError(`Cannot update wire type for ${summary.box_id}: latest scan row has no id.`)
+      return
+    }
+    const preset = getWireTypePreset(presetId)
+    if (!preset) {
+      setError('Unknown wire type selected.')
+      return
+    }
+    setUpdatingTypeBoxKey(key)
+    setError(null)
+    try {
+      const { error: upErr } = await supabase
+        .from('wire_box_scans')
+        .update({
+          wire_type: preset.id,
+          wire_type_label: preset.label,
+          spool_capacity_ft: String(preset.defaultCapacityFt),
+        })
+        .eq('id', latest.id)
+      if (upErr) throw new Error(upErr.message)
+      setEditingTypeBoxKey(null)
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not update wire type')
+    } finally {
+      setUpdatingTypeBoxKey(null)
+    }
+  }
+
   if (!isConfigured()) {
     return (
       <div className="wire-page">
@@ -839,6 +875,9 @@ export function WirePage() {
             {filtered.map((summary, indexInFiltered) => {
               const key = summary.box_id.toLowerCase()
               const isExpanded = expandedBox.has(key)
+              const profile = boxHeaderProfileScan(summary.scans)
+              const currentWireTypeId = String(profile?.wire_type ?? '').trim()
+              const showTypeEditor = editingTypeBoxKey === key
               const headerWire = boxHeaderWireType(summary.scans)
               const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
               const headerRemaining = boxHeaderRemainingFootage(summary.scans)
@@ -886,7 +925,25 @@ export function WirePage() {
                       <span className="wire-card-title-block">
                         <span className="wire-card-title">{summary.box_id}</span>
                         <span className="wire-card-meta">
-                          <span className="wire-card-wire-type">{headerWire}</span>
+                          <span
+                            className="wire-card-wire-type wire-card-wire-type-editable"
+                            role="button"
+                            tabIndex={0}
+                            title="Click to change wire type"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setEditingTypeBoxKey((prev) => (prev === key ? null : key))
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Enter' && e.key !== ' ') return
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setEditingTypeBoxKey((prev) => (prev === key ? null : key))
+                            }}
+                          >
+                            {headerWire}
+                          </span>
                           <span className="wire-card-meta-sep" aria-hidden>
                             {' · '}
                           </span>
@@ -916,6 +973,28 @@ export function WirePage() {
                       Delete box
                     </button>
                   </div>
+                  {showTypeEditor && (
+                    <div className="wire-type-inline-editor">
+                      <label className="wire-type-inline-label" htmlFor={`wire-type-edit-${key}`}>
+                        Wire type
+                      </label>
+                      <select
+                        id={`wire-type-edit-${key}`}
+                        className="wire-type-inline-select"
+                        value={currentWireTypeId}
+                        disabled={updatingTypeBoxKey === key}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => void handleUpdateBoxWireType(summary, e.target.value)}
+                      >
+                        <option value="">Select wire type…</option>
+                        {WIRE_TYPE_PRESETS.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   {isExpanded && (
                     <div className="wire-card-body">
                       <table className="wire-scans-table">
