@@ -853,13 +853,19 @@ export function WirePage() {
           value={searchBox}
           onChange={(e) => setSearchBox(e.target.value)}
         />
-        <button type="button" className="wire-refresh" onClick={() => load()} disabled={loading}>
-          Refresh
+        <button
+          type="button"
+          className="wire-toolbar-btn"
+          onClick={() => load()}
+          disabled={loading}
+          title="Reload wire box data from the server"
+        >
+          Search
         </button>
         {filtered.length > 0 && (
           <button
             type="button"
-            className="wire-refresh"
+            className="wire-toolbar-btn"
             onClick={areAllFilteredExpanded ? collapseAllFiltered : expandAllFiltered}
           >
             {areAllFilteredExpanded ? 'Collapse all boxes' : 'Expand all boxes'}

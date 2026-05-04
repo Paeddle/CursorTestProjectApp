@@ -43,7 +43,7 @@
   border-color: #3b82f6;
 }
 
-.wire-refresh {
+.wire-toolbar-btn {
   padding: 0.5rem 1rem;
   border-radius: 6px;
   border: 1px solid #475569;
@@ -53,12 +53,12 @@
   cursor: pointer;
 }
 
-.wire-refresh:hover:not(:disabled) {
+.wire-toolbar-btn:hover:not(:disabled) {
   background: #334155;
   border-color: #64748b;
 }
 
-.wire-refresh:disabled {
+.wire-toolbar-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -825,7 +825,7 @@
     font-size: 16px;
   }
 
-  .wire-refresh {
+  .wire-toolbar-btn {
     min-height: 44px;
     width: 100%;
     padding: 0.65rem 1rem;
