@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import {
   Html5Qrcode,
   Html5QrcodeCameraScanConfig,
@@ -39,6 +39,12 @@ const NATIVE_FORMATS_FULL = [
   'data_matrix',
   'pdf417',
 ] as const
+
+/** Chromium / WebKit extensions not in baseline TypeScript DOM typings */
+type VideoTrackCaps = MediaTrackCapabilities & {
+  zoom?: { min: number; max: number; step?: number }
+  torch?: boolean
+}
 
 function createPoBarcodeDetector(): BarcodeDetector | null {
   if (typeof BarcodeDetector === 'undefined') return null
@@ -141,6 +147,41 @@ function startPerFrameVideoBarcodeDetect(opts: {
   }
 }
 
+function pickVideoTrack(container: HTMLElement): MediaStreamTrack | null {
+  const video = container.querySelector('video')
+  const src = video?.srcObject
+  if (!(src instanceof MediaStream)) return null
+  return src.getVideoTracks()[0] ?? null
+}
+
+/** Wait until html5-qrcode has bound the MediaStream to the preview video. */
+function whenVideoTrackReady(
+  container: HTMLElement,
+  onTrack: (track: MediaStreamTrack) => void,
+  onGiveUp?: () => void
+): () => void {
+  let cancelled = false
+  let n = 0
+  const tick = () => {
+    if (cancelled) return
+    const track = pickVideoTrack(container)
+    if (track && track.readyState === 'live') {
+      onTrack(track)
+      return
+    }
+    n++
+    if (n >= 80) {
+      onGiveUp?.()
+      return
+    }
+    window.setTimeout(tick, 50)
+  }
+  tick()
+  return () => {
+    cancelled = true
+  }
+}
+
 interface BarcodeScannerProps {
   onScan: (value: string) => void
   onClose: () => void
@@ -150,7 +191,42 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
   const containerRef = useRef<HTMLDivElement>(null)
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const scanDoneRef = useRef(false)
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null)
+  const stopTrackProbeRef = useRef<(() => void) | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null)
+  const [zoomValue, setZoomValue] = useState(1)
+  const [torchSupported, setTorchSupported] = useState(false)
+  const [torchOn, setTorchOn] = useState(false)
+  const [zoomProbeDone, setZoomProbeDone] = useState(false)
+
+  const applyZoomLevel = useCallback(async (value: number) => {
+    const track = videoTrackRef.current
+    const range = zoomRange
+    if (!track || !range) return
+    const clamped = Math.min(range.max, Math.max(range.min, value))
+    const step = range.step > 0 ? range.step : 0.01
+    const snapped = Math.round(clamped / step) * step
+    const z = Math.min(range.max, Math.max(range.min, snapped))
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: z } as MediaTrackConstraintSet] })
+      setZoomValue(z)
+    } catch (e) {
+      console.warn('apply zoom failed:', e)
+    }
+  }, [zoomRange])
+
+  const toggleTorch = useCallback(async () => {
+    const track = videoTrackRef.current
+    if (!track || !torchSupported) return
+    const next = !torchOn
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] })
+      setTorchOn(next)
+    } catch (e) {
+      console.warn('torch toggle failed:', e)
+    }
+  }, [torchOn, torchSupported])
 
   useEffect(() => {
     scanDoneRef.current = false
@@ -173,6 +249,11 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
     if (!container) return
 
     setCameraError(null)
+    setZoomRange(null)
+    setZoomProbeDone(false)
+    setTorchSupported(false)
+    setTorchOn(false)
+    videoTrackRef.current = null
     const scanner = new Html5Qrcode(container.id, {
       verbose: false,
       formatsToSupport: PO_SCAN_FORMATS,
@@ -207,17 +288,66 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         )
         const cameraId = back?.id ?? cameras[0].id
 
-        const tryHighRes = buildConfig({
+        const try4k = buildConfig({
+          deviceId: { exact: cameraId },
+          width: { ideal: 3840 },
+          height: { ideal: 2160 },
+          frameRate: { ideal: 30 },
+        })
+        const try1080 = buildConfig({
           deviceId: { exact: cameraId },
           width: { ideal: 1920 },
           height: { ideal: 1080 },
           frameRate: { ideal: 60 },
         })
 
-        return scanner.start(cameraId, tryHighRes, onSuccess, onError).catch((firstErr: unknown) => {
-          console.warn('Camera start with high-res constraints failed, retrying with defaults:', firstErr)
-          scanner.clear()
-          return scanner.start(cameraId, buildConfig(), onSuccess, onError)
+        const startWithBestResolution = () =>
+          scanner
+            .start(cameraId, try4k, onSuccess, onError)
+            .catch((e4k: unknown) => {
+              console.warn('4K camera constraints failed, trying 1080p:', e4k)
+              scanner.clear()
+              return scanner.start(cameraId, try1080, onSuccess, onError)
+            })
+            .catch((firstErr: unknown) => {
+              console.warn('1080p constraints failed, retrying with defaults:', firstErr)
+              scanner.clear()
+              return scanner.start(cameraId, buildConfig(), onSuccess, onError)
+            })
+
+        return startWithBestResolution().then(() => {
+          stopTrackProbeRef.current?.()
+          stopTrackProbeRef.current = whenVideoTrackReady(
+            container,
+            (track) => {
+              videoTrackRef.current = track
+              const caps = track.getCapabilities() as VideoTrackCaps
+              if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+                const step =
+                  caps.zoom.step && caps.zoom.step > 0 ? caps.zoom.step : (caps.zoom.max - caps.zoom.min) / 20
+                setZoomRange({ min: caps.zoom.min, max: caps.zoom.max, step })
+                const settings = track.getSettings() as { zoom?: number }
+                const initial = settings.zoom ?? caps.zoom.min
+                setZoomValue(initial)
+              } else {
+                setZoomRange(null)
+              }
+              setTorchSupported(!!caps.torch)
+              setTorchOn(!!(track.getSettings() as { torch?: boolean }).torch)
+
+              void (async () => {
+                try {
+                  await track.applyConstraints({
+                    advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
+                  })
+                } catch {
+                  /* optional */
+                }
+              })()
+              setZoomProbeDone(true)
+            },
+            () => setZoomProbeDone(true)
+          )
         })
       })
       .catch((err: unknown) => {
@@ -227,6 +357,22 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
       })
 
     return () => {
+      stopTrackProbeRef.current?.()
+      stopTrackProbeRef.current = null
+      const t = videoTrackRef.current
+      if (t) {
+        try {
+          const caps = t.getCapabilities() as VideoTrackCaps
+          if (caps.torch) void t.applyConstraints({ advanced: [{ torch: false } as MediaTrackConstraintSet] })
+        } catch {
+          /* ignore */
+        }
+      }
+      videoTrackRef.current = null
+      setZoomRange(null)
+      setZoomProbeDone(false)
+      setTorchSupported(false)
+      setTorchOn(false)
       scanner
         .stop()
         .then(() => {
@@ -243,8 +389,8 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
         <div className="barcode-scanner-header-text">
           <h3>Scan barcode</h3>
           <p className="barcode-scanner-hint">
-            Hold the label steady in good light. The app reads the full camera frame (like a hardware
-            scanner). Align long barcodes with the horizontal guide.
+            For tiny barcodes: stay far enough that the lines look sharp (phones cannot focus as close as
+            a macro lens), then use zoom below if available. Align narrow codes with the horizontal guide.
           </p>
         </div>
         <button type="button" className="barcode-scanner-close" onClick={onClose}>
@@ -262,6 +408,53 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
           <div className="barcode-scanner-reticle" aria-hidden>
             <div className="barcode-scanner-reticle-slot" />
           </div>
+          {(zoomRange || torchSupported) && (
+            <div className="barcode-scanner-controls">
+              {zoomRange && (
+                <label className="barcode-scanner-zoom">
+                  <span className="barcode-scanner-zoom-label">Zoom</span>
+                  <input
+                    type="range"
+                    className="barcode-scanner-zoom-slider"
+                    min={zoomRange.min}
+                    max={zoomRange.max}
+                    step={zoomRange.step}
+                    value={zoomValue}
+                    onChange={(e) => void applyZoomLevel(Number(e.target.value))}
+                  />
+                  <div className="barcode-scanner-zoom-presets">
+                    <button type="button" className="barcode-scanner-chip" onClick={() => void applyZoomLevel(zoomRange.min)}>
+                      Min
+                    </button>
+                    <button
+                      type="button"
+                      className="barcode-scanner-chip"
+                      onClick={() => void applyZoomLevel((zoomRange.min + zoomRange.max) / 2)}
+                    >
+                      Mid
+                    </button>
+                    <button type="button" className="barcode-scanner-chip" onClick={() => void applyZoomLevel(zoomRange.max)}>
+                      Max
+                    </button>
+                  </div>
+                </label>
+              )}
+              {torchSupported && (
+                <button
+                  type="button"
+                  className={`barcode-scanner-torch ${torchOn ? 'barcode-scanner-torch-on' : ''}`}
+                  onClick={() => void toggleTorch()}
+                >
+                  {torchOn ? 'Light on' : 'Light'}
+                </button>
+              )}
+            </div>
+          )}
+          {zoomProbeDone && !zoomRange && !torchSupported && !cameraError && (
+            <p className="barcode-scanner-footnote">
+              No digital zoom on this device — use distance so the barcode stays sharp, then hold steady.
+            </p>
+          )}
         </div>
       )}
     </div>
