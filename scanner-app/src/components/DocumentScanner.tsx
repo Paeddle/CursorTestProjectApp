@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CornerPoints,
   cropDocumentFromCanvas,
+  DEFAULT_DOCUMENT_CROP_INSET,
   detectCornersFromCanvas,
   warmupDocumentScanner,
 } from '../lib/documentScanner'
@@ -12,21 +13,46 @@ interface DocumentScannerProps {
   onClose: () => void
 }
 
+function lerpCorners(a: CornerPoints, b: CornerPoints, t: number): CornerPoints {
+  const mix = (pa: { x: number; y: number }, pb: { x: number; y: number }) => ({
+    x: pa.x + (pb.x - pa.x) * t,
+    y: pa.y + (pb.y - pa.y) * t,
+  })
+  return {
+    topLeftCorner: mix(a.topLeftCorner, b.topLeftCorner),
+    topRightCorner: mix(a.topRightCorner, b.topRightCorner),
+    bottomLeftCorner: mix(a.bottomLeftCorner, b.bottomLeftCorner),
+    bottomRightCorner: mix(a.bottomRightCorner, b.bottomRightCorner),
+  }
+}
+
+function maxCornerJump(a: CornerPoints, b: CornerPoints): number {
+  const d = (k: keyof CornerPoints) =>
+    Math.hypot(a[k].x - b[k].x, a[k].y - b[k].y)
+  return Math.max(
+    d('topLeftCorner'),
+    d('topRightCorner'),
+    d('bottomLeftCorner'),
+    d('bottomRightCorner')
+  )
+}
+
 export default function DocumentScanner({ onCapture, onClose }: DocumentScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const captureCanvasRef = useRef<HTMLCanvasElement>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null)
   const detectCanvasRef = useRef<HTMLCanvasElement>(null)
+  const smoothedOuterRef = useRef<CornerPoints | null>(null)
+  const lostFramesRef = useRef(0)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null)
   const [processing, setProcessing] = useState(false)
   const [captureError, setCaptureError] = useState<string | null>(null)
-  const [cornerPoints, setCornerPoints] = useState<CornerPoints | null>(null)
   const [scannerReady, setScannerReady] = useState(false)
   const [scannerError, setScannerError] = useState<string | null>(null)
 
-  const hasVideo = useMemo(() => Boolean(stream), [stream])
+  const hasVideo = Boolean(stream)
 
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -38,34 +64,28 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       .getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
-          // Request highest practical quality; browsers will downshift if needed.
           width: { ideal: 3840 },
           height: { ideal: 2160 },
           frameRate: { ideal: 30 },
         },
       })
-      .then((stream) => {
-        s = stream
-        setStream(stream)
+      .then((media) => {
+        s = media
+        setStream(media)
         setError(null)
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
+          videoRef.current.srcObject = media
         }
 
-        // Try to improve quality on supported devices (focus/zoom, etc.)
-        const track = stream.getVideoTracks()[0]
+        const track = media.getVideoTracks()[0]
         if (track && typeof track.getCapabilities === 'function') {
           const caps = track.getCapabilities() as MediaTrackCapabilities & {
             focusMode?: string[]
-            zoom?: { min: number; max: number; step: number }
           }
           const advanced: MediaTrackConstraintSet[] = []
-
           if (caps.focusMode?.includes('continuous')) {
             advanced.push({ focusMode: 'continuous' } as MediaTrackConstraintSet)
           }
-
-          // If zoom is supported, leave it as-is (user zoom later is possible).
           if (advanced.length > 0) {
             track.applyConstraints({ advanced }).catch(() => {})
           }
@@ -85,7 +105,6 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     }
   }, [stream])
 
-  // When returning from preview (Retake), re-attach stream to the video element and resume playback
   useEffect(() => {
     if (capturedBlob !== null || !stream) return
     const video = videoRef.current
@@ -94,7 +113,6 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     video.play().catch(() => {})
   }, [capturedBlob, stream])
 
-  // Ensure OpenCV + jscanify are loaded in production before we start detecting/cropping.
   useEffect(() => {
     let cancelled = false
     setScannerReady(false)
@@ -112,7 +130,6 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     }
   }, [])
 
-  // Live detection + blue outline overlay (re-run when returning from preview so refs are fresh)
   useEffect(() => {
     if (!hasVideo) return
     if (!scannerReady) return
@@ -124,8 +141,8 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
 
     let cancelled = false
     let raf = 0
-    let lastRun = 0
-    const minIntervalMs = 220
+    let lastDetect = 0
+    const minDetectMs = 340
 
     const clearOverlay = () => {
       const ctx = overlay.getContext('2d')
@@ -141,7 +158,6 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       const clientH = overlay.clientHeight
       if (clientW <= 0 || clientH <= 0) return
 
-      // Ensure backing store matches CSS pixels for crisp lines
       const dpr = window.devicePixelRatio || 1
       const targetW = Math.round(clientW * dpr)
       const targetH = Math.round(clientH * dpr)
@@ -158,27 +174,29 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       const vh = video.videoHeight || 0
       if (vw === 0 || vh === 0) return
 
-      // Match object-fit: contain mapping
-      const scale = Math.min(targetW / vw, targetH / vh)
-      const drawnW = vw * scale
-      const drawnH = vh * scale
-      const offsetX = (targetW - drawnW) / 2
-      const offsetY = (targetH - drawnH) / 2
+      const vr = video.getBoundingClientRect()
+      const or = overlay.getBoundingClientRect()
+      const scaleCssToBacking = targetW / Math.max(clientW, 1)
 
-      const map = (p: { x: number; y: number }) => ({
-        x: offsetX + p.x * scale,
-        y: offsetY + p.y * scale,
-      })
+      const map = (p: { x: number; y: number }) => {
+        const u = p.x / vw
+        const v = p.y / vh
+        const cssX = vr.left - or.left + u * vr.width
+        const cssY = vr.top - or.top + v * vr.height
+        return { x: cssX * scaleCssToBacking, y: cssY * scaleCssToBacking }
+      }
 
       const tl = map(points.topLeftCorner)
       const tr = map(points.topRightCorner)
       const br = map(points.bottomRightCorner)
       const bl = map(points.bottomLeftCorner)
 
-      ctx.lineWidth = 3 * dpr
-      ctx.strokeStyle = '#3b82f6'
-      ctx.shadowColor = 'rgba(59,130,246,0.45)'
-      ctx.shadowBlur = 10 * dpr
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
+      ctx.lineWidth = 2.5 * dpr
+      ctx.strokeStyle = '#60a5fa'
+      ctx.shadowColor = 'rgba(37, 99, 235, 0.35)'
+      ctx.shadowBlur = 6 * dpr
 
       ctx.beginPath()
       ctx.moveTo(tl.x, tl.y)
@@ -192,20 +210,25 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     const tick = async (now: number) => {
       raf = requestAnimationFrame(tick)
       if (cancelled) return
-      if (processing) return
+      if (processing) {
+        drawOutline(smoothedOuterRef.current)
+        return
+      }
       if (video.readyState < 2) return
-      if (now - lastRun < minIntervalMs) return
-      lastRun = now
 
       const vw = video.videoWidth
       const vh = video.videoHeight
       if (!vw || !vh) return
 
-      // Downscale for faster detection
-      const maxW = 640
-      const scale = Math.min(1, maxW / vw)
-      const dw = Math.max(1, Math.round(vw * scale))
-      const dh = Math.max(1, Math.round(vh * scale))
+      drawOutline(smoothedOuterRef.current)
+
+      if (now - lastDetect < minDetectMs) return
+      lastDetect = now
+
+      const maxW = 960
+      const detScale = Math.min(1, maxW / vw)
+      const dw = Math.max(1, Math.round(vw * detScale))
+      const dh = Math.max(1, Math.round(vh * detScale))
       detectCanvas.width = dw
       detectCanvas.height = dh
       const dctx = detectCanvas.getContext('2d')
@@ -215,32 +238,50 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       const detected = await detectCornersFromCanvas(detectCanvas)
       if (cancelled) return
 
+      const diag = Math.hypot(vw, vh)
+      const jumpReject = 0.16 * diag
+
       if (!detected) {
-        setCornerPoints(null)
-        clearOverlay()
+        lostFramesRef.current++
+        if (lostFramesRef.current >= 4) {
+          smoothedOuterRef.current = null
+          clearOverlay()
+        }
         return
       }
 
-      // Scale corner points back up to full video coordinates for capture-time cropping
+      lostFramesRef.current = 0
+
       const sx = vw / dw
       const sy = vh / dh
-      const scaled: CornerPoints = {
+      const raw: CornerPoints = {
         topLeftCorner: { x: detected.topLeftCorner.x * sx, y: detected.topLeftCorner.y * sy },
         topRightCorner: { x: detected.topRightCorner.x * sx, y: detected.topRightCorner.y * sy },
         bottomLeftCorner: { x: detected.bottomLeftCorner.x * sx, y: detected.bottomLeftCorner.y * sy },
         bottomRightCorner: { x: detected.bottomRightCorner.x * sx, y: detected.bottomRightCorner.y * sy },
       }
 
-      setCornerPoints(scaled)
-      drawOutline(scaled)
+      const prev = smoothedOuterRef.current
+      let use = raw
+      if (prev) {
+        if (maxCornerJump(prev, raw) > jumpReject) {
+          use = lerpCorners(prev, raw, 0.06)
+        } else {
+          use = lerpCorners(prev, raw, 0.22)
+        }
+      }
+      smoothedOuterRef.current = use
+      drawOutline(use)
     }
 
+    smoothedOuterRef.current = null
+    lostFramesRef.current = 0
     raf = requestAnimationFrame(tick)
     return () => {
       cancelled = true
       cancelAnimationFrame(raf)
+      smoothedOuterRef.current = null
       clearOverlay()
-      setCornerPoints(null)
     }
   }, [hasVideo, processing, scannerReady, capturedBlob])
 
@@ -265,7 +306,10 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       if (!ctx) return
       ctx.drawImage(video, 0, 0)
 
-      const blob = await cropDocumentFromCanvas(captureCanvas, cornerPoints ?? undefined)
+      const outer = smoothedOuterRef.current
+      const blob = await cropDocumentFromCanvas(captureCanvas, outer ?? undefined, {
+        cropInset: DEFAULT_DOCUMENT_CROP_INSET,
+      })
       if (blob) {
         setCapturedBlob(blob)
       } else {
@@ -330,6 +374,10 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
         </div>
       ) : (
         <>
+          <p className="document-scanner-hint">
+            Blue outline follows the page edge. Hold steady; capture uses a slight inset so the crop does not
+            include the table around the paper.
+          </p>
           <div className="document-scanner-camera">
             <video ref={videoRef} autoPlay playsInline muted />
             <canvas ref={overlayCanvasRef} className="document-scanner-outline" />
@@ -339,9 +387,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
               </div>
             )}
           </div>
-          {captureError && (
-            <p className="document-scanner-capture-error">{captureError}</p>
-          )}
+          {captureError && <p className="document-scanner-capture-error">{captureError}</p>}
           <div className="document-scanner-actions document-scanner-actions-bottom">
             <button
               type="button"
