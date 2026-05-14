@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react'
 import Barcode from 'react-barcode'
 import { supabase } from '../lib/supabase'
 import {
@@ -73,6 +73,10 @@ function pathFromStorageUrl(fileUrl: string, bucketId: string): string | null {
   return fileUrl.slice(i + marker.length)
 }
 
+function makeQtyEditKey(poNumber: string, barcodeValue: string): string {
+  return `${poNumber}\u0000${barcodeValue}`
+}
+
 function POInfo() {
   const [summaries, setSummaries] = useState<POCheckinSummary[]>([])
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
@@ -86,8 +90,18 @@ function POInfo() {
     catalogSeed: BarcodeCatalogItem | null
     openCatalogEditor: boolean
   } | null>(null)
+  const [qtyEditKey, setQtyEditKey] = useState<string | null>(null)
+  const [qtyDraft, setQtyDraft] = useState('')
+  const [qtySaving, setQtySaving] = useState(false)
+  const qtyInputRef = useRef<HTMLInputElement>(null)
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
+
+  useLayoutEffect(() => {
+    if (!qtyEditKey) return
+    qtyInputRef.current?.focus()
+    qtyInputRef.current?.select()
+  }, [qtyEditKey])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -128,6 +142,59 @@ function POInfo() {
       else next.add(key)
       return next
     })
+  }
+
+  const handleQtyCommit = async (
+    poNumber: string,
+    barcodeValue: string,
+    allBarcodes: POBarcode[],
+    currentQty: number,
+    draftStr: string
+  ) => {
+    const n = Math.floor(Number(draftStr))
+    if (!Number.isFinite(n) || n < 1) {
+      setError('Quantity must be a whole number of at least 1.')
+      setQtyEditKey(null)
+      return
+    }
+    if (n === currentQty) {
+      setQtyEditKey(null)
+      return
+    }
+    setQtySaving(true)
+    setError(null)
+    try {
+      const po = poNumber.trim()
+      const v = barcodeValue.trim()
+      const rows = allBarcodes
+        .filter((b) => (b.po_number || '').trim() === po && (b.barcode_value || '').trim() === v)
+        .sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime())
+      if (rows.length !== currentQty) {
+        throw new Error('Scan list changed; refresh and try again.')
+      }
+      if (n < currentQty) {
+        const remove = currentQty - n
+        const ids = rows.slice(0, remove).map((b) => b.id)
+        const { error: e } = await supabase.from('po_barcodes').delete().in('id', ids)
+        if (e) throw new Error(e.message)
+      } else {
+        const add = n - currentQty
+        const scanned_at = new Date().toISOString()
+        const inserts = Array.from({ length: add }, () => ({
+          po_number: po,
+          barcode_value: v,
+          scanned_at,
+        }))
+        const { error: e } = await supabase.from('po_barcodes').insert(inserts)
+        if (e) throw new Error(e.message)
+      }
+      setQtyEditKey(null)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update quantity')
+    } finally {
+      setQtySaving(false)
+    }
   }
 
   const handleDeleteBarcodeIds = async (ids: string[]) => {
@@ -221,7 +288,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       <header className="po-info-header">
         <h1>PO Info</h1>
         <p className="po-info-subtitle">
-          Barcode scans and documents per PO from the scanning web app
+          Barcode scans and documents per PO from the scanning web app.
         </p>
       </header>
 
@@ -303,6 +370,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     {agg.length > 0 && (
                       <section className="po-info-section">
                         <h4>Barcode scans</h4>
+                        <p className="po-info-section-desc">
+                          Quantities are stored as separate scans. Click a quantity to add or remove rows for
+                          that barcode on this PO.
+                        </p>
                         <div className="po-info-scan-table-wrap">
                           <table className="po-info-scan-table">
                             <thead>
@@ -320,6 +391,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                               {agg.map((row) => {
                                 const cat = lookupCatalogItem(catalogMap, row.barcode_value)
                                 const deletingRow = row.scan_ids.some((id) => deletingId === id)
+                                const qKey = makeQtyEditKey(summary.po_number, row.barcode_value)
+                                const editingQty = qtyEditKey === qKey
                                 return (
                                   <tr key={row.barcode_value}>
                                     <td>
@@ -351,7 +424,51 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         <span className="po-info-no-catalog">—</span>
                                       )}
                                     </td>
-                                    <td className="po-info-scan-qty">{row.quantity}</td>
+                                    <td className="po-info-scan-qty">
+                                      {editingQty ? (
+                                        <input
+                                          ref={qtyInputRef}
+                                          type="number"
+                                          min={1}
+                                          className="po-info-qty-input"
+                                          value={qtyDraft}
+                                          disabled={qtySaving}
+                                          onChange={(e) => setQtyDraft(e.target.value)}
+                                          onBlur={(e) =>
+                                            void handleQtyCommit(
+                                              summary.po_number,
+                                              row.barcode_value,
+                                              summary.barcodes,
+                                              row.quantity,
+                                              e.currentTarget.value
+                                            )
+                                          }
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault()
+                                              ;(e.target as HTMLInputElement).blur()
+                                            }
+                                            if (e.key === 'Escape') {
+                                              e.preventDefault()
+                                              setQtyEditKey(null)
+                                            }
+                                          }}
+                                        />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="po-info-qty-button"
+                                          disabled={!!deletingId || qtySaving}
+                                          title="Click to edit quantity"
+                                          onClick={() => {
+                                            setQtyEditKey(qKey)
+                                            setQtyDraft(String(row.quantity))
+                                          }}
+                                        >
+                                          {row.quantity}
+                                        </button>
+                                      )}
+                                    </td>
                                     <td className="po-info-meta">{formatDateTime(row.last_scanned_at)}</td>
                                     <td>
                                       <button
@@ -375,6 +492,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     {summary.documents.length > 0 && (
                       <section className="po-info-section">
                         <h4>Documents</h4>
+                        <p className="po-info-section-desc">
+                          Files from the scanner app. Delete removes the database row and the file from
+                          storage when the link points at this project&apos;s bucket.
+                        </p>
                         <ul className="po-info-doc-list">
                           {summary.documents.map((d) => (
                             <li key={d.id} className="po-info-doc-item">
@@ -417,7 +538,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       {!loading && (
         <section className="po-info-catalog-section">
           <h2 className="po-info-catalog-section-title">Barcode catalog</h2>
-          <p className="po-info-catalog-section-desc">
+          <p className="po-info-section-desc po-info-catalog-section-desc">
             Items you have saved for lookups. Edit opens the same catalog form as from a PO scan.
           </p>
           {catalog.length === 0 ? (
@@ -439,7 +560,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                       <td>
                         <code className="po-info-catalog-code">{row.barcode_value}</code>
                       </td>
-                      <td>{row.item_name}</td>
+                      <td className="po-info-catalog-item-cell">{row.item_name}</td>
                       <td className="po-info-meta">{row.manufacturer || '—'}</td>
                       <td>
                         <button

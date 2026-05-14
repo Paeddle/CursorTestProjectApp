@@ -16,9 +16,10 @@
 }
 
 .po-info-subtitle {
-  color: #94a3b8;
+  color: #cbd5e1;
   font-size: 0.95rem;
   margin: 0;
+  line-height: 1.45;
 }
 
 .po-info-controls {
@@ -206,7 +207,14 @@
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.35rem 0;
+}
+
+.po-info-section-desc {
+  margin: 0 0 0.65rem 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #cbd5e1;
 }
 
 .po-info-scan-list,
@@ -397,6 +405,47 @@
   color: #cbd5e1;
 }
 
+.po-info-qty-button {
+  min-width: 2.25rem;
+  padding: 0.2rem 0.45rem;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  background: #1e293b;
+  border: 1px dashed #64748b;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.po-info-qty-button:hover:not(:disabled) {
+  border-color: #94a3b8;
+  background: #334155;
+  color: #f8fafc;
+}
+
+.po-info-qty-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.po-info-qty-input {
+  width: 3.25rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid #3b82f6;
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.po-info-qty-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
 .po-info-scan-barcode-cell {
   display: flex;
   flex-direction: column;
@@ -414,6 +463,10 @@
   max-height: 28px;
 }
 
+.po-info-scan-table .po-info-meta {
+  color: #94a3b8;
+}
+
 .po-info-scan-code-text {
   font-size: 0.78rem;
   background: #1e293b;
@@ -428,7 +481,7 @@
 }
 
 .po-info-catalog-name {
-  color: #e2e8f0;
+  color: #f8fafc;
   font-size: 0.88rem;
 }
 
@@ -452,8 +505,8 @@
 .po-info-catalog-section-desc {
   margin: 0 0 1rem 0;
   font-size: 0.85rem;
-  color: #94a3b8;
-  line-height: 1.4;
+  color: #cbd5e1;
+  line-height: 1.45;
 }
 
 .po-info-catalog-empty {
@@ -499,10 +552,20 @@
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid #334155;
   vertical-align: middle;
+  color: #e2e8f0;
+}
+
+.po-info-catalog-item-cell {
+  color: #f8fafc;
+  font-size: 0.9rem;
 }
 
 .po-info-catalog-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.po-info-catalog-table .po-info-meta {
+  color: #94a3b8;
 }
 
 .po-info-catalog-code {
