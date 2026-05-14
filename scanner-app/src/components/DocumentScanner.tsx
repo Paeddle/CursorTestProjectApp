@@ -400,8 +400,8 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       ) : (
         <>
           <p className="document-scanner-hint">
-            Blue outline tracks the page. Fill most of the frame with the paper; hold steady for a moment. Tap
-            Capture — we re-detect edges on the full-resolution frame for a sharper crop.
+            Blue outline tracks the page. Fill most of the frame with the paper; hold steady briefly. Capture
+            re-detects corners on the full frame and snaps them to the page edge for a tight crop.
           </p>
           <div className="document-scanner-camera">
             <video ref={videoRef} autoPlay playsInline muted />

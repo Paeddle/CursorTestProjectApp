@@ -65,8 +65,8 @@ export async function warmupDocumentScanner(): Promise<void> {
 const PAPER_WIDTH = 800
 const PAPER_HEIGHT = 1100
 
-/** Default shrink toward quad center so the crop trims table background (CamScanner-style). */
-export const DEFAULT_DOCUMENT_CROP_INSET = 0.026
+/** Default shrink toward quad center so the crop trims a thin ring of desk past the true page edge. */
+export const DEFAULT_DOCUMENT_CROP_INSET = 0.032
 
 export type CornerPoints = {
   topLeftCorner: { x: number; y: number }
@@ -116,6 +116,72 @@ export function insetCornerPoints(corners: CornerPoints, inset: number): CornerP
   }
 }
 
+function clampPoint(p: { x: number; y: number }, W: number, H: number, margin: number): { x: number; y: number } {
+  const m = Math.max(0, margin)
+  const x = Math.min(W - 1 - m, Math.max(m, p.x))
+  const y = Math.min(H - 1 - m, Math.max(m, p.y))
+  return { x, y }
+}
+
+/**
+ * Snap corners to strong gradients (OpenCV cornerSubPix) in full-res gray space.
+ * Tightens the quad onto the physical page edge when the coarse quad sits slightly inside/outside.
+ */
+function refineCornersSubPix(cv: any, gray: any, corners: CornerPoints, W: number, H: number): CornerPoints {
+  if (typeof cv.cornerSubPix !== 'function' || typeof cv.TermCriteria !== 'function') {
+    return corners
+  }
+  const tl = corners.topLeftCorner
+  const tr = corners.topRightCorner
+  const br = corners.bottomRightCorner
+  const bl = corners.bottomLeftCorner
+  const flat = new Float32Array([tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y])
+  let cm: any = null
+  let winSz: any = null
+  let zeroZone: any = null
+  let criteria: any = null
+  try {
+    const type = cv.CV_32FC2 ?? 13
+    cm = cv.matFromArray(4, 1, type, flat)
+    const win = Math.min(11, Math.max(5, Math.round(Math.min(W, H) * 0.012)) | 1)
+    winSz = new cv.Size(win, win)
+    zeroZone = new cv.Size(-1, -1)
+    criteria = new cv.TermCriteria(cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 45, 0.02)
+    cv.cornerSubPix(gray, cm, winSz, zeroZone, criteria)
+    const d = cm.data32F
+    if (!d || d.length < 8) return corners
+    const raw = [
+      { x: d[0], y: d[1] },
+      { x: d[2], y: d[3] },
+      { x: d[4], y: d[5] },
+      { x: d[6], y: d[7] },
+    ]
+    const ordered = orderQuad(raw)
+    const m = 2
+    return {
+      topLeftCorner: clampPoint(ordered.topLeftCorner, W, H, m),
+      topRightCorner: clampPoint(ordered.topRightCorner, W, H, m),
+      bottomRightCorner: clampPoint(ordered.bottomRightCorner, W, H, m),
+      bottomLeftCorner: clampPoint(ordered.bottomLeftCorner, W, H, m),
+    }
+  } catch {
+    return corners
+  } finally {
+    try {
+      cm?.delete?.()
+    } catch (_) {}
+    try {
+      winSz?.delete?.()
+    } catch (_) {}
+    try {
+      zeroZone?.delete?.()
+    } catch (_) {}
+    try {
+      criteria?.delete?.()
+    } catch (_) {}
+  }
+}
+
 function orderQuad(pts: { x: number; y: number }[]): CornerPoints {
   if (pts.length !== 4) {
     throw new Error('orderQuad expects 4 points')
@@ -158,22 +224,40 @@ export function quadPolygonArea(cp: CornerPoints): number {
   return Math.abs(a / 2)
 }
 
-function pickLargestReasonableQuad(candidates: CornerPoints[], imgW: number, imgH: number): CornerPoints | null {
+function quadPerimeter(cp: CornerPoints): number {
+  const { topLeftCorner: tl, topRightCorner: tr, bottomLeftCorner: bl, bottomRightCorner: br } = cp
+  return (
+    hypot(tr.x - tl.x, tr.y - tl.y) +
+    hypot(br.x - tr.x, br.y - tr.y) +
+    hypot(bl.x - br.x, bl.y - br.y) +
+    hypot(tl.x - bl.x, tl.y - bl.y)
+  )
+}
+
+/**
+ * Prefer quads near the largest valid area (full page), then the smallest perimeter among those
+ * (tighter fit to the same physical sheet vs a looser 4-gon).
+ */
+function pickTightDocumentQuad(candidates: CornerPoints[], imgW: number, imgH: number): CornerPoints | null {
   const imgArea = imgW * imgH
   const minA = imgArea * 0.015
   const maxA = imgArea * 0.96
-  let best: CornerPoints | null = null
-  let bestArea = 0
+  const valid: { c: CornerPoints; area: number; per: number }[] = []
   for (const c of candidates) {
     if (!quadAspectReasonable(c)) continue
-    const a = quadPolygonArea(c)
-    if (a < minA || a > maxA) continue
-    if (a > bestArea) {
-      bestArea = a
-      best = c
-    }
+    const area = quadPolygonArea(c)
+    if (area < minA || area > maxA) continue
+    valid.push({ c, area, per: quadPerimeter(c) })
   }
-  return best
+  if (valid.length === 0) return null
+  const maxArea = Math.max(...valid.map((v) => v.area))
+  valid.sort((a, b) => {
+    const deficitA = (maxArea - a.area) / maxArea
+    const deficitB = (maxArea - b.area) / maxArea
+    if (Math.abs(deficitA - deficitB) > 0.055) return deficitA - deficitB
+    return a.per - b.per
+  })
+  return valid[0].c
 }
 
 function scaleCorners(cp: CornerPoints, sx: number, sy: number): CornerPoints {
@@ -183,6 +267,17 @@ function scaleCorners(cp: CornerPoints, sx: number, sy: number): CornerPoints {
     topRightCorner: m(cp.topRightCorner),
     bottomLeftCorner: m(cp.bottomLeftCorner),
     bottomRightCorner: m(cp.bottomRightCorner),
+  }
+}
+
+function matToGray(src: any, cv: any, dst: any): void {
+  const ch = src.channels()
+  if (ch === 4) {
+    cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY, 0)
+  } else if (ch === 3) {
+    cv.cvtColor(src, dst, cv.COLOR_RGB2GRAY, 0)
+  } else {
+    src.copyTo(dst)
   }
 }
 
@@ -281,7 +376,7 @@ function findQuadAdaptive(work: any, cv: any): CornerPoints | null {
     return largestQuadFromContourVector(contours, cv, work.cols, work.rows, {
       minAreaFrac: 0.02,
       maxAreaFrac: 0.97,
-      epsilonFrac: 0.022,
+      epsilonFrac: 0.016,
     })
   } catch {
     return null
@@ -331,7 +426,7 @@ function findQuadOtsu(work: any, cv: any): CornerPoints | null {
     return largestQuadFromContourVector(contours, cv, work.cols, work.rows, {
       minAreaFrac: 0.018,
       maxAreaFrac: 0.97,
-      epsilonFrac: 0.024,
+      epsilonFrac: 0.018,
     })
   } catch {
     return null
@@ -366,13 +461,13 @@ function findQuadCanny(work: any, cv: any): CornerPoints | null {
       work.copyTo(gray)
     }
     cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0, 0, cv.BORDER_DEFAULT)
-    cv.Canny(blur, edges, 35, 95, 3, false)
-    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 2)
+    cv.Canny(blur, edges, 38, 88, 3, false)
+    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 1)
     cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     return largestQuadFromContourVector(contours, cv, work.cols, work.rows, {
       minAreaFrac: 0.015,
       maxAreaFrac: 0.96,
-      epsilonFrac: 0.03,
+      epsilonFrac: 0.022,
     })
   } catch {
     return null
@@ -472,7 +567,8 @@ export async function detectCornersFromCanvas(
     const c = findQuadCanny(work, cv)
     if (c) cands.push(c)
 
-    let quadWork = pickLargestReasonableQuad(cands, work.cols, work.rows)
+    let quadWork = pickTightDocumentQuad(cands, work.cols, work.rows)
+    let quadFromDownscaledWork = Boolean(quadWork)
 
     if (!quadWork) {
       const contour = scanner.findPaperContour(fullMat) as { delete?: () => void } | null
@@ -493,9 +589,28 @@ export async function detectCornersFromCanvas(
     }
 
     if (quadWork) {
-      const sx = W / work.cols
-      const sy = H / work.rows
-      result = scaleCorners(quadWork, sx, sy)
+      if (quadFromDownscaledWork) {
+        const sx = W / work.cols
+        const sy = H / work.rows
+        result = scaleCorners(quadWork, sx, sy)
+      } else {
+        result = quadWork
+      }
+    }
+
+    if (result) {
+      let grayFull: any | null = null
+      try {
+        grayFull = new cv.Mat()
+        matToGray(fullMat, cv, grayFull)
+        result = refineCornersSubPix(cv, grayFull, result, W, H)
+      } catch {
+        /* keep coarse corners */
+      } finally {
+        try {
+          grayFull?.delete?.()
+        } catch (_) {}
+      }
     }
   } catch (_) {
     result = null
