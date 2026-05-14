@@ -5,6 +5,7 @@ import {
   aggregatePOBarcodeScans,
   buildCatalogLookupMap,
   lookupCatalogItem,
+  normalizeBarcodeValue,
   type AggregatedPOBarcodeRow,
 } from '../lib/barcodeCatalogLookup'
 import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
@@ -76,6 +77,10 @@ function pathFromStorageUrl(fileUrl: string, bucketId: string): string | null {
 
 function makeQtyEditKey(poNumber: string, barcodeValue: string): string {
   return `${poNumber}\u0000${barcodeValue}`
+}
+
+function makeCheckinMapKey(poNumber: string, barcodeValue: string): string {
+  return `${poNumber.trim().toLowerCase()}\u0000${normalizeBarcodeValue(barcodeValue)}`
 }
 
 type PoScanSortColumn = 'item' | 'partNumber' | 'qty' | 'lastScan'
@@ -174,6 +179,8 @@ function POInfo() {
     column: 'item',
     asc: true,
   })
+  const [checkedInMap, setCheckedInMap] = useState<Record<string, boolean>>({})
+  const [checkinSavingKey, setCheckinSavingKey] = useState<string | null>(null)
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
 
@@ -208,13 +215,23 @@ function POInfo() {
     setLoading(true)
     setError(null)
     try {
-      const [list, catRes] = await Promise.all([
+      const [list, catRes, chkRes] = await Promise.all([
         loadSummaries(),
         supabase.from('barcode_catalog').select('*').order('item_name', { ascending: true }),
+        supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
       ])
       if (catRes.error) throw new Error(catRes.error.message)
+      if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
       setCatalog((catRes.data ?? []) as BarcodeCatalogItem[])
+      const nextChecked: Record<string, boolean> = {}
+      for (const r of chkRes.data ?? []) {
+        const row = r as { po_number: string; barcode_value: string; checked_in: boolean }
+        if (row.checked_in) {
+          nextChecked[makeCheckinMapKey(row.po_number, row.barcode_value)] = true
+        }
+      }
+      setCheckedInMap(nextChecked)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
     } finally {
@@ -298,17 +315,55 @@ function POInfo() {
     }
   }
 
-  const handleDeleteBarcodeIds = async (ids: string[]) => {
+  const handleDeleteBarcodeIds = async (poNumber: string, barcodeValue: string, ids: string[]) => {
     if (deletingId || ids.length === 0) return
     setDeletingId(ids[0])
     try {
       const { error: e } = await supabase.from('po_barcodes').delete().in('id', ids)
       if (e) throw new Error(e.message)
+      const po = poNumber.trim()
+      const v = barcodeValue.trim()
+      await supabase.from('po_barcode_checkin').delete().match({ po_number: po, barcode_value: v })
+      setCheckedInMap((prev) => {
+        const next = { ...prev }
+        delete next[makeCheckinMapKey(poNumber, barcodeValue)]
+        return next
+      })
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete barcode')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleToggleCheckIn = async (poNumber: string, barcodeValue: string, checked: boolean) => {
+    const k = makeCheckinMapKey(poNumber, barcodeValue)
+    const po = poNumber.trim()
+    const v = barcodeValue.trim()
+    setCheckinSavingKey(k)
+    setError(null)
+    try {
+      const { error } = await supabase.from('po_barcode_checkin').upsert(
+        {
+          po_number: po,
+          barcode_value: v,
+          checked_in: checked,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'po_number,barcode_value' }
+      )
+      if (error) throw new Error(error.message)
+      setCheckedInMap((prev) => {
+        const next = { ...prev }
+        if (checked) next[k] = true
+        else delete next[k]
+        return next
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update checked-in state')
+    } finally {
+      setCheckinSavingKey(null)
     }
   }
 
@@ -337,6 +392,8 @@ function POInfo() {
     try {
       const { error: eb } = await supabase.from('po_barcodes').delete().eq('po_number', poNumber)
       if (eb) throw new Error(eb.message)
+      const { error: ec } = await supabase.from('po_barcode_checkin').delete().eq('po_number', poNumber)
+      if (ec) throw new Error(ec.message)
       const summary = summaries.find((s) => s.po_number.toLowerCase() === key)
       if (summary) {
         for (const doc of summary.documents) {
@@ -575,6 +632,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     ) : null}
                                   </button>
                                 </th>
+                                <th scope="col" className="po-info-scan-th-checkin">
+                                  Checked in
+                                </th>
                                 <th scope="col" className="po-info-scan-th-actions" />
                               </tr>
                             </thead>
@@ -584,8 +644,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const deletingRow = row.scan_ids.some((id) => deletingId === id)
                                 const qKey = makeQtyEditKey(summary.po_number, row.barcode_value)
                                 const editingQty = qtyEditKey === qKey
+                                const checkinKey = makeCheckinMapKey(summary.po_number, row.barcode_value)
+                                const isCheckedIn = Boolean(checkedInMap[checkinKey])
                                 return (
-                                  <tr key={row.barcode_value}>
+                                  <tr
+                                    key={row.barcode_value}
+                                    className={isCheckedIn ? 'po-info-scan-row-checked-in' : undefined}
+                                  >
                                     <td>
                                       <button
                                         type="button"
@@ -668,11 +733,33 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       )}
                                     </td>
                                     <td className="po-info-meta">{formatDateTime(row.last_scanned_at)}</td>
+                                    <td className="po-info-scan-checkin-cell">
+                                      <input
+                                        type="checkbox"
+                                        className="po-info-scan-checkin-input"
+                                        checked={isCheckedIn}
+                                        disabled={checkinSavingKey === checkinKey || deletingRow}
+                                        aria-label={`Checked in ${row.barcode_value}`}
+                                        onChange={(e) =>
+                                          void handleToggleCheckIn(
+                                            summary.po_number,
+                                            row.barcode_value,
+                                            e.target.checked
+                                          )
+                                        }
+                                      />
+                                    </td>
                                     <td>
                                       <button
                                         type="button"
                                         className="po-info-delete-item"
-                                        onClick={() => handleDeleteBarcodeIds(row.scan_ids)}
+                                        onClick={() =>
+                                          handleDeleteBarcodeIds(
+                                            summary.po_number,
+                                            row.barcode_value,
+                                            row.scan_ids
+                                          )
+                                        }
                                         disabled={!!deletingId}
                                         title="Remove all scans of this barcode for this PO"
                                       >

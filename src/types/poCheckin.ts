@@ -22,6 +22,15 @@ export interface POCheckinSummary {
   documents: PODocument[]
 }
 
+/** PO Info "Checked in" checkbox state (one row per PO + barcode value). */
+export interface POBarcodeCheckin {
+  id: string
+  po_number: string
+  barcode_value: string
+  checked_in: boolean
+  updated_at: string
+}
+
 export interface BarcodeCatalogItem {
   id: string
   barcode_value: string

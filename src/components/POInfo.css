@@ -428,6 +428,50 @@
   width: 2.5rem;
 }
 
+.po-info-scan-th-checkin {
+  width: 5.5rem;
+  text-align: center;
+}
+
+.po-info-scan-checkin-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.po-info-scan-checkin-input {
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+.po-info-scan-checkin-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+tr.po-info-scan-row-checked-in td:not(.po-info-scan-checkin-cell) {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: #94a3b8;
+  color: #94a3b8;
+}
+
+tr.po-info-scan-row-checked-in .po-info-scan-code-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+tr.po-info-scan-row-checked-in .po-info-qty-button,
+tr.po-info-scan-row-checked-in .po-info-qty-input {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
+  opacity: 0.38;
+}
+
 .po-info-scan-table td {
   padding: 0.45rem 0.65rem;
   vertical-align: middle;
