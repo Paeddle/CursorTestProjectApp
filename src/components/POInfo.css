@@ -384,6 +384,46 @@
   text-align: center;
 }
 
+.po-info-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #94a3b8;
+  cursor: pointer;
+  text-align: inherit;
+  max-width: 100%;
+}
+
+.po-info-scan-th-narrow .po-info-sort-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.po-info-sort-btn:hover {
+  color: #e2e8f0;
+}
+
+.po-info-sort-btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.po-info-sort-indicator {
+  font-size: 0.65rem;
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
 .po-info-scan-th-actions {
   width: 2.5rem;
 }

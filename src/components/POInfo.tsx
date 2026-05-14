@@ -5,6 +5,7 @@ import {
   aggregatePOBarcodeScans,
   buildCatalogLookupMap,
   lookupCatalogItem,
+  type AggregatedPOBarcodeRow,
 } from '../lib/barcodeCatalogLookup'
 import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
 import BarcodeLookupModal from './BarcodeLookupModal'
@@ -77,6 +78,64 @@ function makeQtyEditKey(poNumber: string, barcodeValue: string): string {
   return `${poNumber}\u0000${barcodeValue}`
 }
 
+type PoScanSortColumn = 'item' | 'qty' | 'lastScan'
+type PoScanSortState = { column: PoScanSortColumn; asc: boolean }
+type CatalogSortColumn = 'item' | 'manufacturer'
+
+function sortKeyItemName(catalogMap: Map<string, BarcodeCatalogItem>, barcode: string): string {
+  const cat = lookupCatalogItem(catalogMap, barcode)
+  const name = (cat?.item_name || '').trim().toLowerCase()
+  return name || '\uFFFF'
+}
+
+function sortAggregatedRows(
+  rows: AggregatedPOBarcodeRow[],
+  catalogMap: Map<string, BarcodeCatalogItem>,
+  column: PoScanSortColumn,
+  asc: boolean
+): AggregatedPOBarcodeRow[] {
+  const mult = asc ? 1 : -1
+  const copy = [...rows]
+  copy.sort((a, b) => {
+    if (column === 'item') {
+      const ka = sortKeyItemName(catalogMap, a.barcode_value)
+      const kb = sortKeyItemName(catalogMap, b.barcode_value)
+      return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+    }
+    if (column === 'qty') {
+      return mult * (a.quantity - b.quantity)
+    }
+    const ta = new Date(a.last_scanned_at).getTime()
+    const tb = new Date(b.last_scanned_at).getTime()
+    return mult * (ta - tb)
+  })
+  return copy
+}
+
+function sortCatalogRows(
+  items: BarcodeCatalogItem[],
+  column: CatalogSortColumn,
+  asc: boolean
+): BarcodeCatalogItem[] {
+  const mult = asc ? 1 : -1
+  const copy = [...items]
+  copy.sort((a, b) => {
+    if (column === 'item') {
+      const ka = ((a.item_name || '').trim() || '\uFFFF').toLowerCase()
+      const kb = ((b.item_name || '').trim() || '\uFFFF').toLowerCase()
+      return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+    }
+    const ka = ((a.manufacturer || '').trim() || '\uFFFF').toLowerCase()
+    const kb = ((b.manufacturer || '').trim() || '\uFFFF').toLowerCase()
+    return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+  })
+  return copy
+}
+
+function defaultAscForPoScanColumn(column: PoScanSortColumn): boolean {
+  return column === 'item'
+}
+
 function POInfo() {
   const [summaries, setSummaries] = useState<POCheckinSummary[]>([])
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
@@ -94,8 +153,34 @@ function POInfo() {
   const [qtyDraft, setQtyDraft] = useState('')
   const [qtySaving, setQtySaving] = useState(false)
   const qtyInputRef = useRef<HTMLInputElement>(null)
+  const [poScanSortByKey, setPoScanSortByKey] = useState<Record<string, PoScanSortState>>({})
+  const [catalogSort, setCatalogSort] = useState<{ column: CatalogSortColumn; asc: boolean }>({
+    column: 'item',
+    asc: true,
+  })
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
+
+  const sortedCatalog = useMemo(
+    () => sortCatalogRows(catalog, catalogSort.column, catalogSort.asc),
+    [catalog, catalogSort]
+  )
+
+  const togglePoScanSort = useCallback((poKey: string, column: PoScanSortColumn) => {
+    setPoScanSortByKey((prev) => {
+      const cur = prev[poKey]
+      if (cur?.column === column) {
+        return { ...prev, [poKey]: { column, asc: !cur.asc } }
+      }
+      return { ...prev, [poKey]: { column, asc: defaultAscForPoScanColumn(column) } }
+    })
+  }, [])
+
+  const toggleCatalogSort = useCallback((column: CatalogSortColumn) => {
+    setCatalogSort((cur) =>
+      cur.column === column ? { column, asc: !cur.asc } : { column, asc: true }
+    )
+  }, [])
 
   useLayoutEffect(() => {
     if (!qtyEditKey) return
@@ -324,6 +409,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const isExpanded = expandedPo.has(key)
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
+            const scanSort = poScanSortByKey[key] ?? { column: 'lastScan' as const, asc: false }
+            const aggSorted = sortAggregatedRows(agg, catalogMap, scanSort.column, scanSort.asc)
             const scanTotal = summary.barcodes.length
             const unique = agg.length
 
@@ -379,16 +466,81 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                             <thead>
                               <tr>
                                 <th scope="col">Barcode</th>
-                                <th scope="col">Item</th>
-                                <th scope="col" className="po-info-scan-th-narrow">
-                                  Qty
+                                <th
+                                  scope="col"
+                                  aria-sort={
+                                    scanSort.column === 'item'
+                                      ? scanSort.asc
+                                        ? 'ascending'
+                                        : 'descending'
+                                      : 'none'
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn"
+                                    onClick={() => togglePoScanSort(key, 'item')}
+                                  >
+                                    Item
+                                    {scanSort.column === 'item' ? (
+                                      <span className="po-info-sort-indicator" aria-hidden>
+                                        {scanSort.asc ? ' ▲' : ' ▼'}
+                                      </span>
+                                    ) : null}
+                                  </button>
                                 </th>
-                                <th scope="col">Last scan</th>
+                                <th
+                                  scope="col"
+                                  className="po-info-scan-th-narrow"
+                                  aria-sort={
+                                    scanSort.column === 'qty'
+                                      ? scanSort.asc
+                                        ? 'ascending'
+                                        : 'descending'
+                                      : 'none'
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn"
+                                    onClick={() => togglePoScanSort(key, 'qty')}
+                                  >
+                                    Qty
+                                    {scanSort.column === 'qty' ? (
+                                      <span className="po-info-sort-indicator" aria-hidden>
+                                        {scanSort.asc ? ' ▲' : ' ▼'}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </th>
+                                <th
+                                  scope="col"
+                                  aria-sort={
+                                    scanSort.column === 'lastScan'
+                                      ? scanSort.asc
+                                        ? 'ascending'
+                                        : 'descending'
+                                      : 'none'
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn"
+                                    onClick={() => togglePoScanSort(key, 'lastScan')}
+                                  >
+                                    Last scan
+                                    {scanSort.column === 'lastScan' ? (
+                                      <span className="po-info-sort-indicator" aria-hidden>
+                                        {scanSort.asc ? ' ▲' : ' ▼'}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </th>
                                 <th scope="col" className="po-info-scan-th-actions" />
                               </tr>
                             </thead>
                             <tbody>
-                              {agg.map((row) => {
+                              {aggSorted.map((row) => {
                                 const cat = lookupCatalogItem(catalogMap, row.barcode_value)
                                 const deletingRow = row.scan_ids.some((id) => deletingId === id)
                                 const qKey = makeQtyEditKey(summary.po_number, row.barcode_value)
@@ -549,13 +701,57 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                 <thead>
                   <tr>
                     <th scope="col">Barcode</th>
-                    <th scope="col">Item</th>
-                    <th scope="col">Manufacturer</th>
+                    <th
+                      scope="col"
+                      aria-sort={
+                        catalogSort.column === 'item'
+                          ? catalogSort.asc
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="po-info-sort-btn"
+                        onClick={() => toggleCatalogSort('item')}
+                      >
+                        Item
+                        {catalogSort.column === 'item' ? (
+                          <span className="po-info-sort-indicator" aria-hidden>
+                            {catalogSort.asc ? ' ▲' : ' ▼'}
+                          </span>
+                        ) : null}
+                      </button>
+                    </th>
+                    <th
+                      scope="col"
+                      aria-sort={
+                        catalogSort.column === 'manufacturer'
+                          ? catalogSort.asc
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="po-info-sort-btn"
+                        onClick={() => toggleCatalogSort('manufacturer')}
+                      >
+                        Manufacturer
+                        {catalogSort.column === 'manufacturer' ? (
+                          <span className="po-info-sort-indicator" aria-hidden>
+                            {catalogSort.asc ? ' ▲' : ' ▼'}
+                          </span>
+                        ) : null}
+                      </button>
+                    </th>
                     <th scope="col" className="po-info-catalog-th-actions" />
                   </tr>
                 </thead>
                 <tbody>
-                  {catalog.map((row) => (
+                  {sortedCatalog.map((row) => (
                     <tr key={row.id}>
                       <td>
                         <code className="po-info-catalog-code">{row.barcode_value}</code>
