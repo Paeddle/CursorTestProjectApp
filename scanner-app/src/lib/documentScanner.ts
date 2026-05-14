@@ -146,6 +146,36 @@ function quadAspectReasonable(cp: CornerPoints): boolean {
   return r > 0.1 && r < 9
 }
 
+/** Polygon area (px²) for comparing candidate quads. */
+export function quadPolygonArea(cp: CornerPoints): number {
+  const { topLeftCorner: tl, topRightCorner: tr, bottomRightCorner: br, bottomLeftCorner: bl } = cp
+  const pts = [tl, tr, br, bl]
+  let a = 0
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4
+    a += pts[i].x * pts[j].y - pts[j].x * pts[i].y
+  }
+  return Math.abs(a / 2)
+}
+
+function pickLargestReasonableQuad(candidates: CornerPoints[], imgW: number, imgH: number): CornerPoints | null {
+  const imgArea = imgW * imgH
+  const minA = imgArea * 0.015
+  const maxA = imgArea * 0.96
+  let best: CornerPoints | null = null
+  let bestArea = 0
+  for (const c of candidates) {
+    if (!quadAspectReasonable(c)) continue
+    const a = quadPolygonArea(c)
+    if (a < minA || a > maxA) continue
+    if (a > bestArea) {
+      bestArea = a
+      best = c
+    }
+  }
+  return best
+}
+
 function scaleCorners(cp: CornerPoints, sx: number, sy: number): CornerPoints {
   const m = (p: { x: number; y: number }) => ({ x: p.x * sx, y: p.y * sy })
   return {
@@ -173,14 +203,57 @@ function approxToFourPoints(approx: { rows: number; data32S?: Int32Array; data32
   return pts
 }
 
-/**
- * Prefer a 4-vertex polygon from adaptive threshold (CamScanner-like). Falls back to null.
- */
+/** Largest 4-vertex contour in `contours` (approxPolyDP), or null. */
+function largestQuadFromContourVector(
+  contours: any,
+  cv: any,
+  w: number,
+  h: number,
+  opts: { minAreaFrac: number; maxAreaFrac: number; epsilonFrac: number }
+): CornerPoints | null {
+  const imgArea = w * h
+  let bestArea = 0
+  let bestApprox: any | null = null
+  for (let i = 0; i < contours.size(); i++) {
+    const cnt = contours.get(i)
+    try {
+      const area = cv.contourArea(cnt, false)
+      if (area < imgArea * opts.minAreaFrac || area > imgArea * opts.maxAreaFrac) continue
+      const peri = cv.arcLength(cnt, true)
+      const approx = new cv.Mat()
+      cv.approxPolyDP(cnt, approx, opts.epsilonFrac * peri, true)
+      if (approx.rows !== 4) {
+        approx.delete()
+        continue
+      }
+      if (area > bestArea) {
+        if (bestApprox) bestApprox.delete()
+        bestApprox = approx
+        bestArea = area
+      } else {
+        approx.delete()
+      }
+    } finally {
+      cnt.delete()
+    }
+  }
+  if (!bestApprox) return null
+  try {
+    const raw = approxToFourPoints(bestApprox)
+    if (raw.length !== 4) return null
+    const ordered = orderQuad(raw)
+    return quadAspectReasonable(ordered) ? ordered : null
+  } finally {
+    bestApprox.delete()
+  }
+}
+
+/** Adaptive threshold + outer contours (tuned for paper vs desk). */
 function findQuadAdaptive(work: any, cv: any): CornerPoints | null {
   const gray = new cv.Mat()
   const blur = new cv.Mat()
   const thr = new cv.Mat()
-  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5))
+  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3))
   const closed = new cv.Mat()
   const contours = new cv.MatVector()
   const hierarchy = new cv.Mat()
@@ -193,59 +266,23 @@ function findQuadAdaptive(work: any, cv: any): CornerPoints | null {
     } else {
       work.copyTo(gray)
     }
-    cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT)
+    cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0, 0, cv.BORDER_DEFAULT)
     cv.adaptiveThreshold(
       blur,
       thr,
       255,
       cv.ADAPTIVE_THRESH_GAUSSIAN_C,
       cv.THRESH_BINARY,
-      15,
-      5
+      11,
+      3
     )
     cv.morphologyEx(thr, closed, cv.MORPH_CLOSE, kernel)
-    cv.findContours(closed, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-
-    const w = work.cols
-    const h = work.rows
-    const imgArea = w * h
-    let bestArea = 0
-    let bestApprox: any | null = null
-
-    for (let i = 0; i < contours.size(); i++) {
-      const cnt = contours.get(i)
-      try {
-        const area = cv.contourArea(cnt, false)
-        if (area < imgArea * 0.035 || area > imgArea * 0.97) continue
-        const peri = cv.arcLength(cnt, true)
-        const approx = new cv.Mat()
-        cv.approxPolyDP(cnt, approx, 0.02 * peri, true)
-        if (approx.rows !== 4) {
-          approx.delete()
-          continue
-        }
-        if (area > bestArea) {
-          if (bestApprox) bestApprox.delete()
-          bestApprox = approx
-          bestArea = area
-        } else {
-          approx.delete()
-        }
-      } finally {
-        cnt.delete()
-      }
-    }
-
-    if (!bestApprox) return null
-    try {
-      const raw = approxToFourPoints(bestApprox)
-      if (raw.length !== 4) return null
-      const ordered = orderQuad(raw)
-      if (!quadAspectReasonable(ordered)) return null
-      return ordered
-    } finally {
-      bestApprox.delete()
-    }
+    cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    return largestQuadFromContourVector(contours, cv, work.cols, work.rows, {
+      minAreaFrac: 0.02,
+      maxAreaFrac: 0.97,
+      epsilonFrac: 0.022,
+    })
   } catch {
     return null
   } finally {
@@ -254,6 +291,97 @@ function findQuadAdaptive(work: any, cv: any): CornerPoints | null {
     thr.delete()
     kernel.delete()
     closed.delete()
+    contours.delete()
+    hierarchy.delete()
+  }
+}
+
+/** Otsu + CLAHE when available — strong on white paper vs darker surfaces. */
+function findQuadOtsu(work: any, cv: any): CornerPoints | null {
+  const gray = new cv.Mat()
+  const blur = new cv.Mat()
+  const eq = new cv.Mat()
+  const thr = new cv.Mat()
+  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3))
+  const closed = new cv.Mat()
+  const contours = new cv.MatVector()
+  const hierarchy = new cv.Mat()
+  try {
+    const ch = work.channels()
+    if (ch === 4) {
+      cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY, 0)
+    } else if (ch === 3) {
+      cv.cvtColor(work, gray, cv.COLOR_RGB2GRAY, 0)
+    } else {
+      work.copyTo(gray)
+    }
+    cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0, 0, cv.BORDER_DEFAULT)
+    if (typeof cv.createCLAHE === 'function') {
+      const clahe = cv.createCLAHE(2.2, new cv.Size(8, 8))
+      clahe.apply(blur, eq)
+      clahe.delete()
+    } else {
+      blur.copyTo(eq)
+    }
+    const m = cv.mean(eq)[0]
+    const t = m > 115 ? cv.THRESH_BINARY : cv.THRESH_BINARY_INV
+    cv.threshold(eq, thr, 0, 255, t + cv.THRESH_OTSU)
+    cv.morphologyEx(thr, closed, cv.MORPH_CLOSE, kernel)
+    cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    return largestQuadFromContourVector(contours, cv, work.cols, work.rows, {
+      minAreaFrac: 0.018,
+      maxAreaFrac: 0.97,
+      epsilonFrac: 0.024,
+    })
+  } catch {
+    return null
+  } finally {
+    gray.delete()
+    blur.delete()
+    eq.delete()
+    thr.delete()
+    kernel.delete()
+    closed.delete()
+    contours.delete()
+    hierarchy.delete()
+  }
+}
+
+/** Edge-based quad — helps when luminosity threshold is ambiguous. */
+function findQuadCanny(work: any, cv: any): CornerPoints | null {
+  const gray = new cv.Mat()
+  const blur = new cv.Mat()
+  const edges = new cv.Mat()
+  const dilated = new cv.Mat()
+  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3))
+  const contours = new cv.MatVector()
+  const hierarchy = new cv.Mat()
+  try {
+    const ch = work.channels()
+    if (ch === 4) {
+      cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY, 0)
+    } else if (ch === 3) {
+      cv.cvtColor(work, gray, cv.COLOR_RGB2GRAY, 0)
+    } else {
+      work.copyTo(gray)
+    }
+    cv.GaussianBlur(gray, blur, new cv.Size(3, 3), 0, 0, cv.BORDER_DEFAULT)
+    cv.Canny(blur, edges, 35, 95, 3, false)
+    cv.dilate(edges, dilated, kernel, new cv.Point(-1, -1), 2)
+    cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+    return largestQuadFromContourVector(contours, cv, work.cols, work.rows, {
+      minAreaFrac: 0.015,
+      maxAreaFrac: 0.96,
+      epsilonFrac: 0.03,
+    })
+  } catch {
+    return null
+  } finally {
+    gray.delete()
+    blur.delete()
+    edges.delete()
+    dilated.delete()
+    kernel.delete()
     contours.delete()
     hierarchy.delete()
   }
@@ -307,8 +435,12 @@ export async function cropDocumentFromCanvas(
 /**
  * Detect document corner points (outer page outline) using OpenCV.
  * Returns null if no document is confidently detected.
+ * @param opts.maxWorkDim — downscale long edge for speed (preview ~1280); use ~1920 on final capture frame.
  */
-export async function detectCornersFromCanvas(canvas: HTMLCanvasElement): Promise<CornerPoints | null> {
+export async function detectCornersFromCanvas(
+  canvas: HTMLCanvasElement,
+  opts?: { maxWorkDim?: number }
+): Promise<CornerPoints | null> {
   const scanner = await getScanner()
   const cv = (window as unknown as { cv?: any }).cv
   if (!cv) return null
@@ -320,7 +452,7 @@ export async function detectCornersFromCanvas(canvas: HTMLCanvasElement): Promis
     fullMat = cv.imread(canvas)
     const W = fullMat.cols
     const H = fullMat.rows
-    const maxDim = 900
+    const maxDim = opts?.maxWorkDim ?? 1280
     const scale = Math.min(1, maxDim / Math.max(W, H))
 
     let work = fullMat
@@ -332,20 +464,25 @@ export async function detectCornersFromCanvas(canvas: HTMLCanvasElement): Promis
       work = resized
     }
 
-    const quadWork = findQuadAdaptive(work, cv)
-    if (quadWork) {
-      const sx = W / work.cols
-      const sy = H / work.rows
-      result = scaleCorners(quadWork, sx, sy)
-    } else {
+    const cands: CornerPoints[] = []
+    const a = findQuadAdaptive(work, cv)
+    if (a) cands.push(a)
+    const b = findQuadOtsu(work, cv)
+    if (b) cands.push(b)
+    const c = findQuadCanny(work, cv)
+    if (c) cands.push(c)
+
+    let quadWork = pickLargestReasonableQuad(cands, work.cols, work.rows)
+
+    if (!quadWork) {
       const contour = scanner.findPaperContour(fullMat) as { delete?: () => void } | null
       if (contour) {
         try {
           const box = cornersFromMinAreaRect(contour, cv)
-          if (box) result = box
+          if (box) quadWork = box
           else {
             const legacy = scanner.getCornerPoints(contour)
-            result = isCornerPoints(legacy) ? legacy : null
+            quadWork = isCornerPoints(legacy) ? legacy : null
           }
         } finally {
           try {
@@ -353,6 +490,12 @@ export async function detectCornersFromCanvas(canvas: HTMLCanvasElement): Promis
           } catch (_) {}
         }
       }
+    }
+
+    if (quadWork) {
+      const sx = W / work.cols
+      const sy = H / work.rows
+      result = scaleCorners(quadWork, sx, sy)
     }
   } catch (_) {
     result = null

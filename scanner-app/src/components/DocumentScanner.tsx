@@ -4,6 +4,7 @@ import {
   cropDocumentFromCanvas,
   DEFAULT_DOCUMENT_CROP_INSET,
   detectCornersFromCanvas,
+  quadPolygonArea,
   warmupDocumentScanner,
 } from '../lib/documentScanner'
 import './DocumentScanner.css'
@@ -60,15 +61,32 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       return
     }
     let s: MediaStream | null = null
-    navigator.mediaDevices
-      .getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 3840 },
-          height: { ideal: 2160 },
-          frameRate: { ideal: 30 },
-        },
-      })
+    const tryStream = (constraints: MediaStreamConstraints) =>
+      navigator.mediaDevices.getUserMedia(constraints)
+
+    tryStream({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 3840 },
+        height: { ideal: 2160 },
+        frameRate: { ideal: 30, max: 60 },
+      },
+    })
+      .catch(() =>
+        tryStream({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 60 },
+          },
+        })
+      )
+      .catch(() =>
+        tryStream({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        })
+      )
       .then((media) => {
         s = media
         setStream(media)
@@ -142,7 +160,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
     let cancelled = false
     let raf = 0
     let lastDetect = 0
-    const minDetectMs = 340
+    const minDetectMs = 130
 
     const clearOverlay = () => {
       const ctx = overlay.getContext('2d')
@@ -225,7 +243,7 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       if (now - lastDetect < minDetectMs) return
       lastDetect = now
 
-      const maxW = 960
+      const maxW = 1280
       const detScale = Math.min(1, maxW / vw)
       const dw = Math.max(1, Math.round(vw * detScale))
       const dh = Math.max(1, Math.round(vh * detScale))
@@ -235,15 +253,15 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       if (!dctx) return
       dctx.drawImage(video, 0, 0, dw, dh)
 
-      const detected = await detectCornersFromCanvas(detectCanvas)
+      const detected = await detectCornersFromCanvas(detectCanvas, { maxWorkDim: 1280 })
       if (cancelled) return
 
       const diag = Math.hypot(vw, vh)
-      const jumpReject = 0.16 * diag
+      const jumpReject = 0.14 * diag
 
       if (!detected) {
         lostFramesRef.current++
-        if (lostFramesRef.current >= 4) {
+        if (lostFramesRef.current >= 6) {
           smoothedOuterRef.current = null
           clearOverlay()
         }
@@ -264,10 +282,16 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       const prev = smoothedOuterRef.current
       let use = raw
       if (prev) {
-        if (maxCornerJump(prev, raw) > jumpReject) {
-          use = lerpCorners(prev, raw, 0.06)
+        const jump = maxCornerJump(prev, raw)
+        const rawArea = quadPolygonArea(raw)
+        const prevArea = quadPolygonArea(prev)
+        const expanding = rawArea > prevArea * 1.12
+        if (jump > jumpReject) {
+          const t = expanding ? 0.62 : 0.32
+          use = lerpCorners(prev, raw, t)
         } else {
-          use = lerpCorners(prev, raw, 0.22)
+          const t = expanding ? 0.48 : 0.36
+          use = lerpCorners(prev, raw, t)
         }
       }
       smoothedOuterRef.current = use
@@ -306,7 +330,8 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       if (!ctx) return
       ctx.drawImage(video, 0, 0)
 
-      const outer = smoothedOuterRef.current
+      const freshCorners = await detectCornersFromCanvas(captureCanvas, { maxWorkDim: 2200 })
+      const outer = freshCorners ?? smoothedOuterRef.current
       const blob = await cropDocumentFromCanvas(captureCanvas, outer ?? undefined, {
         cropInset: DEFAULT_DOCUMENT_CROP_INSET,
       })
@@ -375,8 +400,8 @@ export default function DocumentScanner({ onCapture, onClose }: DocumentScannerP
       ) : (
         <>
           <p className="document-scanner-hint">
-            Blue outline follows the page edge. Hold steady; capture uses a slight inset so the crop does not
-            include the table around the paper.
+            Blue outline tracks the page. Fill most of the frame with the paper; hold steady for a moment. Tap
+            Capture — we re-detect edges on the full-resolution frame for a sharper crop.
           </p>
           <div className="document-scanner-camera">
             <video ref={videoRef} autoPlay playsInline muted />
