@@ -6,6 +6,7 @@ create table if not exists public.barcode_catalog (
   barcode_value text not null,
   manufacturer text,
   item_name text not null,
+  part_number text,
   image_url text,
   product_url text,
   notes text,
@@ -17,6 +18,7 @@ create table if not exists public.barcode_catalog (
 create index if not exists idx_barcode_catalog_barcode_value on public.barcode_catalog (barcode_value);
 create index if not exists idx_barcode_catalog_item_name on public.barcode_catalog (item_name);
 create index if not exists idx_barcode_catalog_manufacturer on public.barcode_catalog (manufacturer);
+create index if not exists idx_barcode_catalog_part_number on public.barcode_catalog (part_number);
 
 alter table public.barcode_catalog enable row level security;
 

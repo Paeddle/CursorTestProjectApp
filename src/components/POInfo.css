@@ -525,6 +525,15 @@
   max-width: 14rem;
 }
 
+.po-info-scan-part-number {
+  max-width: 10rem;
+  font-size: 0.86rem;
+}
+
+.po-info-catalog-part {
+  color: #e2e8f0;
+}
+
 .po-info-catalog-name {
   color: #f8fafc;
   font-size: 0.88rem;
@@ -603,6 +612,13 @@
 .po-info-catalog-item-cell {
   color: #f8fafc;
   font-size: 0.9rem;
+}
+
+.po-info-catalog-part-cell {
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  max-width: 12rem;
+  word-break: break-word;
 }
 
 .po-info-catalog-table tbody tr:last-child td {

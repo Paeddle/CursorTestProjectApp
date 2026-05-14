@@ -26,6 +26,7 @@ export interface BarcodeCatalogItem {
   id: string
   barcode_value: string
   manufacturer: string | null
+  part_number?: string | null
   item_name: string
   image_url: string | null
   product_url: string | null

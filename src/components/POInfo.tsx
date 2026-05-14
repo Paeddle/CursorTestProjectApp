@@ -78,14 +78,20 @@ function makeQtyEditKey(poNumber: string, barcodeValue: string): string {
   return `${poNumber}\u0000${barcodeValue}`
 }
 
-type PoScanSortColumn = 'item' | 'qty' | 'lastScan'
+type PoScanSortColumn = 'item' | 'partNumber' | 'qty' | 'lastScan'
 type PoScanSortState = { column: PoScanSortColumn; asc: boolean }
-type CatalogSortColumn = 'item' | 'manufacturer'
+type CatalogSortColumn = 'item' | 'partNumber' | 'manufacturer'
 
 function sortKeyItemName(catalogMap: Map<string, BarcodeCatalogItem>, barcode: string): string {
   const cat = lookupCatalogItem(catalogMap, barcode)
   const name = (cat?.item_name || '').trim().toLowerCase()
   return name || '\uFFFF'
+}
+
+function sortKeyPartNumber(catalogMap: Map<string, BarcodeCatalogItem>, barcode: string): string {
+  const cat = lookupCatalogItem(catalogMap, barcode)
+  const p = (cat?.part_number || '').trim().toLowerCase()
+  return p || '\uFFFF'
 }
 
 function sortAggregatedRows(
@@ -100,6 +106,11 @@ function sortAggregatedRows(
     if (column === 'item') {
       const ka = sortKeyItemName(catalogMap, a.barcode_value)
       const kb = sortKeyItemName(catalogMap, b.barcode_value)
+      return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+    }
+    if (column === 'partNumber') {
+      const ka = sortKeyPartNumber(catalogMap, a.barcode_value)
+      const kb = sortKeyPartNumber(catalogMap, b.barcode_value)
       return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
     }
     if (column === 'qty') {
@@ -125,6 +136,11 @@ function sortCatalogRows(
       const kb = ((b.item_name || '').trim() || '\uFFFF').toLowerCase()
       return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
     }
+    if (column === 'partNumber') {
+      const ka = ((a.part_number || '').trim() || '\uFFFF').toLowerCase()
+      const kb = ((b.part_number || '').trim() || '\uFFFF').toLowerCase()
+      return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+    }
     const ka = ((a.manufacturer || '').trim() || '\uFFFF').toLowerCase()
     const kb = ((b.manufacturer || '').trim() || '\uFFFF').toLowerCase()
     return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
@@ -133,7 +149,7 @@ function sortCatalogRows(
 }
 
 function defaultAscForPoScanColumn(column: PoScanSortColumn): boolean {
-  return column === 'item'
+  return column === 'item' || column === 'partNumber'
 }
 
 function POInfo() {
@@ -491,6 +507,29 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 </th>
                                 <th
                                   scope="col"
+                                  aria-sort={
+                                    scanSort.column === 'partNumber'
+                                      ? scanSort.asc
+                                        ? 'ascending'
+                                        : 'descending'
+                                      : 'none'
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn"
+                                    onClick={() => togglePoScanSort(key, 'partNumber')}
+                                  >
+                                    Part number
+                                    {scanSort.column === 'partNumber' ? (
+                                      <span className="po-info-sort-indicator" aria-hidden>
+                                        {scanSort.asc ? ' ▲' : ' ▼'}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </th>
+                                <th
+                                  scope="col"
                                   className="po-info-scan-th-narrow"
                                   aria-sort={
                                     scanSort.column === 'qty'
@@ -572,6 +611,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     <td className="po-info-scan-item-name">
                                       {cat ? (
                                         <span className="po-info-catalog-name">{cat.item_name}</span>
+                                      ) : (
+                                        <span className="po-info-no-catalog">—</span>
+                                      )}
+                                    </td>
+                                    <td className="po-info-scan-part-number">
+                                      {cat?.part_number?.trim() ? (
+                                        <span className="po-info-catalog-part">{cat.part_number}</span>
                                       ) : (
                                         <span className="po-info-no-catalog">—</span>
                                       )}
@@ -727,6 +773,29 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     <th
                       scope="col"
                       aria-sort={
+                        catalogSort.column === 'partNumber'
+                          ? catalogSort.asc
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="po-info-sort-btn"
+                        onClick={() => toggleCatalogSort('partNumber')}
+                      >
+                        Part number
+                        {catalogSort.column === 'partNumber' ? (
+                          <span className="po-info-sort-indicator" aria-hidden>
+                            {catalogSort.asc ? ' ▲' : ' ▼'}
+                          </span>
+                        ) : null}
+                      </button>
+                    </th>
+                    <th
+                      scope="col"
+                      aria-sort={
                         catalogSort.column === 'manufacturer'
                           ? catalogSort.asc
                             ? 'ascending'
@@ -757,6 +826,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         <code className="po-info-catalog-code">{row.barcode_value}</code>
                       </td>
                       <td className="po-info-catalog-item-cell">{row.item_name}</td>
+                      <td className="po-info-catalog-part-cell">
+                        {row.part_number?.trim() ? row.part_number : '—'}
+                      </td>
                       <td className="po-info-meta">{row.manufacturer || '—'}</td>
                       <td>
                         <button

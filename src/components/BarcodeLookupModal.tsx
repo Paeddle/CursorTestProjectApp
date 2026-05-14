@@ -7,6 +7,7 @@ import './BarcodeLookup.css'
 type LookupResult = {
   barcode: string
   name: string | null
+  partNumber: string | null
   imageUrl: string | null
   sourceUrl: string | null
   sourceLabel: string
@@ -46,7 +47,7 @@ async function lookupOpenFoodFacts(barcode: string): Promise<LookupResult | null
   const imageUrl =
     (product.image_front_url as string | undefined) || (product.image_url as string | undefined) || null
   const sourceUrl = `https://world.openfoodfacts.org/product/${barcode}`
-  return { barcode, name, imageUrl, sourceUrl, sourceLabel: 'Open Food Facts' }
+  return { barcode, name, partNumber: null, imageUrl, sourceUrl, sourceLabel: 'Open Food Facts' }
 }
 
 function jinaFetchUrl(targetUrl: string): string {
@@ -109,13 +110,14 @@ async function lookupAdiViaSerper(barcode: string, serperApiKey: string): Promis
   const ogTitle = extractMetaContent(text, 'og:title')
   const ogImage = extractMetaContent(text, 'og:image')
   const title = ogTitle || extractTitle(text) || chosen?.title || null
-  return { barcode, name: title, imageUrl: ogImage, sourceUrl: link, sourceLabel: 'ADI (search)' }
+  return { barcode, name: title, partNumber: null, imageUrl: ogImage, sourceUrl: link, sourceLabel: 'ADI (search)' }
 }
 
 function catalogToLookupResult(c: BarcodeCatalogItem): LookupResult {
   return {
     barcode: c.barcode_value,
     name: c.item_name,
+    partNumber: c.part_number ?? null,
     imageUrl: c.image_url,
     sourceUrl: c.product_url,
     sourceLabel: c.manufacturer ? `Catalog (${c.manufacturer})` : 'Catalog',
@@ -126,6 +128,7 @@ function applyCatalogRowToForm(
   c: BarcodeCatalogItem,
   setters: {
     setManufacturer: (v: string) => void
+    setPartNumber: (v: string) => void
     setItemName: (v: string) => void
     setImageUrl: (v: string) => void
     setProductUrl: (v: string) => void
@@ -133,6 +136,7 @@ function applyCatalogRowToForm(
   }
 ) {
   setters.setManufacturer(c.manufacturer ?? '')
+  setters.setPartNumber(c.part_number ?? '')
   setters.setItemName(c.item_name ?? '')
   setters.setImageUrl(c.image_url ?? '')
   setters.setProductUrl(c.product_url ?? '')
@@ -163,6 +167,7 @@ export default function BarcodeLookupModal({
   const [lookupHint, setLookupHint] = useState<string | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [addManufacturer, setAddManufacturer] = useState('')
+  const [addPartNumber, setAddPartNumber] = useState('')
   const [addItemName, setAddItemName] = useState('')
   const [addImageUrl, setAddImageUrl] = useState('')
   const [addProductUrl, setAddProductUrl] = useState('')
@@ -195,6 +200,7 @@ export default function BarcodeLookupModal({
       setResult(catalogToLookupResult(catalogSeed))
       applyCatalogRowToForm(catalogSeed, {
         setManufacturer: setAddManufacturer,
+        setPartNumber: setAddPartNumber,
         setItemName: setAddItemName,
         setImageUrl: setAddImageUrl,
         setProductUrl: setAddProductUrl,
@@ -219,6 +225,7 @@ export default function BarcodeLookupModal({
           setResult(catalogToLookupResult(match))
           applyCatalogRowToForm(match, {
             setManufacturer: setAddManufacturer,
+            setPartNumber: setAddPartNumber,
             setItemName: setAddItemName,
             setImageUrl: setAddImageUrl,
             setProductUrl: setAddProductUrl,
@@ -241,6 +248,7 @@ export default function BarcodeLookupModal({
           if (!cancelled && off) {
             setResult(off)
             setAddManufacturer('')
+            setAddPartNumber('')
             setAddItemName(off.name ?? '')
             setAddImageUrl(off.imageUrl ?? '')
             setAddProductUrl(off.sourceUrl ?? '')
@@ -255,6 +263,7 @@ export default function BarcodeLookupModal({
           if (!cancelled && r) {
             setResult(r)
             setAddManufacturer('')
+            setAddPartNumber('')
             setAddItemName(r.name ?? '')
             setAddImageUrl(r.imageUrl ?? '')
             setAddProductUrl(r.sourceUrl ?? '')
@@ -283,6 +292,7 @@ export default function BarcodeLookupModal({
     if (existing) {
       applyCatalogRowToForm(existing, {
         setManufacturer: setAddManufacturer,
+        setPartNumber: setAddPartNumber,
         setItemName: setAddItemName,
         setImageUrl: setAddImageUrl,
         setProductUrl: setAddProductUrl,
@@ -290,12 +300,14 @@ export default function BarcodeLookupModal({
       })
     } else if (result) {
       setAddManufacturer('')
+      setAddPartNumber(result.partNumber ?? '')
       setAddItemName(result.name ?? '')
       setAddImageUrl(result.imageUrl ?? '')
       setAddProductUrl(result.sourceUrl ?? '')
       setAddNotes('')
     } else {
       setAddManufacturer('')
+      setAddPartNumber('')
       setAddItemName('')
       setAddImageUrl('')
       setAddProductUrl('')
@@ -317,6 +329,7 @@ export default function BarcodeLookupModal({
       const row = {
         barcode_value: barcodeValueToSave,
         manufacturer: addManufacturer.trim() || null,
+        part_number: addPartNumber.trim() || null,
         item_name: addItemName.trim(),
         image_url: addImageUrl.trim() || null,
         product_url: addProductUrl.trim() || null,
@@ -385,6 +398,11 @@ export default function BarcodeLookupModal({
                   <div>
                     <div className="barcode-lookup-card-title">{result.name ?? 'Unknown item'}</div>
                     <div className="barcode-lookup-card-sub">Barcode: <code>{result.barcode}</code></div>
+                    {result.partNumber ? (
+                      <div className="barcode-lookup-card-sub">
+                        Part number: <code>{result.partNumber}</code>
+                      </div>
+                    ) : null}
                     <div className="barcode-lookup-card-sub">Source: {result.sourceLabel}</div>
                     {result.sourceUrl && (
                       <a className="barcode-lookup-link" href={result.sourceUrl} target="_blank" rel="noreferrer">
@@ -417,6 +435,10 @@ export default function BarcodeLookupModal({
                 <label>
                   Manufacturer (optional)
                   <input value={addManufacturer} onChange={(e) => setAddManufacturer(e.target.value)} />
+                </label>
+                <label>
+                  Part number (optional)
+                  <input value={addPartNumber} onChange={(e) => setAddPartNumber(e.target.value)} />
                 </label>
                 <label>
                   Item name *
