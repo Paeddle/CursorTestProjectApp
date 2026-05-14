@@ -459,7 +459,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                           type="button"
                                           className="po-info-qty-button"
                                           disabled={!!deletingId || qtySaving}
-                                          title="Click to edit quantity"
+                                          title="Edit quantity"
                                           onClick={() => {
                                             setQtyEditKey(qKey)
                                             setQtyDraft(String(row.quantity))

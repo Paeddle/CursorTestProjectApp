@@ -406,22 +406,27 @@
 }
 
 .po-info-qty-button {
-  min-width: 2.25rem;
-  padding: 0.2rem 0.45rem;
+  min-width: 2.5rem;
+  padding: 0.35rem 0.55rem;
   font: inherit;
   font-weight: 600;
   font-size: 0.9rem;
-  color: #e2e8f0;
-  background: #1e293b;
-  border: 1px dashed #64748b;
-  border-radius: 6px;
+  color: #f1f5f9;
+  background: #334155;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .po-info-qty-button:hover:not(:disabled) {
-  border-color: #94a3b8;
-  background: #334155;
-  color: #f8fafc;
+  background: #475569;
+  color: #fff;
+}
+
+.po-info-qty-button:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }
 
 .po-info-qty-button:disabled {
