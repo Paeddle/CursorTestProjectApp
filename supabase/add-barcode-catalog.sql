@@ -28,8 +28,10 @@ create policy "Allow public read on barcode_catalog"
   using (true);
 
 drop policy if exists "Allow anonymous insert on barcode_catalog" on public.barcode_catalog;
+-- No TO clause: applies to anon and authenticated (browser clients), same as SELECT above.
 create policy "Allow anonymous insert on barcode_catalog"
-  on public.barcode_catalog for insert to anon with check (true);
+  on public.barcode_catalog for insert
+  with check (true);
 
 -- Keep updated_at current
 create or replace function public.set_updated_at()
