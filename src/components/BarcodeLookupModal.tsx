@@ -332,6 +332,7 @@ export default function BarcodeLookupModal({
       setResult(catalogToLookupResult(saved))
       setShowAdd(false)
       onCatalogSaved?.()
+      onClose()
     } catch (e: unknown) {
       setLookupError(e instanceof Error ? e.message : 'Failed to save to catalog')
     } finally {
