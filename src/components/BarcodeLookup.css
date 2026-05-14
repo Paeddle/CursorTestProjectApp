@@ -314,8 +314,17 @@
   border-radius: 12px;
   max-width: 560px;
   width: 100%;
-  max-height: 90vh;
-  overflow: auto;
+  max-height: min(92vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.barcode-lookup-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1rem;
 }
 
 .barcode-lookup-modal-head {
@@ -360,7 +369,19 @@
 .barcode-lookup-inner-modal {
   position: absolute;
   inset: 0;
+  z-index: 4;
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 1.25rem 0.75rem 2rem;
+  overflow-y: auto;
+}
+
+.barcode-lookup-editor-card {
+  width: 100%;
+  max-width: 520px;
+  flex-shrink: 0;
 }
 

@@ -1,7 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Barcode from 'react-barcode'
 import { supabase } from '../lib/supabase'
-import type { POBarcode, PODocument, POCheckinSummary } from '../types/poCheckin'
+import {
+  aggregatePOBarcodeScans,
+  buildCatalogLookupMap,
+  lookupCatalogItem,
+} from '../lib/barcodeCatalogLookup'
+import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import './POInfo.css'
 
@@ -70,19 +75,31 @@ function pathFromStorageUrl(fileUrl: string, bucketId: string): string | null {
 
 function POInfo() {
   const [summaries, setSummaries] = useState<POCheckinSummary[]>([])
+  const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchPo, setSearchPo] = useState('')
   const [expandedPo, setExpandedPo] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [lookupBarcode, setLookupBarcode] = useState<string | null>(null)
+  const [lookupOpen, setLookupOpen] = useState<{
+    barcode: string
+    catalogSeed: BarcodeCatalogItem | null
+    openCatalogEditor: boolean
+  } | null>(null)
+
+  const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const list = await loadSummaries()
+      const [list, catRes] = await Promise.all([
+        loadSummaries(),
+        supabase.from('barcode_catalog').select('*').order('item_name', { ascending: true }),
+      ])
+      if (catRes.error) throw new Error(catRes.error.message)
       setSummaries(list)
+      setCatalog((catRes.data ?? []) as BarcodeCatalogItem[])
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
     } finally {
@@ -100,10 +117,7 @@ function POInfo() {
   }, [load])
 
   const filtered = searchPo.trim()
-    ? summaries.filter(
-        (s) =>
-          s.po_number.toLowerCase().includes(searchPo.trim().toLowerCase())
-      )
+    ? summaries.filter((s) => s.po_number.toLowerCase().includes(searchPo.trim().toLowerCase()))
     : summaries
 
   const toggleExpanded = (poNumber: string) => {
@@ -116,11 +130,11 @@ function POInfo() {
     })
   }
 
-  const handleDeleteBarcode = async (id: string) => {
-    if (deletingId) return
-    setDeletingId(id)
+  const handleDeleteBarcodeIds = async (ids: string[]) => {
+    if (deletingId || ids.length === 0) return
+    setDeletingId(ids[0])
     try {
-      const { error: e } = await supabase.from('po_barcodes').delete().eq('id', id)
+      const { error: e } = await supabase.from('po_barcodes').delete().in('id', ids)
       if (e) throw new Error(e.message)
       await load()
     } catch (err) {
@@ -177,6 +191,14 @@ function POInfo() {
     }
   }
 
+  const openBarcodeLookup = (barcode: string, catalogSeed: BarcodeCatalogItem | null, openCatalogEditor = false) => {
+    setLookupOpen({ barcode, catalogSeed, openCatalogEditor })
+  }
+
+  const closeBarcodeLookup = () => {
+    setLookupOpen(null)
+  }
+
   if (!isConfigured()) {
     return (
       <div className="po-info-page">
@@ -211,21 +233,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           value={searchPo}
           onChange={(e) => setSearchPo(e.target.value)}
         />
-        <button
-          type="button"
-          className="po-info-refresh"
-          onClick={() => load()}
-          disabled={loading}
-        >
+        <button type="button" className="po-info-refresh" onClick={() => load()} disabled={loading}>
           Refresh
         </button>
       </div>
 
-      {error && (
-        <div className="po-info-error">
-          {error}
-        </div>
-      )}
+      {error && <div className="po-info-error">{error}</div>}
 
       {loading ? (
         <div className="po-info-loading">Loading PO check-in data…</div>
@@ -243,6 +256,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
             const total = summary.barcodes.length + summary.documents.length
+            const agg = aggregatePOBarcodeScans(summary.barcodes)
+            const scanTotal = summary.barcodes.length
+            const unique = agg.length
 
             return (
               <div key={key} className="po-info-card">
@@ -255,10 +271,16 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                   >
                     <span className="po-info-card-title">PO {summary.po_number}</span>
                     <span className="po-info-card-badge">
-                      {summary.barcodes.length} barcode{summary.barcodes.length !== 1 ? 's' : ''}
-                      {summary.documents.length > 0 && (
-                        <> · {summary.documents.length} doc{summary.documents.length !== 1 ? 's' : ''}</>
-                      )}
+                      {[
+                        scanTotal > 0 &&
+                          `${unique} barcode${unique !== 1 ? 's' : ''}${
+                            scanTotal !== unique ? ` · ${scanTotal} scans` : ''
+                          }`,
+                        summary.documents.length > 0 &&
+                          `${summary.documents.length} doc${summary.documents.length !== 1 ? 's' : ''}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || 'No items'}
                     </span>
                     <span className="po-info-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                   </button>
@@ -278,51 +300,76 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
 
                 {isExpanded && (
                   <div className="po-info-card-body">
-                    {summary.barcodes.length > 0 && (
+                    {agg.length > 0 && (
                       <section className="po-info-section">
                         <h4>Barcode scans</h4>
-                        <ul className="po-info-scan-list">
-                          {summary.barcodes.map((b) => (
-                            <li key={b.id} className="po-info-scan-item">
-                              <button
-                                type="button"
-                                className="po-info-scan-item-main po-info-scan-item-clickable"
-                                onClick={() => setLookupBarcode(b.barcode_value || '')}
-                                title="Look up this barcode"
-                              >
-                                <div className="po-info-barcode-wrap">
-                                  <Barcode
-                                    value={b.barcode_value || ''}
-                                    format="CODE128"
-                                    displayValue={true}
-                                    width={1.2}
-                                    height={40}
-                                    margin={0}
-                                    fontSize={12}
-                                    background="#fff"
-                                    lineColor="#000"
-                                  />
-                                </div>
-                                <div className="po-info-scan-meta">
-                                  <code>{b.barcode_value}</code>
-                                  <span className="po-info-meta">{formatDateTime(b.scanned_at)}</span>
-                                </div>
-                              </button>
-                              <button
-                                type="button"
-                                className="po-info-delete-item"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDeleteBarcode(b.id)
-                                }}
-                                disabled={!!deletingId}
-                                title="Delete barcode"
-                              >
-                                {deletingId === b.id ? '…' : '✕'}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="po-info-scan-table-wrap">
+                          <table className="po-info-scan-table">
+                            <thead>
+                              <tr>
+                                <th scope="col">Barcode</th>
+                                <th scope="col">Item</th>
+                                <th scope="col" className="po-info-scan-th-narrow">
+                                  Qty
+                                </th>
+                                <th scope="col">Last scan</th>
+                                <th scope="col" className="po-info-scan-th-actions" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {agg.map((row) => {
+                                const cat = lookupCatalogItem(catalogMap, row.barcode_value)
+                                const deletingRow = row.scan_ids.some((id) => deletingId === id)
+                                return (
+                                  <tr key={row.barcode_value}>
+                                    <td>
+                                      <button
+                                        type="button"
+                                        className="po-info-scan-barcode-cell po-info-scan-item-clickable"
+                                        onClick={() => openBarcodeLookup(row.barcode_value, cat ?? null, false)}
+                                        title="Look up or edit catalog"
+                                      >
+                                        <div className="po-info-barcode-wrap po-info-barcode-wrap--compact">
+                                          <Barcode
+                                            value={row.barcode_value}
+                                            format="CODE128"
+                                            displayValue={false}
+                                            width={1}
+                                            height={22}
+                                            margin={0}
+                                            background="#fff"
+                                            lineColor="#000"
+                                          />
+                                        </div>
+                                        <code className="po-info-scan-code-text">{row.barcode_value}</code>
+                                      </button>
+                                    </td>
+                                    <td className="po-info-scan-item-name">
+                                      {cat ? (
+                                        <span className="po-info-catalog-name">{cat.item_name}</span>
+                                      ) : (
+                                        <span className="po-info-no-catalog">—</span>
+                                      )}
+                                    </td>
+                                    <td className="po-info-scan-qty">{row.quantity}</td>
+                                    <td className="po-info-meta">{formatDateTime(row.last_scanned_at)}</td>
+                                    <td>
+                                      <button
+                                        type="button"
+                                        className="po-info-delete-item"
+                                        onClick={() => handleDeleteBarcodeIds(row.scan_ids)}
+                                        disabled={!!deletingId}
+                                        title="Remove all scans of this barcode for this PO"
+                                      >
+                                        {deletingRow ? '…' : '✕'}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </section>
                     )}
                     {summary.documents.length > 0 && (
@@ -367,10 +414,58 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
         </div>
       )}
 
-      {lookupBarcode && (
+      {!loading && (
+        <section className="po-info-catalog-section">
+          <h2 className="po-info-catalog-section-title">Barcode catalog</h2>
+          <p className="po-info-catalog-section-desc">
+            Items you have saved for lookups. Edit opens the same catalog form as from a PO scan.
+          </p>
+          {catalog.length === 0 ? (
+            <p className="po-info-catalog-empty">No catalog entries yet. Look up a barcode from a PO and use &quot;Add to your Catalog&quot;.</p>
+          ) : (
+            <div className="po-info-catalog-table-wrap">
+              <table className="po-info-catalog-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Barcode</th>
+                    <th scope="col">Item</th>
+                    <th scope="col">Manufacturer</th>
+                    <th scope="col" className="po-info-catalog-th-actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalog.map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <code className="po-info-catalog-code">{row.barcode_value}</code>
+                      </td>
+                      <td>{row.item_name}</td>
+                      <td className="po-info-meta">{row.manufacturer || '—'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="po-info-catalog-edit-btn"
+                          onClick={() => openBarcodeLookup(row.barcode_value, row, true)}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {lookupOpen && (
         <BarcodeLookupModal
-          barcodeValue={lookupBarcode}
-          onClose={() => setLookupBarcode(null)}
+          barcodeValue={lookupOpen.barcode}
+          catalogSeed={lookupOpen.catalogSeed}
+          openCatalogEditor={lookupOpen.openCatalogEditor}
+          onClose={closeBarcodeLookup}
+          onCatalogSaved={() => void load()}
         />
       )}
     </div>

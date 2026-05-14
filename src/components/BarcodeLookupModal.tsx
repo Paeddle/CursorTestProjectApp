@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { normalizeBarcodeValue, barcodesMatch } from '../lib/barcodeCatalogLookup'
 import type { BarcodeCatalogItem } from '../types/poCheckin'
 import './BarcodeLookup.css'
 
@@ -17,14 +18,11 @@ type LookupMeta = {
   looksLikeUpcEan: boolean
 }
 
-function normalizeBarcode(v: string): string {
-  return (v || '').trim()
-}
-
 function getLookupMeta(raw: string): LookupMeta {
-  const normalized = normalizeBarcode(raw)
+  const normalized = normalizeBarcodeValue(raw)
   const digits = normalized.replace(/[^\d]/g, '')
-  const looksLikeUpcEan = digits.length === 8 || digits.length === 12 || digits.length === 13 || digits.length === 14
+  const looksLikeUpcEan =
+    digits.length === 8 || digits.length === 12 || digits.length === 13 || digits.length === 14
   return { normalized, digits, looksLikeUpcEan }
 }
 
@@ -46,9 +44,7 @@ async function lookupOpenFoodFacts(barcode: string): Promise<LookupResult | null
     (product.abbreviated_product_name as string | undefined) ||
     null
   const imageUrl =
-    (product.image_front_url as string | undefined) ||
-    (product.image_url as string | undefined) ||
-    null
+    (product.image_front_url as string | undefined) || (product.image_url as string | undefined) || null
   const sourceUrl = `https://world.openfoodfacts.org/product/${barcode}`
   return { barcode, name, imageUrl, sourceUrl, sourceLabel: 'Open Food Facts' }
 }
@@ -116,12 +112,50 @@ async function lookupAdiViaSerper(barcode: string, serperApiKey: string): Promis
   return { barcode, name: title, imageUrl: ogImage, sourceUrl: link, sourceLabel: 'ADI (search)' }
 }
 
-interface BarcodeLookupModalProps {
-  barcodeValue: string
-  onClose: () => void
+function catalogToLookupResult(c: BarcodeCatalogItem): LookupResult {
+  return {
+    barcode: c.barcode_value,
+    name: c.item_name,
+    imageUrl: c.image_url,
+    sourceUrl: c.product_url,
+    sourceLabel: c.manufacturer ? `Catalog (${c.manufacturer})` : 'Catalog',
+  }
 }
 
-export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLookupModalProps) {
+function applyCatalogRowToForm(
+  c: BarcodeCatalogItem,
+  setters: {
+    setManufacturer: (v: string) => void
+    setItemName: (v: string) => void
+    setImageUrl: (v: string) => void
+    setProductUrl: (v: string) => void
+    setNotes: (v: string) => void
+  }
+) {
+  setters.setManufacturer(c.manufacturer ?? '')
+  setters.setItemName(c.item_name ?? '')
+  setters.setImageUrl(c.image_url ?? '')
+  setters.setProductUrl(c.product_url ?? '')
+  setters.setNotes(c.notes ?? '')
+}
+
+interface BarcodeLookupModalProps {
+  barcodeValue: string
+  /** Known catalog row (e.g. from PO row or catalog list) — skips slow lookups when it matches this barcode. */
+  catalogSeed: BarcodeCatalogItem | null
+  /** When true (catalog "Edit"), open the save form immediately with fields filled. */
+  openCatalogEditor: boolean
+  onClose: () => void
+  onCatalogSaved?: () => void
+}
+
+export default function BarcodeLookupModal({
+  barcodeValue,
+  catalogSeed,
+  openCatalogEditor,
+  onClose,
+  onCatalogSaved,
+}: BarcodeLookupModalProps) {
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [lookupLoading, setLookupLoading] = useState(false)
   const [result, setResult] = useState<LookupResult | null>(null)
@@ -135,7 +169,7 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
   const [addNotes, setAddNotes] = useState('')
   const [addSaving, setAddSaving] = useState(false)
   const serperEnabled = Boolean(import.meta.env.VITE_SERPER_API_KEY)
-  const selectedBarcode = normalizeBarcode(barcodeValue)
+  const selectedBarcode = normalizeBarcodeValue(barcodeValue)
 
   useEffect(() => {
     let cancelled = false
@@ -144,11 +178,32 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
       if (!cancelled && !res.error) setCatalog((res.data ?? []) as BarcodeCatalogItem[])
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
     if (!selectedBarcode) return
+
+    const seedMatches = catalogSeed && barcodesMatch(catalogSeed.barcode_value, selectedBarcode)
+
+    if (seedMatches && catalogSeed) {
+      setLookupLoading(false)
+      setLookupError(null)
+      setLookupHint(null)
+      setResult(catalogToLookupResult(catalogSeed))
+      applyCatalogRowToForm(catalogSeed, {
+        setManufacturer: setAddManufacturer,
+        setItemName: setAddItemName,
+        setImageUrl: setAddImageUrl,
+        setProductUrl: setAddProductUrl,
+        setNotes: setAddNotes,
+      })
+      setShowAdd(openCatalogEditor)
+      return
+    }
+
     setLookupLoading(true)
     setLookupError(null)
     setLookupHint(null)
@@ -159,18 +214,15 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
     async function doLookup() {
       const meta = getLookupMeta(selectedBarcode)
       try {
-        const candidatesForCatalog: string[] = []
-        if (meta.digits) candidatesForCatalog.push(meta.digits)
-        if (meta.normalized && meta.normalized !== meta.digits) candidatesForCatalog.push(meta.normalized)
-
-        const match = catalog.find((c) => candidatesForCatalog.includes((c.barcode_value || '').trim()))
+        const match = catalog.find((c) => barcodesMatch(c.barcode_value, selectedBarcode))
         if (!cancelled && match) {
-          setResult({
-            barcode: match.barcode_value,
-            name: match.item_name,
-            imageUrl: match.image_url,
-            sourceUrl: match.product_url,
-            sourceLabel: match.manufacturer ? `Catalog (${match.manufacturer})` : 'Catalog',
+          setResult(catalogToLookupResult(match))
+          applyCatalogRowToForm(match, {
+            setManufacturer: setAddManufacturer,
+            setItemName: setAddItemName,
+            setImageUrl: setAddImageUrl,
+            setProductUrl: setAddProductUrl,
+            setNotes: setAddNotes,
           })
           return
         }
@@ -188,6 +240,11 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
           const off = await lookupOpenFoodFacts(c)
           if (!cancelled && off) {
             setResult(off)
+            setAddManufacturer('')
+            setAddItemName(off.name ?? '')
+            setAddImageUrl(off.imageUrl ?? '')
+            setAddProductUrl(off.sourceUrl ?? '')
+            setAddNotes('')
             return
           }
         }
@@ -197,6 +254,11 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
           const r = await lookupAdiViaSerper(preferred, serperKey)
           if (!cancelled && r) {
             setResult(r)
+            setAddManufacturer('')
+            setAddItemName(r.name ?? '')
+            setAddImageUrl(r.imageUrl ?? '')
+            setAddProductUrl(r.sourceUrl ?? '')
+            setAddNotes('')
             return
           }
         }
@@ -209,16 +271,36 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
       }
     }
 
-    doLookup()
-    return () => { cancelled = true }
-  }, [selectedBarcode, catalog])
+    void doLookup()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedBarcode, catalog, catalogSeed, openCatalogEditor])
 
   const openAdd = () => {
-    setAddManufacturer('')
-    setAddItemName('')
-    setAddImageUrl('')
-    setAddProductUrl('')
-    setAddNotes('')
+    const existing = catalog.find((c) => barcodesMatch(c.barcode_value, selectedBarcode))
+
+    if (existing) {
+      applyCatalogRowToForm(existing, {
+        setManufacturer: setAddManufacturer,
+        setItemName: setAddItemName,
+        setImageUrl: setAddImageUrl,
+        setProductUrl: setAddProductUrl,
+        setNotes: setAddNotes,
+      })
+    } else if (result) {
+      setAddManufacturer('')
+      setAddItemName(result.name ?? '')
+      setAddImageUrl(result.imageUrl ?? '')
+      setAddProductUrl(result.sourceUrl ?? '')
+      setAddNotes('')
+    } else {
+      setAddManufacturer('')
+      setAddItemName('')
+      setAddImageUrl('')
+      setAddProductUrl('')
+      setAddNotes('')
+    }
     setShowAdd(true)
   }
 
@@ -232,7 +314,7 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
     setAddSaving(true)
     setLookupError(null)
     try {
-      const insert = {
+      const row = {
         barcode_value: barcodeValueToSave,
         manufacturer: addManufacturer.trim() || null,
         item_name: addItemName.trim(),
@@ -240,18 +322,16 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
         product_url: addProductUrl.trim() || null,
         notes: addNotes.trim() || null,
       }
-      const res = await supabase.from('barcode_catalog').insert(insert).select('*').single()
+      const res = await supabase.from('barcode_catalog').upsert(row, { onConflict: 'barcode_value' }).select('*').single()
       if (res.error) throw new Error(res.error.message)
-      const row = res.data as BarcodeCatalogItem
-      setCatalog((prev) => [row, ...prev.filter((c) => c.id !== row.id)])
-      setResult({
-        barcode: row.barcode_value,
-        name: row.item_name,
-        imageUrl: row.image_url,
-        sourceUrl: row.product_url,
-        sourceLabel: row.manufacturer ? `Catalog (${row.manufacturer})` : 'Catalog',
+      const saved = res.data as BarcodeCatalogItem
+      setCatalog((prev) => {
+        const rest = prev.filter((c) => c.barcode_value !== saved.barcode_value)
+        return [saved, ...rest]
       })
+      setResult(catalogToLookupResult(saved))
       setShowAdd(false)
+      onCatalogSaved?.()
     } catch (e: unknown) {
       setLookupError(e instanceof Error ? e.message : 'Failed to save to catalog')
     } finally {
@@ -263,77 +343,104 @@ export default function BarcodeLookupModal({ barcodeValue, onClose }: BarcodeLoo
     <div className="barcode-lookup-overlay" onClick={onClose}>
       <div className="barcode-lookup-modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="barcode-lookup-modal-head">
-          <h2 className="barcode-lookup-modal-title">Look up: <code>{selectedBarcode}</code></h2>
-          <button type="button" className="barcode-lookup-close" onClick={onClose} aria-label="Close">×</button>
+          <h2 className="barcode-lookup-modal-title">
+            Look up: <code>{selectedBarcode}</code>
+          </h2>
+          <button type="button" className="barcode-lookup-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
         </div>
 
-        <div className="barcode-lookup-result barcode-lookup-result-standalone">
-          {lookupLoading ? (
-            <div className="barcode-lookup-loading">Looking up…</div>
-          ) : lookupError ? (
-            <div>
-              {lookupHint && <div className="barcode-lookup-hint">{lookupHint}</div>}
-              <div className="barcode-lookup-error">{lookupError}</div>
-              {selectedBarcode && (
-                <a
-                  className="barcode-lookup-link"
-                  href={googleSearchUrl(selectedBarcode)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Search the web for this barcode
-                </a>
-              )}
-              <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
-                Serper (ADI search) enabled: <strong>{serperEnabled ? 'Yes' : 'No'}</strong>
-              </div>
-              <div style={{ marginTop: '0.75rem' }}>
-                <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
-                  Add to your Catalog
-                </button>
-              </div>
-            </div>
-          ) : result ? (
-            <div className="barcode-lookup-card">
-              <div className="barcode-lookup-card-top">
-                <div>
-                  <div className="barcode-lookup-card-title">{result.name ?? 'Unknown item'}</div>
-                  <div className="barcode-lookup-card-sub">Barcode: <code>{result.barcode}</code></div>
-                  <div className="barcode-lookup-card-sub">Source: {result.sourceLabel}</div>
-                  {result.sourceUrl && (
-                    <a className="barcode-lookup-link" href={result.sourceUrl} target="_blank" rel="noreferrer">
-                      View source
-                    </a>
-                  )}
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
-                      Add / Edit in your Catalog
-                    </button>
-                  </div>
-                </div>
-                {result.imageUrl && (
-                  <img className="barcode-lookup-image" src={result.imageUrl} alt={result.name ?? result.barcode} />
+        <div className="barcode-lookup-modal-body">
+          <div className="barcode-lookup-result barcode-lookup-result-standalone">
+            {lookupLoading ? (
+              <div className="barcode-lookup-loading">Looking up…</div>
+            ) : lookupError ? (
+              <div>
+                {lookupHint && <div className="barcode-lookup-hint">{lookupHint}</div>}
+                <div className="barcode-lookup-error">{lookupError}</div>
+                {selectedBarcode && (
+                  <a
+                    className="barcode-lookup-link"
+                    href={googleSearchUrl(selectedBarcode)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Search the web for this barcode
+                  </a>
                 )}
+                <div className="barcode-lookup-hint" style={{ marginTop: '0.5rem' }}>
+                  Serper (ADI search) enabled: <strong>{serperEnabled ? 'Yes' : 'No'}</strong>
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
+                    Add to your Catalog
+                  </button>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : result ? (
+              <div className="barcode-lookup-card">
+                <div className="barcode-lookup-card-top">
+                  <div>
+                    <div className="barcode-lookup-card-title">{result.name ?? 'Unknown item'}</div>
+                    <div className="barcode-lookup-card-sub">Barcode: <code>{result.barcode}</code></div>
+                    <div className="barcode-lookup-card-sub">Source: {result.sourceLabel}</div>
+                    {result.sourceUrl && (
+                      <a className="barcode-lookup-link" href={result.sourceUrl} target="_blank" rel="noreferrer">
+                        View source
+                      </a>
+                    )}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <button type="button" className="barcode-lookup-add-btn" onClick={openAdd}>
+                        Add / Edit in your Catalog
+                      </button>
+                    </div>
+                  </div>
+                  {result.imageUrl && (
+                    <img className="barcode-lookup-image" src={result.imageUrl} alt={result.name ?? result.barcode} />
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {showAdd && (
-          <div className="barcode-lookup-modal barcode-lookup-inner-modal">
-            <div className="barcode-lookup-modal-card">
+          <div className="barcode-lookup-inner-modal">
+            <div className="barcode-lookup-modal-card barcode-lookup-editor-card">
               <div className="barcode-lookup-modal-title">Save to Catalog</div>
-              <div className="barcode-lookup-modal-sub">Barcode: <code>{selectedBarcode}</code></div>
+              <div className="barcode-lookup-modal-sub">
+                Barcode: <code>{selectedBarcode}</code>
+              </div>
               <div className="barcode-lookup-form">
-                <label>Manufacturer (optional)<input value={addManufacturer} onChange={(e) => setAddManufacturer(e.target.value)} /></label>
-                <label>Item name *<input value={addItemName} onChange={(e) => setAddItemName(e.target.value)} /></label>
-                <label>Image URL (optional)<input value={addImageUrl} onChange={(e) => setAddImageUrl(e.target.value)} /></label>
-                <label>Product URL (optional)<input value={addProductUrl} onChange={(e) => setAddProductUrl(e.target.value)} /></label>
-                <label>Notes (optional)<input value={addNotes} onChange={(e) => setAddNotes(e.target.value)} /></label>
+                <label>
+                  Manufacturer (optional)
+                  <input value={addManufacturer} onChange={(e) => setAddManufacturer(e.target.value)} />
+                </label>
+                <label>
+                  Item name *
+                  <input value={addItemName} onChange={(e) => setAddItemName(e.target.value)} />
+                </label>
+                <label>
+                  Image URL (optional)
+                  <input value={addImageUrl} onChange={(e) => setAddImageUrl(e.target.value)} />
+                </label>
+                <label>
+                  Product URL (optional)
+                  <input value={addProductUrl} onChange={(e) => setAddProductUrl(e.target.value)} />
+                </label>
+                <label>
+                  Notes (optional)
+                  <input value={addNotes} onChange={(e) => setAddNotes(e.target.value)} />
+                </label>
               </div>
               <div className="barcode-lookup-modal-actions">
-                <button type="button" className="barcode-lookup-secondary-btn" onClick={() => setShowAdd(false)} disabled={addSaving}>Cancel</button>
-                <button type="button" className="barcode-lookup-primary-btn" onClick={() => void saveAdd()} disabled={addSaving}>{addSaving ? 'Saving…' : 'Save'}</button>
+                <button type="button" className="barcode-lookup-secondary-btn" onClick={() => setShowAdd(false)} disabled={addSaving}>
+                  Cancel
+                </button>
+                <button type="button" className="barcode-lookup-primary-btn" onClick={() => void saveAdd()} disabled={addSaving}>
+                  {addSaving ? 'Saving…' : 'Save'}
+                </button>
               </div>
             </div>
           </div>
