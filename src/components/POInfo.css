@@ -433,14 +433,19 @@
   text-align: center;
 }
 
+.po-info-scan-th-checkin-btn {
+  width: 100%;
+  justify-content: center;
+}
+
 .po-info-scan-checkin-cell {
   text-align: center;
   vertical-align: middle;
 }
 
 .po-info-scan-checkin-input {
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 0.88rem;
+  height: 0.88rem;
   cursor: pointer;
   accent-color: #3b82f6;
 }
@@ -450,22 +455,32 @@
   opacity: 0.55;
 }
 
+tr.po-info-scan-row-checked-in {
+  position: relative;
+  background-image: linear-gradient(
+    transparent calc(50% - 4px),
+    rgba(148, 163, 184, 0.95) calc(50% - 4px),
+    rgba(148, 163, 184, 0.95) calc(50% + 4px),
+    transparent calc(50% + 4px)
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+tr.po-info-scan-row-checked-in .po-info-scan-checkin-cell {
+  position: relative;
+  z-index: 1;
+  background: #0f172a;
+}
+
+tr.po-info-scan-row-checked-in td:last-child {
+  position: relative;
+  z-index: 1;
+  background: #0f172a;
+}
+
 tr.po-info-scan-row-checked-in td:not(.po-info-scan-checkin-cell) {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-  text-decoration-color: #94a3b8;
   color: #94a3b8;
-}
-
-tr.po-info-scan-row-checked-in .po-info-scan-code-text {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-}
-
-tr.po-info-scan-row-checked-in .po-info-qty-button,
-tr.po-info-scan-row-checked-in .po-info-qty-input {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
 }
 
 tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {

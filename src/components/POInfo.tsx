@@ -181,6 +181,7 @@ function POInfo() {
   })
   const [checkedInMap, setCheckedInMap] = useState<Record<string, boolean>>({})
   const [checkinSavingKey, setCheckinSavingKey] = useState<string | null>(null)
+  const [bulkCheckinPoKey, setBulkCheckinPoKey] = useState<string | null>(null)
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
 
@@ -367,6 +368,49 @@ function POInfo() {
     }
   }
 
+  const handleToggleAllCheckIn = useCallback(
+    async (poNumber: string, rows: AggregatedPOBarcodeRow[]) => {
+      const poKey = poNumber.trim().toLowerCase()
+      if (rows.length === 0) return
+      const allOn = rows.every((r) => Boolean(checkedInMap[makeCheckinMapKey(poNumber, r.barcode_value)]))
+      const next = !allOn
+      const po = poNumber.trim()
+      setBulkCheckinPoKey(poKey)
+      setError(null)
+      try {
+        const results = await Promise.all(
+          rows.map((r) =>
+            supabase.from('po_barcode_checkin').upsert(
+              {
+                po_number: po,
+                barcode_value: r.barcode_value.trim(),
+                checked_in: next,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'po_number,barcode_value' }
+            )
+          )
+        )
+        const firstErr = results.find((res) => res.error)?.error
+        if (firstErr) throw new Error(firstErr.message)
+        setCheckedInMap((prev) => {
+          const out = { ...prev }
+          for (const r of rows) {
+            const k = makeCheckinMapKey(poNumber, r.barcode_value)
+            if (next) out[k] = true
+            else delete out[k]
+          }
+          return out
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update checked-in state')
+      } finally {
+        setBulkCheckinPoKey(null)
+      }
+    },
+    [checkedInMap]
+  )
+
   const handleDeleteDocument = async (doc: PODocument) => {
     if (deletingId) return
     setDeletingId(doc.id)
@@ -486,6 +530,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const aggSorted = sortAggregatedRows(agg, catalogMap, scanSort.column, scanSort.asc)
             const scanTotal = summary.barcodes.length
             const unique = agg.length
+            const allScanLinesCheckedIn =
+              aggSorted.length > 0 &&
+              aggSorted.every((r) => checkedInMap[makeCheckinMapKey(summary.po_number, r.barcode_value)])
+            const scanTableBusy =
+              bulkCheckinPoKey === key ||
+              aggSorted.some((r) => r.scan_ids.some((id) => id === deletingId))
 
             return (
               <div key={key} className="po-info-card">
@@ -633,7 +683,19 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                   </button>
                                 </th>
                                 <th scope="col" className="po-info-scan-th-checkin">
-                                  Checked in
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn po-info-scan-th-checkin-btn"
+                                    title={
+                                      allScanLinesCheckedIn
+                                        ? 'Uncheck all lines on this PO'
+                                        : 'Check all lines on this PO'
+                                    }
+                                    disabled={scanTableBusy}
+                                    onClick={() => void handleToggleAllCheckIn(summary.po_number, aggSorted)}
+                                  >
+                                    Checked in
+                                  </button>
                                 </th>
                                 <th scope="col" className="po-info-scan-th-actions" />
                               </tr>
@@ -738,7 +800,11 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         type="checkbox"
                                         className="po-info-scan-checkin-input"
                                         checked={isCheckedIn}
-                                        disabled={checkinSavingKey === checkinKey || deletingRow}
+                                        disabled={
+                                          checkinSavingKey === checkinKey ||
+                                          deletingRow ||
+                                          bulkCheckinPoKey === key
+                                        }
                                         aria-label={`Checked in ${row.barcode_value}`}
                                         onChange={(e) =>
                                           void handleToggleCheckIn(
