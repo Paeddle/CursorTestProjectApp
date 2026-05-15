@@ -343,7 +343,7 @@ function POInfo() {
         supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
         fetchPoJobRefs().catch(() => [] as PoJobRef[]),
         fetchPoLineItems().catch(() => [] as PoLineItem[]),
-        fetchPoItemLocations().catch(() => [] as PoItemLocation[]),
+        fetchPoItemLocations(),
       ])
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)

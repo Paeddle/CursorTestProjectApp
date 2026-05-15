@@ -2,27 +2,46 @@ import { supabase } from '../lib/supabase'
 import type { ParsedItemLocationRow } from '../lib/parseItemLocationsXlsx'
 import type { ParsedPoLineItem } from '../lib/parsePoLineReportXlsx'
 import type { ParsedJobRefRow } from '../lib/parseJobRefXlsx'
-import { normalizeRefNumber } from '../lib/poIpointMatch'
+import { findItemLocations, normalizeRefNumber } from '../lib/poIpointMatch'
 import type { LocationFileSummary, PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 const BATCH = 200
 /** Supabase/PostgREST returns at most 1000 rows per request unless paginated. */
 const PAGE = 1000
 
-async function fetchAllRows<T>(table: string, orderColumn: string): Promise<T[]> {
+async function fetchAllRows<T>(
+  table: string,
+  orderColumn: string,
+  columns = '*'
+): Promise<T[]> {
+  const { count, error: countErr } = await supabase
+    .from(table)
+    .select(columns, { count: 'exact', head: true })
+  if (countErr) throw new Error(countErr.message)
+
+  const total = count ?? 0
+  if (total === 0) return []
+
   const out: T[] = []
   let from = 0
-  while (true) {
+  while (from < total) {
+    const to = Math.min(from + PAGE - 1, total - 1)
     const { data, error } = await supabase
       .from(table)
-      .select('*')
+      .select(columns)
       .order(orderColumn, { ascending: true })
-      .range(from, from + PAGE - 1)
+      .range(from, to)
     if (error) throw new Error(error.message)
     const chunk = (data ?? []) as T[]
     out.push(...chunk)
-    if (chunk.length < PAGE) break
+    if (chunk.length === 0) break
     from += PAGE
+  }
+
+  if (out.length !== total) {
+    throw new Error(
+      `Loaded ${out.length} of ${total} rows from ${table}. Refresh the page or try again.`
+    )
   }
   return out
 }
@@ -47,12 +66,11 @@ async function deleteItemLocationsForRef(normRef: string): Promise<void> {
     if (delErr) throw new Error(delErr.message)
   }
 
-  let offset = 0
   while (true) {
     const { data, error } = await supabase
       .from('po_item_locations')
       .select('id, ref_number')
-      .range(offset, offset + PAGE - 1)
+      .limit(PAGE)
     if (error) throw new Error(error.message)
     if (!data?.length) break
 
@@ -71,7 +89,6 @@ async function deleteItemLocationsForRef(normRef: string): Promise<void> {
     }
 
     if (data.length < PAGE) break
-    offset += PAGE
   }
 }
 
@@ -100,7 +117,59 @@ export async function fetchPoLineItems(): Promise<PoLineItem[]> {
 }
 
 export async function fetchPoItemLocations(): Promise<PoItemLocation[]> {
-  return fetchAllRows<PoItemLocation>('po_item_locations', 'ref_number')
+  return fetchAllRows<PoItemLocation>('po_item_locations', 'ref_number', '*')
+}
+
+type LocationMetaRow = Pick<PoItemLocation, 'ref_number' | 'imported_at' | 'source_file'>
+
+/** Accurate per-ref row counts from DB (not limited to first 1000 location rows). */
+export async function fetchLocationUploadSummaries(
+  jobRefs: PoJobRef[]
+): Promise<LocationFileSummary[]> {
+  const rows = await fetchAllRows<LocationMetaRow>(
+    'po_item_locations',
+    'ref_number',
+    'ref_number,imported_at,source_file'
+  )
+  const asLocations = rows.map((r) => ({
+    id: '',
+    ref_number: r.ref_number,
+    imported_at: r.imported_at,
+    source_file: r.source_file,
+    location_name: '',
+    manufacturer: null,
+    product_name: '',
+    quantity: null,
+    created_at: '',
+  })) as PoItemLocation[]
+  return summarizeLocationUploads(asLocations, jobRefs)
+}
+
+/** Search location rows in Supabase (works even when the in-memory list is incomplete). */
+export async function searchPoItemLocations(query: string): Promise<PoItemLocation[]> {
+  const q = query.trim()
+  if (!q) return []
+
+  const escaped = q.replace(/[%_\\]/g, '')
+  const pattern = `%${escaped}%`
+  const out: PoItemLocation[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('po_item_locations')
+      .select('*')
+      .or(`product_name.ilike.${pattern},manufacturer.ilike.${pattern}`)
+      .order('ref_number', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    const chunk = (data ?? []) as PoItemLocation[]
+    out.push(...chunk)
+    if (chunk.length < PAGE) break
+    from += PAGE
+  }
+
+  return findItemLocations(q, null, out)
 }
 
 /** Group location rows by ref → latest upload batch (file name, row count, job link status). */

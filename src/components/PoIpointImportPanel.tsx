@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { extractPdfPlainTextForPoLineReport } from '../lib/extractPdfLines'
 import { parsePoLineReportText } from '../lib/parsePoLineReport'
 import { parsePoLineReportXlsx, summarizePoLineReportRows } from '../lib/parsePoLineReportXlsx'
@@ -9,12 +9,12 @@ import {
 import {
   addJobRef,
   deleteJobRef,
+  fetchLocationUploadSummaries,
   importItemLocations,
   importPoLineReport,
-  summarizeLocationUploads,
+  searchPoItemLocations,
 } from '../services/poIpointService'
-import { findItemLocations } from '../lib/poIpointMatch'
-import type { PoItemLocation, PoJobRef } from '../types/poIpoint'
+import type { LocationFileSummary, PoItemLocation, PoJobRef } from '../types/poIpoint'
 
 type Props = {
   jobRefs: PoJobRef[]
@@ -38,7 +38,6 @@ function formatImportedAt(iso: string): string {
 
 function PoIpointImportPanel({
   jobRefs,
-  itemLocations,
   lineItemCount,
   locationCount,
   onDataChanged,
@@ -49,27 +48,65 @@ function PoIpointImportPanel({
   const [newJobName, setNewJobName] = useState('')
   const [newRef, setNewRef] = useState('')
   const [productLookup, setProductLookup] = useState('')
+  const [locationFiles, setLocationFiles] = useState<LocationFileSummary[]>([])
+  const [productLookupHits, setProductLookupHits] = useState<PoItemLocation[]>([])
+  const [productLookupBusy, setProductLookupBusy] = useState(false)
 
-  const locationFiles = useMemo(
-    () => summarizeLocationUploads(itemLocations, jobRefs),
-    [itemLocations, jobRefs]
-  )
+  const refreshLocationFiles = useCallback(async () => {
+    try {
+      const summaries = await fetchLocationUploadSummaries(jobRefs)
+      setLocationFiles(summaries)
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to load location file summary')
+    }
+  }, [jobRefs, onError])
+
+  useEffect(() => {
+    void refreshLocationFiles()
+  }, [refreshLocationFiles, locationCount])
+
+  useEffect(() => {
+    const q = productLookup.trim()
+    if (!q) {
+      setProductLookupHits([])
+      setProductLookupBusy(false)
+      return
+    }
+
+    let cancelled = false
+    setProductLookupBusy(true)
+    void searchPoItemLocations(q)
+      .then((hits) => {
+        if (!cancelled) {
+          setProductLookupHits(
+            hits.sort(
+              (a, b) =>
+                String(a.ref_number).localeCompare(String(b.ref_number), undefined, {
+                  numeric: true,
+                }) || a.location_name.localeCompare(b.location_name)
+            )
+          )
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          onError(e instanceof Error ? e.message : 'Product search failed')
+          setProductLookupHits([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProductLookupBusy(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [productLookup, onError])
 
   const refsNeedingJob = useMemo(
     () => locationFiles.filter((f) => !f.has_job_ref),
     [locationFiles]
   )
-
-  const productLookupHits = useMemo(() => {
-    const q = productLookup.trim()
-    if (!q || itemLocations.length === 0) return []
-    return findItemLocations(q, null, itemLocations).sort(
-      (a, b) =>
-        String(a.ref_number).localeCompare(String(b.ref_number), undefined, {
-          numeric: true,
-        }) || a.location_name.localeCompare(b.location_name)
-    )
-  }, [itemLocations, productLookup])
 
   const runImport = useCallback(
     async (label: string, fn: () => Promise<{ count: number; detail?: string }>) => {
@@ -236,8 +273,8 @@ function PoIpointImportPanel({
       <div className="po-info-location-files-block">
         <h3 className="po-info-ipoint-subtitle">Uploaded location files</h3>
         <p className="po-info-section-desc po-info-jobref-hint">
-          Each ref number you have uploaded appears here (row count is from the latest upload for
-          that ref). Refs marked{' '}
+          Each ref number you have uploaded appears here (row counts loaded from Supabase, not
+          limited to the first 1,000 rows). Refs marked{' '}
           <strong className="po-info-needs-ref-label">Needs job ref</strong> are not in the job
           reference list yet — add a row below with the job name from the PO Line Report and this
           ref number.
@@ -248,6 +285,11 @@ function PoIpointImportPanel({
             name: {refsNeedingJob.map((f) => f.ref_number).join(', ')}
           </p>
         )}
+        <p className="po-info-section-desc">
+          {locationCount > 0
+            ? `${locationCount.toLocaleString()} location row${locationCount !== 1 ? 's' : ''} loaded for PO matching.`
+            : 'No location rows loaded yet.'}
+        </p>
         {locationFiles.length === 0 ? (
           <p className="po-info-ipoint-empty">No location files uploaded yet.</p>
         ) : (
@@ -306,7 +348,9 @@ function PoIpointImportPanel({
         />
         {productLookup.trim() && (
           <div className="po-info-product-lookup-results">
-            {productLookupHits.length === 0 ? (
+            {productLookupBusy ? (
+              <p className="po-info-ipoint-empty">Searching Supabase…</p>
+            ) : productLookupHits.length === 0 ? (
               <p className="po-info-ipoint-empty">
                 No rows match &quot;{productLookup.trim()}&quot; in imported location data. Try
                 re-uploading the ref file (e.g. 4846.xlsx).
