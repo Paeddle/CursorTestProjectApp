@@ -1,13 +1,17 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
-/** 30334 label (2-1/4" x 1-1/4") — single centered text block (job + location). */
+/**
+ * DYMO 30323 Shipping (54mm × 101mm / 2-1/8" × 4").
+ * Printable area per DYMO spec: origin (18,128), size 608×2218 twips; page 638×2382.
+ * Landscape feed on LabelWriter — page dimensions are swapped for print orientation.
+ */
 const LABEL_XML = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
   <PaperOrientation>Landscape</PaperOrientation>
-  <Id>Address</Id>
-  <PaperName>30334 2-1/4 in x 1-1/4 in</PaperName>
+  <Id>Shipping</Id>
+  <PaperName>30323 Shipping</PaperName>
   <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="3240" Height="1440" Rx="180" Ry="180"/>
+    <RoundRectangle X="0" Y="0" Width="2382" Height="638" Rx="180" Ry="180"/>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
@@ -24,10 +28,10 @@ const LABEL_XML = `<?xml version="1.0" encoding="utf-8"?>
       <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
-        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="10" Bold="True"/></Attributes></Element>
+        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="12" Bold="True"/></Attributes></Element>
       </StyledText>
     </TextObject>
-    <Bounds X="60" Y="40" Width="3120" Height="1360"/>
+    <Bounds X="128" Y="18" Width="2218" Height="608"/>
   </ObjectInfo>
 </DieCutLabel>`
 
@@ -151,11 +155,11 @@ export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
 
   const doc = `<!DOCTYPE html><html><head><title>Labels</title>
 <style>
-@page { size: 2.25in 1.25in; margin: 0; }
+@page { size: 4in 2.125in; margin: 0; }
 body { margin: 0; }
 .label {
-  width: 2.25in;
-  height: 1.25in;
+  width: 4in;
+  height: 2.125in;
   box-sizing: border-box;
   display: flex;
   align-items: center;
