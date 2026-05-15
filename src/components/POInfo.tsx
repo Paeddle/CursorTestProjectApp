@@ -16,12 +16,11 @@ import {
   fetchPoLineItems,
 } from '../services/poIpointService'
 import {
-  ipointLineIsScanned,
+  ipointScannedLineIds,
   jobNameForLine,
   lineItemsForPo,
   locationForLine,
   normalizePoKey,
-  poScanMatchLabels,
 } from '../lib/poIpointMatch'
 import { printLabelsWithDymo } from '../lib/dymoLabelPrint'
 import BarcodeLookupModal from './BarcodeLookupModal'
@@ -68,14 +67,14 @@ async function loadSummaries(): Promise<POCheckinSummary[]> {
   for (const b of barcodes) {
     const po = (b.po_number || '').trim()
     if (!po) continue
-    const key = po.toLowerCase()
+    const key = normalizePoKey(po)
     if (!byPo.has(key)) byPo.set(key, { po_number: po, barcodes: [], documents: [] })
     byPo.get(key)!.barcodes.push(b)
   }
   for (const d of documents) {
     const po = (d.po_number || '').trim()
     if (!po) continue
-    const key = po.toLowerCase()
+    const key = normalizePoKey(po)
     if (!byPo.has(key)) byPo.set(key, { po_number: po, barcodes: [], documents: [] })
     byPo.get(key)!.documents.push(d)
   }
@@ -645,7 +644,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
             const poIpointLines = lineItemsForPo(summary.po_number, lineItems)
-            const poScanLabels = poScanMatchLabels(summary.barcodes, catalogMap)
+            const ipointScanned = ipointScannedLineIds(
+              poIpointLines,
+              summary.barcodes,
+              catalogMap,
+              itemLocations,
+              jobRefs
+            )
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
             const allIpointLabelsSelected =
@@ -744,10 +749,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     Print
                                   </button>
                                 </th>
-                                <th scope="col" className="po-info-ipoint-th-scanned">
-                                  Scanned
-                                </th>
                                 <th scope="col">Item</th>
+                                <th scope="col" className="po-info-ipoint-th-scanned">
+                                  Scan status
+                                </th>
                                 <th scope="col">Job / customer</th>
                                 <th scope="col">Location</th>
                                 <th scope="col">PO date</th>
@@ -758,7 +763,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const labelKey = makeLabelKey(summary.po_number, line.id)
                                 const job = jobNameForLine(line, jobRefs)
                                 const loc = locationForLine(line, jobRefs, itemLocations)
-                                const isScanned = ipointLineIsScanned(line, poScanLabels)
+                                const isScanned = ipointScanned.has(line.id)
                                 return (
                                   <tr
                                     key={line.id}
@@ -777,14 +782,15 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         }
                                       />
                                     </td>
+                                    <td className="po-info-scan-item-name">{line.item_name}</td>
                                     <td className="po-info-ipoint-scanned-cell">
                                       {isScanned ? (
                                         <span
                                           className="po-info-ipoint-scanned-yes"
-                                          title="Matched to a barcode scan on this PO"
-                                          aria-label="Scanned in"
+                                          title="A barcode for this item was scanned on this PO"
+                                          aria-label="Scanned"
                                         >
-                                          ✓
+                                          ✓ Scanned
                                         </span>
                                       ) : (
                                         <span className="po-info-ipoint-scanned-no">
@@ -792,7 +798,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         </span>
                                       )}
                                     </td>
-                                    <td className="po-info-scan-item-name">{line.item_name}</td>
                                     <td className="po-info-meta">{job || line.job_or_customer || '—'}</td>
                                     <td className="po-info-meta">{loc || '—'}</td>
                                     <td className="po-info-meta">{line.po_date || '—'}</td>

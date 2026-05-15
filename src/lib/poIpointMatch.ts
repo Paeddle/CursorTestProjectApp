@@ -181,29 +181,79 @@ export function lineItemsForPo(poNumber: string, items: PoLineItem[]): PoLineIte
   return items.filter((i) => normalizePoKey(i.po_number) === key)
 }
 
-/** Labels from scanner check-ins on a PO (catalog name, part #, raw barcode). */
-export function poScanMatchLabels(
-  barcodes: POBarcode[],
-  catalogMap: Map<string, BarcodeCatalogItem>
+/** Names that identify an iPoint line (report item name + matched location products). */
+export function ipointLineMatchNames(
+  line: PoLineItem,
+  locations: PoItemLocation[],
+  jobRefs: PoJobRef[]
 ): string[] {
-  const labels: string[] = []
-  for (const b of barcodes) {
-    const v = (b.barcode_value || '').trim()
-    if (!v) continue
-    const cat = lookupCatalogItem(catalogMap, v)
-    if (cat?.item_name?.trim()) labels.push(cat.item_name.trim())
-    if (cat?.part_number?.trim()) labels.push(cat.part_number.trim())
-    labels.push(v)
+  const item = (line.item_name || '').trim()
+  if (!item) return []
+
+  const names = new Set<string>([item])
+  const ref = resolveJobRef(line.job_or_customer, jobRefs)
+  for (const loc of findItemLocations(item, ref?.ref_number ?? null, locations)) {
+    const product = (loc.product_name || '').trim()
+    if (product) names.add(product)
   }
-  return labels
+  return [...names]
 }
 
-/** True if any barcode scan on this PO matches the iPoint line item name. */
+/** Catalog + raw barcode strings associated with a scanned barcode value. */
+function scannedBarcodeMatchFields(
+  barcodeValue: string,
+  catalogMap: Map<string, BarcodeCatalogItem>
+): string[] {
+  const v = (barcodeValue || '').trim()
+  if (!v) return []
+
+  const fields = new Set<string>([v])
+  const cat = lookupCatalogItem(catalogMap, v)
+  if (cat?.item_name?.trim()) fields.add(cat.item_name.trim())
+  if (cat?.part_number?.trim()) fields.add(cat.part_number.trim())
+  return [...fields]
+}
+
+/**
+ * True when a barcode for this item was scanned on the PO (scanner app → po_barcodes).
+ * Matches via barcode catalog item/part number and location spreadsheet product names.
+ */
 export function ipointLineIsScanned(
   line: PoLineItem,
-  scanLabels: string[]
+  barcodes: POBarcode[],
+  catalogMap: Map<string, BarcodeCatalogItem>,
+  locations: PoItemLocation[],
+  jobRefs: PoJobRef[]
 ): boolean {
-  const item = (line.item_name || '').trim()
-  if (!item || scanLabels.length === 0) return false
-  return scanLabels.some((label) => label && productNamesMatch(item, label))
+  if (!barcodes.length) return false
+
+  const lineNames = ipointLineMatchNames(line, locations, jobRefs)
+  if (lineNames.length === 0) return false
+
+  for (const scan of barcodes) {
+    const scanFields = scannedBarcodeMatchFields(scan.barcode_value, catalogMap)
+    for (const scanField of scanFields) {
+      for (const lineName of lineNames) {
+        if (productNamesMatch(lineName, scanField)) return true
+      }
+    }
+  }
+  return false
+}
+
+/** Set of iPoint line ids that have at least one matching barcode scan on the PO. */
+export function ipointScannedLineIds(
+  lines: PoLineItem[],
+  barcodes: POBarcode[],
+  catalogMap: Map<string, BarcodeCatalogItem>,
+  locations: PoItemLocation[],
+  jobRefs: PoJobRef[]
+): Set<string> {
+  const ids = new Set<string>()
+  for (const line of lines) {
+    if (ipointLineIsScanned(line, barcodes, catalogMap, locations, jobRefs)) {
+      ids.add(line.id)
+    }
+  }
+  return ids
 }
