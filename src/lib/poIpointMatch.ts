@@ -3,7 +3,11 @@ import type { BarcodeCatalogItem, POBarcode } from '../types/poCheckin'
 import type { PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 function norm(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ')
+  return s
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
 }
 
 /** Letters/numbers only — helps match part numbers vs catalog names. */

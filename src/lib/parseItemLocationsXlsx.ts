@@ -23,6 +23,11 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, '_')
 }
 
+/** Strip zero-width / BOM characters that break exact matches (e.g. VX80R). */
+function cleanCellText(v: unknown): string {
+  return cellStr(v).replace(/[\u200B-\u200D\uFEFF]/g, '')
+}
+
 /** Extract job ref number from filename (4152.xlsx, SalesOrder_4152.xlsx, etc.). */
 export function refNumberFromFilename(name: string): string | null {
   const base = name.replace(/\.[^.]+$/, '').trim()
@@ -32,14 +37,29 @@ export function refNumberFromFilename(name: string): string | null {
   return embedded ? embedded[1]! : null
 }
 
-/** Parse job location spreadsheet (4152.xlsx / 4973.xlsx). */
-export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[] {
-  const wb = XLSX.read(buf, { type: 'array' })
-  const sheet = wb.Sheets[wb.SheetNames[0] ?? '']
-  if (!sheet) return []
+function sheetHasLocationColumns(sheet: XLSX.WorkSheet): boolean {
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+  if (raw.length === 0) return false
+  const headers = Object.keys(raw[0] ?? {}).map(normalizeHeader)
+  return headers.some(
+    (h) =>
+      h === 'locationname' ||
+      h === 'location_name' ||
+      h === 'location' ||
+      h === 'c_product_name' ||
+      h === 'product_name'
+  )
+}
 
+/**
+ * Parse one worksheet. Forward-fills location/manufacturer for merged Excel cells
+ * (common in iPoint exports — product rows under a room often have blank location cells).
+ */
+function parseLocationSheet(sheet: XLSX.WorkSheet): ParsedItemLocationRow[] {
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
   const out: ParsedItemLocationRow[] = []
+  let lastLocation = ''
+  let lastManufacturer = ''
 
   for (const row of raw) {
     const map = new Map<string, unknown>()
@@ -47,31 +67,36 @@ export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[
       map.set(normalizeHeader(k), row[k])
     }
 
-    const location =
-      cellStr(map.get('locationname')) ||
-      cellStr(map.get('location_name')) ||
-      cellStr(map.get('location')) ||
-      cellStr(map.get('room')) ||
-      cellStr(map.get('room_name'))
-    const partOrModel =
-      cellStr(map.get('part_number')) ||
-      cellStr(map.get('partnumber')) ||
-      cellStr(map.get('part')) ||
-      cellStr(map.get('model')) ||
-      cellStr(map.get('model_number')) ||
-      cellStr(map.get('sku')) ||
-      cellStr(map.get('item_number'))
-    let product =
-      cellStr(map.get('c_product_name')) ||
-      cellStr(map.get('c_productname')) ||
-      cellStr(map.get('product_name')) ||
-      cellStr(map.get('productname')) ||
-      cellStr(map.get('item')) ||
-      cellStr(map.get('product')) ||
-      cellStr(map.get('description'))
-    const manufacturer = cellStr(map.get('manufacturer')) || null
+    let location =
+      cleanCellText(map.get('locationname')) ||
+      cleanCellText(map.get('location_name')) ||
+      cleanCellText(map.get('location')) ||
+      cleanCellText(map.get('room')) ||
+      cleanCellText(map.get('room_name'))
+    if (location) lastLocation = location
+    else if (lastLocation) location = lastLocation
 
-    // Some exports put the model (e.g. VX80R) only in part/model, or only in manufacturer.
+    let manufacturer = cleanCellText(map.get('manufacturer')) || null
+    if (manufacturer) lastManufacturer = manufacturer
+    else if (lastManufacturer) manufacturer = lastManufacturer
+
+    const partOrModel =
+      cleanCellText(map.get('part_number')) ||
+      cleanCellText(map.get('partnumber')) ||
+      cleanCellText(map.get('part')) ||
+      cleanCellText(map.get('model')) ||
+      cleanCellText(map.get('model_number')) ||
+      cleanCellText(map.get('sku')) ||
+      cleanCellText(map.get('item_number'))
+    let product =
+      cleanCellText(map.get('c_product_name')) ||
+      cleanCellText(map.get('c_productname')) ||
+      cleanCellText(map.get('product_name')) ||
+      cleanCellText(map.get('productname')) ||
+      cleanCellText(map.get('item')) ||
+      cleanCellText(map.get('product')) ||
+      cleanCellText(map.get('description'))
+
     if (partOrModel) {
       if (!product) product = partOrModel
       else if (!product.toLowerCase().includes(partOrModel.toLowerCase())) {
@@ -95,4 +120,19 @@ export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[
     })
   }
   return out
+}
+
+/** Parse job location spreadsheet (4152.xlsx / 4846.xlsx). Uses the sheet with the most location rows. */
+export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[] {
+  const wb = XLSX.read(buf, { type: 'array' })
+  let best: ParsedItemLocationRow[] = []
+
+  for (const name of wb.SheetNames) {
+    const sheet = wb.Sheets[name]
+    if (!sheet || !sheetHasLocationColumns(sheet)) continue
+    const rows = parseLocationSheet(sheet)
+    if (rows.length > best.length) best = rows
+  }
+
+  return best
 }
