@@ -13,6 +13,7 @@ import {
   importPoLineReport,
   summarizeLocationUploads,
 } from '../services/poIpointService'
+import { productNamesMatch } from '../lib/poIpointMatch'
 import type { PoItemLocation, PoJobRef } from '../types/poIpoint'
 
 type Props = {
@@ -47,6 +48,7 @@ function PoIpointImportPanel({
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [newJobName, setNewJobName] = useState('')
   const [newRef, setNewRef] = useState('')
+  const [productLookup, setProductLookup] = useState('')
 
   const locationFiles = useMemo(
     () => summarizeLocationUploads(itemLocations, jobRefs),
@@ -57,6 +59,38 @@ function PoIpointImportPanel({
     () => locationFiles.filter((f) => !f.has_job_ref),
     [locationFiles]
   )
+
+  const productLookupHits = useMemo(() => {
+    const q = productLookup.trim()
+    if (!q || itemLocations.length === 0) return []
+
+    const hits: {
+      id: string
+      ref_number: string
+      product_name: string
+      location_name: string
+    }[] = []
+    for (const loc of itemLocations) {
+      const product = (loc.product_name || '').trim()
+      const location = (loc.location_name || '').trim()
+      if (!product || !location) continue
+      if (!productNamesMatch(q, product) && !productNamesMatch(q, loc.manufacturer || '')) {
+        continue
+      }
+      hits.push({
+        id: loc.id,
+        ref_number: String(loc.ref_number).trim(),
+        product_name: product,
+        location_name: location,
+      })
+    }
+    hits.sort(
+      (a, b) =>
+        a.ref_number.localeCompare(b.ref_number, undefined, { numeric: true }) ||
+        a.location_name.localeCompare(b.location_name)
+    )
+    return hits
+  }, [itemLocations, productLookup])
 
   const runImport = useCallback(
     async (label: string, fn: () => Promise<{ count: number; detail?: string }>) => {
@@ -264,6 +298,69 @@ function PoIpointImportPanel({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      <div className="po-info-product-lookup-block">
+        <h3 className="po-info-ipoint-subtitle">Check product in imported locations</h3>
+        <p className="po-info-section-desc">
+          After uploading location files, search here to confirm a part (e.g. VX80R) is in Supabase
+          with the expected room. This uses the same matching rules as PO Info line items.
+        </p>
+        <input
+          type="text"
+          className="po-info-product-lookup-input"
+          placeholder="Product name, e.g. VX80R"
+          value={productLookup}
+          onChange={(e) => setProductLookup(e.target.value)}
+        />
+        {productLookup.trim() && (
+          <div className="po-info-product-lookup-results">
+            {productLookupHits.length === 0 ? (
+              <p className="po-info-ipoint-empty">
+                No rows match &quot;{productLookup.trim()}&quot; in imported location data. Try
+                re-uploading the ref file (e.g. 4846.xlsx).
+              </p>
+            ) : (
+              <>
+                <p className="po-info-product-lookup-count">
+                  {productLookupHits.length} row
+                  {productLookupHits.length !== 1 ? 's' : ''} —{' '}
+                  {[...new Set(productLookupHits.map((h) => h.location_name))].length} unique room
+                  {[...new Set(productLookupHits.map((h) => h.location_name))].length !== 1
+                    ? 's'
+                    : ''}
+                </p>
+                <div className="po-info-jobref-table-wrap">
+                  <table className="po-info-jobref-table">
+                    <thead>
+                      <tr>
+                        <th>Ref</th>
+                        <th>Product</th>
+                        <th>Room</th>
+                        <th>Job ref</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productLookupHits.slice(0, 40).map((h) => (
+                        <tr key={h.id}>
+                          <td>{h.ref_number}</td>
+                          <td>{h.product_name}</td>
+                          <td>{h.location_name}</td>
+                          <td>
+                            {jobRefs.find((r) => r.ref_number === h.ref_number)?.job_name ?? '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {productLookupHits.length > 40 && (
+                  <p className="po-info-section-desc">Showing first 40 of {productLookupHits.length}.</p>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

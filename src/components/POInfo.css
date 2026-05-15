@@ -871,6 +871,33 @@ tr.po-info-location-file-needs-ref td {
   background: rgba(251, 191, 36, 0.06);
 }
 
+.po-info-product-lookup-block {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #334155;
+}
+
+.po-info-product-lookup-input {
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.po-info-product-lookup-count {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.po-info-product-lookup-results {
+  margin-top: 0.25rem;
+}
+
 .po-info-jobref-block {
   margin-top: 1rem;
   padding-top: 1rem;
