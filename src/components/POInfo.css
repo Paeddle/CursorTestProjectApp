@@ -699,6 +699,16 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
 }
 
 /* iPoint import */
+.po-info-ipoint-loading-banner {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: #1e3a5f;
+  border: 1px solid #334155;
+  color: #93c5fd;
+  font-size: 0.9rem;
+}
+
 .po-info-ipoint-section {
   margin-bottom: 1.5rem;
   padding: 1.25rem;

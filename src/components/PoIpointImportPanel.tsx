@@ -9,18 +9,19 @@ import {
 import {
   addJobRef,
   deleteJobRef,
-  fetchLocationUploadSummaries,
   importItemLocations,
   importPoLineReport,
   searchPoItemLocations,
+  summarizeLocationUploads,
 } from '../services/poIpointService'
-import type { LocationFileSummary, PoItemLocation, PoJobRef } from '../types/poIpoint'
+import type { PoItemLocation, PoJobRef } from '../types/poIpoint'
 
 type Props = {
   jobRefs: PoJobRef[]
   itemLocations: PoItemLocation[]
   lineItemCount: number
   locationCount: number
+  ipointLoading?: boolean
   onDataChanged: () => void
   onError: (msg: string) => void
 }
@@ -38,8 +39,10 @@ function formatImportedAt(iso: string): string {
 
 function PoIpointImportPanel({
   jobRefs,
+  itemLocations,
   lineItemCount,
   locationCount,
+  ipointLoading,
   onDataChanged,
   onError,
 }: Props) {
@@ -48,22 +51,13 @@ function PoIpointImportPanel({
   const [newJobName, setNewJobName] = useState('')
   const [newRef, setNewRef] = useState('')
   const [productLookup, setProductLookup] = useState('')
-  const [locationFiles, setLocationFiles] = useState<LocationFileSummary[]>([])
   const [productLookupHits, setProductLookupHits] = useState<PoItemLocation[]>([])
   const [productLookupBusy, setProductLookupBusy] = useState(false)
 
-  const refreshLocationFiles = useCallback(async () => {
-    try {
-      const summaries = await fetchLocationUploadSummaries(jobRefs)
-      setLocationFiles(summaries)
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Failed to load location file summary')
-    }
-  }, [jobRefs, onError])
-
-  useEffect(() => {
-    void refreshLocationFiles()
-  }, [refreshLocationFiles, locationCount])
+  const locationFiles = useMemo(
+    () => summarizeLocationUploads(itemLocations, jobRefs),
+    [itemLocations, jobRefs]
+  )
 
   useEffect(() => {
     const q = productLookup.trim()
@@ -286,9 +280,11 @@ function PoIpointImportPanel({
           </p>
         )}
         <p className="po-info-section-desc">
-          {locationCount > 0
-            ? `${locationCount.toLocaleString()} location row${locationCount !== 1 ? 's' : ''} loaded for PO matching.`
-            : 'No location rows loaded yet.'}
+          {ipointLoading
+            ? 'Loading room locations from Supabase…'
+            : locationCount > 0
+              ? `${locationCount.toLocaleString()} location row${locationCount !== 1 ? 's' : ''} loaded for PO matching.`
+              : 'No location rows loaded yet.'}
         </p>
         {locationFiles.length === 0 ? (
           <p className="po-info-ipoint-empty">No location files uploaded yet.</p>

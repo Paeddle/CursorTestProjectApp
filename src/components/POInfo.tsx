@@ -11,12 +11,16 @@ import {
 import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
 import type { PoItemLocation, PoJobRef, PoLineItem, PoLabelPrintRow } from '../types/poIpoint'
 import {
-  fetchPoItemLocations,
+  buildIpointLineDisplayCache,
+  buildIpointLocationIndex,
+  ipointScannedLineIdsForPo,
+} from '../lib/poIpointIndex'
+import {
+  fetchPoIpointData,
   fetchPoJobRefs,
-  fetchPoLineItems,
+  invalidatePoIpointCache,
 } from '../services/poIpointService'
 import {
-  ipointScannedLineIds,
   jobNameForLine,
   lineItemsForPo,
   locationNamesForLine,
@@ -149,10 +153,21 @@ function documentTypeLabel(type: string) {
   return type || 'Document'
 }
 
+const BARCODE_SUMMARY_COLUMNS = 'id,po_number,barcode_value,scanned_at,created_at'
+const DOCUMENT_SUMMARY_COLUMNS =
+  'id,po_number,file_url,document_type,name,scanned_at,created_at'
+const CATALOG_COLUMNS = 'id,barcode_value,manufacturer,part_number,item_name,created_at,updated_at'
+
 async function loadSummaries(): Promise<POCheckinSummary[]> {
   const [barcodesRes, docsRes] = await Promise.all([
-    supabase.from('po_barcodes').select('*').order('scanned_at', { ascending: false }),
-    supabase.from('po_documents').select('*').order('scanned_at', { ascending: false }),
+    supabase
+      .from('po_barcodes')
+      .select(BARCODE_SUMMARY_COLUMNS)
+      .order('scanned_at', { ascending: false }),
+    supabase
+      .from('po_documents')
+      .select(DOCUMENT_SUMMARY_COLUMNS)
+      .order('scanned_at', { ascending: false }),
   ])
   if (barcodesRes.error) throw new Error(barcodesRes.error.message)
   if (docsRes.error) throw new Error(docsRes.error.message)
@@ -295,6 +310,7 @@ function POInfo() {
   const [jobRefs, setJobRefs] = useState<PoJobRef[]>([])
   const [lineItems, setLineItems] = useState<PoLineItem[]>([])
   const [itemLocations, setItemLocations] = useState<PoItemLocation[]>([])
+  const [ipointLoading, setIpointLoading] = useState(true)
   const [labelSelected, setLabelSelected] = useState<Set<string>>(new Set())
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
   const [locationModal, setLocationModal] = useState<{
@@ -305,6 +321,11 @@ function POInfo() {
   } | null>(null)
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
+
+  const ipointLocationIndex = useMemo(
+    () => buildIpointLocationIndex(itemLocations),
+    [itemLocations]
+  )
 
   const sortedCatalog = useMemo(
     () => sortCatalogRows(catalog, catalogSort.column, catalogSort.asc),
@@ -333,25 +354,25 @@ function POInfo() {
     qtyInputRef.current?.select()
   }, [qtyEditKey])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { force?: boolean }) => {
     setLoading(true)
+    setIpointLoading(true)
     setError(null)
     try {
-      const [list, catRes, chkRes, refs, lines, locs] = await Promise.all([
+      const [list, catRes, chkRes, refs] = await Promise.all([
         loadSummaries(),
-        supabase.from('barcode_catalog').select('*').order('item_name', { ascending: true }),
+        supabase
+          .from('barcode_catalog')
+          .select(CATALOG_COLUMNS)
+          .order('item_name', { ascending: true }),
         supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
         fetchPoJobRefs().catch(() => [] as PoJobRef[]),
-        fetchPoLineItems().catch(() => [] as PoLineItem[]),
-        fetchPoItemLocations(),
       ])
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
       setCatalog((catRes.data ?? []) as BarcodeCatalogItem[])
       setJobRefs(refs)
-      setLineItems(lines)
-      setItemLocations(locs)
       const nextChecked: Record<string, boolean> = {}
       for (const r of chkRes.data ?? []) {
         const row = r as { po_number: string; barcode_value: string; checked_in: boolean }
@@ -360,10 +381,17 @@ function POInfo() {
         }
       }
       setCheckedInMap(nextChecked)
+      setLoading(false)
+
+      if (options?.force) invalidatePoIpointCache()
+      const bundle = await fetchPoIpointData({ useCache: !options?.force })
+      setLineItems(bundle.lineItems)
+      setItemLocations(bundle.itemLocations)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
     } finally {
       setLoading(false)
+      setIpointLoading(false)
     }
   }, [])
 
@@ -397,6 +425,46 @@ function POInfo() {
         s.po_number.toLowerCase().includes(searchPo.trim().toLowerCase())
       )
     : displaySummaries
+
+  const expandedIpointByPoKey = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        lines: PoLineItem[]
+        scanned: Set<string>
+        labelKeys: string[]
+        lineDisplay: ReturnType<typeof buildIpointLineDisplayCache>
+      }
+    >()
+    if (ipointLocationIndex.all.length === 0) return map
+
+    for (const summary of filtered) {
+      const poKey = summary.po_number.toLowerCase()
+      if (!expandedPo.has(poKey)) continue
+
+      const lines = lineItemsForPo(summary.po_number, lineItems)
+      if (lines.length === 0) continue
+
+      const lineDisplay = buildIpointLineDisplayCache(
+        summary.po_number,
+        lines,
+        jobRefs,
+        ipointLocationIndex,
+        makeLabelKey
+      )
+      const labelKeys = lines.flatMap((line) => lineDisplay.get(line.id)?.labelKeys ?? [])
+      const scanned = ipointScannedLineIdsForPo(
+        lines,
+        summary.barcodes,
+        catalogMap,
+        ipointLocationIndex,
+        jobRefs
+      )
+
+      map.set(poKey, { lines, scanned, labelKeys, lineDisplay })
+    }
+    return map
+  }, [filtered, expandedPo, lineItems, jobRefs, ipointLocationIndex, catalogMap])
 
   const buildLabelRowsForPo = useCallback(
     (poNumber: string): PoLabelPrintRow[] => {
@@ -776,7 +844,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
         itemLocations={itemLocations}
         lineItemCount={lineItems.length}
         locationCount={itemLocations.length}
-        onDataChanged={() => void load()}
+        ipointLoading={ipointLoading}
+        onDataChanged={() => void load({ force: true })}
         onError={(msg) => setError(msg || null)}
       />
 
@@ -788,12 +857,23 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           value={searchPo}
           onChange={(e) => setSearchPo(e.target.value)}
         />
-        <button type="button" className="po-info-refresh" onClick={() => load()} disabled={loading}>
+        <button
+          type="button"
+          className="po-info-refresh"
+          onClick={() => void load({ force: true })}
+          disabled={loading || ipointLoading}
+        >
           Refresh
         </button>
       </div>
 
       {error && <div className="po-info-error">{error}</div>}
+
+      {ipointLoading && !loading && (
+        <p className="po-info-ipoint-loading-banner">
+          Loading room locations and PO line report data in the background…
+        </p>
+      )}
 
       {loading ? (
         <div className="po-info-loading">Loading PO check-in data…</div>
@@ -810,22 +890,16 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           {filtered.map((summary) => {
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
-            const poIpointLines = lineItemsForPo(summary.po_number, lineItems)
-            const ipointScanned = ipointScannedLineIds(
-              poIpointLines,
-              summary.barcodes,
-              catalogMap,
-              itemLocations,
-              jobRefs
-            )
+            const ipointBundle = expandedIpointByPoKey.get(key)
+            const poIpointLines = ipointBundle?.lines ?? lineItemsForPo(summary.po_number, lineItems)
+            const ipointScanned = ipointBundle?.scanned ?? new Set<string>()
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
-            const ipointLabelKeys = allLabelKeysForPo(
-              summary.po_number,
-              poIpointLines,
-              jobRefs,
-              itemLocations
-            )
+            const ipointLabelKeys =
+              ipointBundle?.labelKeys ??
+              (isExpanded && ipointLocationIndex.all.length > 0
+                ? allLabelKeysForPo(summary.po_number, poIpointLines, jobRefs, itemLocations)
+                : [])
             const allIpointLabelsSelected =
               ipointLabelKeys.length > 0 && ipointLabelKeys.every((k) => labelSelected.has(k))
             const scanSort = poScanSortByKey[key] ?? { column: 'lastScan' as const, asc: false }
@@ -934,17 +1008,20 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                             <tbody>
                               {poIpointLines.map((line) => {
                                 const job = jobNameForLine(line, jobRefs)
-                                const lineLocationNames = locationNamesForLine(
-                                  line,
-                                  jobRefs,
-                                  itemLocations
-                                )
-                                const lineLabelKeys = labelKeysForLine(
-                                  summary.po_number,
-                                  line,
-                                  jobRefs,
-                                  itemLocations
-                                )
+                                const lineCached = ipointBundle?.lineDisplay.get(line.id)
+                                const lineLocationNames =
+                                  lineCached?.locationNames ??
+                                  (ipointLoading
+                                    ? []
+                                    : locationNamesForLine(line, jobRefs, itemLocations))
+                                const lineLabelKeys =
+                                  lineCached?.labelKeys ??
+                                  labelKeysForLine(
+                                    summary.po_number,
+                                    line,
+                                    jobRefs,
+                                    itemLocations
+                                  )
                                 const selectedCount = lineLabelKeys.filter((k) =>
                                   labelSelected.has(k)
                                 ).length

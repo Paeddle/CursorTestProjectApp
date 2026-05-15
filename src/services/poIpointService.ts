@@ -2,12 +2,18 @@ import { supabase } from '../lib/supabase'
 import type { ParsedItemLocationRow } from '../lib/parseItemLocationsXlsx'
 import type { ParsedPoLineItem } from '../lib/parsePoLineReportXlsx'
 import type { ParsedJobRefRow } from '../lib/parseJobRefXlsx'
+import { clearIpointCache, readIpointCache, writeIpointCache } from '../lib/poIpointCache'
 import { findItemLocations, normalizeRefNumber } from '../lib/poIpointMatch'
 import type { LocationFileSummary, PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 const BATCH = 200
 /** Supabase/PostgREST returns at most 1000 rows per request unless paginated. */
 const PAGE = 1000
+
+const LINE_ITEM_COLUMNS =
+  'id,po_number,item_name,job_or_customer,po_date,quantity,source_file,imported_at,created_at'
+const LOCATION_COLUMNS = 'id,ref_number,location_name,manufacturer,product_name,quantity,source_file,imported_at,created_at'
+const LOCATION_META_COLUMNS = 'ref_number,imported_at,source_file'
 
 async function fetchAllRows<T>(
   table: string,
@@ -22,21 +28,23 @@ async function fetchAllRows<T>(
   const total = count ?? 0
   if (total === 0) return []
 
-  const out: T[] = []
-  let from = 0
-  while (from < total) {
+  const pageCount = Math.ceil(total / PAGE)
+  const pageRequests = Array.from({ length: pageCount }, (_, page) => {
+    const from = page * PAGE
     const to = Math.min(from + PAGE - 1, total - 1)
-    const { data, error } = await supabase
+    return supabase
       .from(table)
       .select(columns)
       .order(orderColumn, { ascending: true })
       .range(from, to)
-    if (error) throw new Error(error.message)
-    const chunk = (data ?? []) as T[]
-    out.push(...chunk)
-    if (chunk.length === 0) break
-    from += PAGE
-  }
+      .then(({ data, error }) => {
+        if (error) throw new Error(error.message)
+        return (data ?? []) as T[]
+      })
+  })
+
+  const chunks = await Promise.all(pageRequests)
+  const out = chunks.flat()
 
   if (out.length !== total) {
     throw new Error(
@@ -44,6 +52,52 @@ async function fetchAllRows<T>(
     )
   }
   return out
+}
+
+export type PoIpointDataBundle = {
+  lineItems: PoLineItem[]
+  itemLocations: PoItemLocation[]
+  fromCache: boolean
+}
+
+/** Line items + room locations (parallel pages, slim columns, optional session cache). */
+export async function fetchPoIpointData(options?: {
+  useCache?: boolean
+}): Promise<PoIpointDataBundle> {
+  const useCache = options?.useCache !== false
+  const cached = useCache ? readIpointCache() : null
+
+  if (cached) {
+    void refreshPoIpointDataInBackground()
+    return {
+      lineItems: cached.lineItems,
+      itemLocations: cached.itemLocations,
+      fromCache: true,
+    }
+  }
+
+  const [lineItems, itemLocations] = await Promise.all([
+    fetchPoLineItems(),
+    fetchPoItemLocations(),
+  ])
+  writeIpointCache(lineItems, itemLocations)
+  return { lineItems, itemLocations, fromCache: false }
+}
+
+async function refreshPoIpointDataInBackground(): Promise<void> {
+  try {
+    const [lineItems, itemLocations] = await Promise.all([
+      fetchPoLineItems(),
+      fetchPoItemLocations(),
+    ])
+    writeIpointCache(lineItems, itemLocations)
+  } catch {
+    // Background refresh — ignore
+  }
+}
+
+export function invalidatePoIpointCache(): void {
+  clearIpointCache()
 }
 
 /** Remove every row for a job ref (handles legacy ref_number formats). */
@@ -113,11 +167,11 @@ export async function fetchPoJobRefs(): Promise<PoJobRef[]> {
 }
 
 export async function fetchPoLineItems(): Promise<PoLineItem[]> {
-  return fetchAllRows<PoLineItem>('po_line_items', 'po_number')
+  return fetchAllRows<PoLineItem>('po_line_items', 'po_number', LINE_ITEM_COLUMNS)
 }
 
 export async function fetchPoItemLocations(): Promise<PoItemLocation[]> {
-  return fetchAllRows<PoItemLocation>('po_item_locations', 'ref_number', '*')
+  return fetchAllRows<PoItemLocation>('po_item_locations', 'ref_number', LOCATION_COLUMNS)
 }
 
 type LocationMetaRow = Pick<PoItemLocation, 'ref_number' | 'imported_at' | 'source_file'>
@@ -129,7 +183,7 @@ export async function fetchLocationUploadSummaries(
   const rows = await fetchAllRows<LocationMetaRow>(
     'po_item_locations',
     'ref_number',
-    'ref_number,imported_at,source_file'
+    LOCATION_META_COLUMNS
   )
   const asLocations = rows.map((r) => ({
     id: '',
@@ -258,6 +312,7 @@ export async function importPoLineReport(
     imported_at,
   }))
   await insertBatches('po_line_items', payload)
+  invalidatePoIpointCache()
   return payload.length
 }
 
@@ -282,6 +337,7 @@ export async function importItemLocations(
     imported_at,
   }))
   await insertBatches('po_item_locations', payload)
+  invalidatePoIpointCache()
   return payload.length
 }
 
