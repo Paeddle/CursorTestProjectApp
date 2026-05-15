@@ -27,6 +27,17 @@ function significantTokens(s: string): string[] {
     .filter((t) => t.length >= 3)
 }
 
+function slugWordTokens(slug: string): string[] {
+  return slug.split(/[^a-z0-9]+/).filter((t) => t.length >= 3)
+}
+
+/** PO line items that look like model / part numbers (e.g. VX80R, HRST-8ANS). */
+function isCompactModelCode(s: string): boolean {
+  const k = alphaKey(s)
+  if (k.length < 3 || k.length > 24) return false
+  return /\d/.test(k) && /[a-z]/.test(k)
+}
+
 function locationProductLabels(row: PoItemLocation): string[] {
   const labels: string[] = []
   const product = (row.product_name || '').trim()
@@ -90,6 +101,23 @@ export function resolveJobRef(
       score = Math.max(score, 75)
     }
 
+    const jWords = slugWordTokens(jSlug)
+    const rWords = slugWordTokens(rSlug)
+    const sharedWords = jWords.filter(
+      (t) => t.length >= 5 && !/^\d+$/.test(t) && rWords.includes(t)
+    )
+    if (sharedWords.length >= 2) {
+      score = Math.max(score, 92)
+    } else if (sharedWords.length === 1 && sharedWords[0]!.length >= 6) {
+      score = Math.max(score, 88)
+    }
+
+    const jTail = jSlug.split('-').pop() || ''
+    const rTail = rSlug.split('-').pop() || ''
+    if (jTail.length >= 5 && jTail === rTail) {
+      score = Math.max(score, 92)
+    }
+
     if (score > 0 && (!best || score > best.score)) {
       best = { ref: r, score }
     }
@@ -110,6 +138,10 @@ export function productNamesMatch(a: string, b: string): boolean {
   if (!ka || !kb) return false
   if (ka === kb) return true
   if (ka.length >= 4 && kb.length >= 4 && (ka.includes(kb) || kb.includes(ka))) return true
+
+  // Short model codes from PO lines (e.g. VX80R) inside longer catalog/location text.
+  if (isCompactModelCode(a) && kb.includes(ka)) return true
+  if (isCompactModelCode(b) && ka.includes(kb)) return true
 
   const ta = significantTokens(a)
   const tb = significantTokens(b)

@@ -53,7 +53,15 @@ export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[
       cellStr(map.get('location')) ||
       cellStr(map.get('room')) ||
       cellStr(map.get('room_name'))
-    const product =
+    const partOrModel =
+      cellStr(map.get('part_number')) ||
+      cellStr(map.get('partnumber')) ||
+      cellStr(map.get('part')) ||
+      cellStr(map.get('model')) ||
+      cellStr(map.get('model_number')) ||
+      cellStr(map.get('sku')) ||
+      cellStr(map.get('item_number'))
+    let product =
       cellStr(map.get('c_product_name')) ||
       cellStr(map.get('c_productname')) ||
       cellStr(map.get('product_name')) ||
@@ -62,6 +70,17 @@ export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[
       cellStr(map.get('product')) ||
       cellStr(map.get('description'))
     const manufacturer = cellStr(map.get('manufacturer')) || null
+
+    // Some exports put the model (e.g. VX80R) only in part/model, or only in manufacturer.
+    if (partOrModel) {
+      if (!product) product = partOrModel
+      else if (!product.toLowerCase().includes(partOrModel.toLowerCase())) {
+        product = `${partOrModel} ${product}`
+      }
+    } else if (!product && manufacturer) {
+      product = manufacturer
+    }
+
     const qty =
       parseQty(map.get('c_quantity_modified_total_to_order')) ??
       parseQty(map.get('quantity')) ??
