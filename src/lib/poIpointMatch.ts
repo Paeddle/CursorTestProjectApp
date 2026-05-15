@@ -116,10 +116,72 @@ export function jobNameForLine(line: PoLineItem, jobRefs: PoJobRef[]): string | 
   return ref?.job_name ?? (line.job_or_customer?.trim() || null)
 }
 
+function dedupeLocationsByName(matches: PoItemLocation[]): PoItemLocation[] {
+  const seen = new Set<string>()
+  const out: PoItemLocation[] = []
+  for (const row of matches) {
+    const name = row.location_name.trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    out.push(row)
+  }
+  return out.sort((a, b) => a.location_name.localeCompare(b.location_name))
+}
+
 function formatLocationNames(matches: PoItemLocation[]): string | null {
-  if (matches.length === 0) return null
-  const names = [...new Set(matches.map((m) => m.location_name.trim()).filter(Boolean))]
+  const names = locationNamesFromRows(matches)
   return names.length ? names.join(' · ') : null
+}
+
+function locationNamesFromRows(matches: PoItemLocation[]): string[] {
+  return dedupeLocationsByName(matches).map((m) => m.location_name.trim()).filter(Boolean)
+}
+
+/**
+ * Room location rows for a PO line item (same rules as locationForLine, as a list).
+ */
+export function locationsForLine(
+  line: PoLineItem,
+  jobRefs: PoJobRef[],
+  locations: PoItemLocation[]
+): PoItemLocation[] {
+  const item = (line.item_name || '').trim()
+  if (!item || locations.length === 0) return []
+
+  const ref = resolveJobRef(line.job_or_customer, jobRefs)
+
+  if (ref) {
+    const scoped = findItemLocations(item, ref.ref_number, locations)
+    if (scoped.length) return dedupeLocationsByName(scoped)
+  }
+
+  const global = findItemLocations(item, null, locations)
+  if (global.length === 0) return []
+
+  const byRef = new Map<string, PoItemLocation[]>()
+  for (const row of global) {
+    const k = String(row.ref_number).trim()
+    if (!byRef.has(k)) byRef.set(k, [])
+    byRef.get(k)!.push(row)
+  }
+
+  if (byRef.size === 1) return dedupeLocationsByName(global)
+
+  if (ref) {
+    const inRef = byRef.get(String(ref.ref_number).trim())
+    if (inRef?.length) return dedupeLocationsByName(inRef)
+  }
+
+  return dedupeLocationsByName(global)
+}
+
+/** Unique location names for a PO line item. */
+export function locationNamesForLine(
+  line: PoLineItem,
+  jobRefs: PoJobRef[],
+  locations: PoItemLocation[]
+): string[] {
+  return locationNamesFromRows(locationsForLine(line, jobRefs, locations))
 }
 
 /**
@@ -133,37 +195,7 @@ export function locationForLine(
   jobRefs: PoJobRef[],
   locations: PoItemLocation[]
 ): string | null {
-  const item = (line.item_name || '').trim()
-  if (!item || locations.length === 0) return null
-
-  const ref = resolveJobRef(line.job_or_customer, jobRefs)
-
-  if (ref) {
-    const scoped = findItemLocations(item, ref.ref_number, locations)
-    const formatted = formatLocationNames(scoped)
-    if (formatted) return formatted
-  }
-
-  const global = findItemLocations(item, null, locations)
-  if (global.length === 0) return null
-
-  const byRef = new Map<string, PoItemLocation[]>()
-  for (const row of global) {
-    const k = String(row.ref_number).trim()
-    if (!byRef.has(k)) byRef.set(k, [])
-    byRef.get(k)!.push(row)
-  }
-
-  if (byRef.size === 1) {
-    return formatLocationNames(global)
-  }
-
-  if (ref) {
-    const inRef = byRef.get(String(ref.ref_number).trim())
-    if (inRef?.length) return formatLocationNames(inRef)
-  }
-
-  return formatLocationNames(global)
+  return formatLocationNames(locationsForLine(line, jobRefs, locations))
 }
 
 /** Normalize PO numbers for comparison (PO-11831 vs 11831). */

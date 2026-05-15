@@ -19,13 +19,108 @@ import {
   ipointScannedLineIds,
   jobNameForLine,
   lineItemsForPo,
-  locationForLine,
+  locationNamesForLine,
   normalizePoKey,
 } from '../lib/poIpointMatch'
 import { printLabelsWithDymo } from '../lib/dymoLabelPrint'
 import BarcodeLookupModal from './BarcodeLookupModal'
+import IpointLocationsModal from './IpointLocationsModal'
 import PoIpointImportPanel from './PoIpointImportPanel'
 import './POInfo.css'
+
+const LOCATION_PREVIEW_COUNT = 2
+
+function makeLabelKey(poNumber: string, lineId: string, locationName = '') {
+  return `${normalizePoKey(poNumber)}\u0000${lineId}\u0000${(locationName || '').trim()}`
+}
+
+function labelKeysForLine(
+  poNumber: string,
+  line: PoLineItem,
+  jobRefs: PoJobRef[],
+  itemLocations: PoItemLocation[]
+): string[] {
+  const names = locationNamesForLine(line, jobRefs, itemLocations)
+  if (names.length === 0) return [makeLabelKey(poNumber, line.id, '')]
+  return names.map((name) => makeLabelKey(poNumber, line.id, name))
+}
+
+function allLabelKeysForPo(
+  poNumber: string,
+  lines: PoLineItem[],
+  jobRefs: PoJobRef[],
+  itemLocations: PoItemLocation[]
+): string[] {
+  return lines.flatMap((line) => labelKeysForLine(poNumber, line, jobRefs, itemLocations))
+}
+
+function parseLabelKey(
+  key: string
+): { poKey: string; lineId: string; locationName: string } | null {
+  const i = key.indexOf('\u0000')
+  if (i === -1) return null
+  const j = key.indexOf('\u0000', i + 1)
+  if (j === -1) {
+    return { poKey: key.slice(0, i), lineId: key.slice(i + 1), locationName: '' }
+  }
+  return {
+    poKey: key.slice(0, i),
+    lineId: key.slice(i + 1, j),
+    locationName: key.slice(j + 1),
+  }
+}
+
+type IpointLocationCellProps = {
+  locationNames: string[]
+  onViewAll: () => void
+}
+
+function IpointLocationCell({ locationNames, onViewAll }: IpointLocationCellProps) {
+  if (locationNames.length === 0) return <>—</>
+
+  if (locationNames.length <= LOCATION_PREVIEW_COUNT) {
+    return <span className="po-info-ipoint-loc-preview">{locationNames.join(' · ')}</span>
+  }
+
+  const preview = locationNames.slice(0, LOCATION_PREVIEW_COUNT).join(' · ')
+  const moreCount = locationNames.length - LOCATION_PREVIEW_COUNT
+
+  return (
+    <span className="po-info-ipoint-loc-preview">
+      {preview}
+      {' · '}
+      <button type="button" className="po-info-ipoint-loc-more-btn" onClick={onViewAll}>
+        +{moreCount} more ({locationNames.length} total)
+      </button>
+    </span>
+  )
+}
+
+type IpointPrintCheckboxProps = {
+  checked: boolean
+  indeterminate: boolean
+  ariaLabel: string
+  onChange: () => void
+}
+
+function IpointPrintCheckbox({ checked, indeterminate, ariaLabel, onChange }: IpointPrintCheckboxProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useLayoutEffect(() => {
+    if (inputRef.current) inputRef.current.indeterminate = indeterminate
+  }, [indeterminate])
+
+  return (
+    <input
+      ref={inputRef}
+      type="checkbox"
+      className="po-info-scan-checkin-input"
+      checked={checked}
+      aria-label={ariaLabel}
+      onChange={onChange}
+    />
+  )
+}
 
 const STORAGE_BUCKET = 'po-documents'
 
@@ -202,6 +297,12 @@ function POInfo() {
   const [itemLocations, setItemLocations] = useState<PoItemLocation[]>([])
   const [labelSelected, setLabelSelected] = useState<Set<string>>(new Set())
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
+  const [locationModal, setLocationModal] = useState<{
+    poNumber: string
+    line: PoLineItem
+    jobName: string | null
+    locations: string[]
+  } | null>(null)
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
 
@@ -297,35 +398,35 @@ function POInfo() {
       )
     : displaySummaries
 
-  const makeLabelKey = (poNumber: string, lineId: string) =>
-    `${normalizePoKey(poNumber)}\u0000${lineId}`
-
   const buildLabelRowsForPo = useCallback(
     (poNumber: string): PoLabelPrintRow[] => {
+      const poKey = normalizePoKey(poNumber)
       const poLines = lineItemsForPo(poNumber, lineItems)
+      const lineById = new Map(poLines.map((l) => [l.id, l]))
       const rows: PoLabelPrintRow[] = []
-      for (const line of poLines) {
-        const key = makeLabelKey(poNumber, line.id)
-        if (!labelSelected.has(key)) continue
+
+      for (const key of labelSelected) {
+        const parsed = parseLabelKey(key)
+        if (!parsed || parsed.poKey !== poKey) continue
+        const line = lineById.get(parsed.lineId)
+        if (!line) continue
         const job = jobNameForLine(line, jobRefs)
-        const loc = locationForLine(line, jobRefs, itemLocations)
         rows.push({
           key,
           po_number: poNumber,
           item_name: line.item_name,
           job_name: job,
-          location_name: loc,
+          location_name: parsed.locationName || null,
         })
       }
       return rows
     },
-    [lineItems, jobRefs, itemLocations, labelSelected]
+    [lineItems, jobRefs, labelSelected]
   )
 
-  const handlePrintLabels = async (poNumber: string) => {
-    const rows = buildLabelRowsForPo(poNumber)
+  const printLabelRows = async (poNumber: string, rows: PoLabelPrintRow[]) => {
     if (rows.length === 0) {
-      setError('Select at least one iPoint line to print.')
+      setError('Select at least one location to print.')
       return
     }
     const poKey = normalizePoKey(poNumber)
@@ -340,18 +441,39 @@ function POInfo() {
     }
   }
 
-  const toggleLabelSelect = (poNumber: string, lineId: string) => {
-    const k = makeLabelKey(poNumber, lineId)
+  const handlePrintLabels = async (poNumber: string) => {
+    const rows = buildLabelRowsForPo(poNumber)
+    if (rows.length === 0) {
+      setError('Select at least one iPoint line or location to print.')
+      return
+    }
+    await printLabelRows(poNumber, rows)
+  }
+
+  const toggleLabelKey = (key: string) => {
     setLabelSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(k)) next.delete(k)
-      else next.add(k)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const toggleLabelSelect = (poNumber: string, line: PoLineItem) => {
+    const keys = labelKeysForLine(poNumber, line, jobRefs, itemLocations)
+    const allOn = keys.every((k) => labelSelected.has(k))
+    setLabelSelected((prev) => {
+      const next = new Set(prev)
+      for (const k of keys) {
+        if (allOn) next.delete(k)
+        else next.add(k)
+      }
       return next
     })
   }
 
   const toggleAllLabelsForPo = (poNumber: string, lines: PoLineItem[]) => {
-    const keys = lines.map((l) => makeLabelKey(poNumber, l.id))
+    const keys = allLabelKeysForPo(poNumber, lines, jobRefs, itemLocations)
     const allOn = keys.length > 0 && keys.every((k) => labelSelected.has(k))
     setLabelSelected((prev) => {
       const next = new Set(prev)
@@ -361,6 +483,51 @@ function POInfo() {
       }
       return next
     })
+  }
+
+  const openLocationModal = (
+    poNumber: string,
+    line: PoLineItem,
+    jobName: string | null,
+    locations: string[]
+  ) => {
+    setLocationModal({ poNumber, line, jobName, locations })
+  }
+
+  const closeLocationModal = () => setLocationModal(null)
+
+  const handleLocationModalToggle = (locationName: string) => {
+    if (!locationModal) return
+    toggleLabelKey(makeLabelKey(locationModal.poNumber, locationModal.line.id, locationName))
+  }
+
+  const handleLocationModalToggleAll = (selectAll: boolean) => {
+    if (!locationModal) return
+    const { poNumber, line, locations } = locationModal
+    setLabelSelected((prev) => {
+      const next = new Set(prev)
+      for (const loc of locations) {
+        const k = makeLabelKey(poNumber, line.id, loc)
+        if (selectAll) next.add(k)
+        else next.delete(k)
+      }
+      return next
+    })
+  }
+
+  const handlePrintFromLocationModal = async () => {
+    if (!locationModal) return
+    const { poNumber, line, jobName, locations } = locationModal
+    const rows: PoLabelPrintRow[] = locations
+      .filter((loc) => labelSelected.has(makeLabelKey(poNumber, line.id, loc)))
+      .map((loc) => ({
+        key: makeLabelKey(poNumber, line.id, loc),
+        po_number: poNumber,
+        item_name: line.item_name,
+        job_name: jobName,
+        location_name: loc,
+      }))
+    await printLabelRows(poNumber, rows)
   }
 
   const toggleExpanded = (poNumber: string) => {
@@ -653,9 +820,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             )
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
+            const ipointLabelKeys = allLabelKeysForPo(
+              summary.po_number,
+              poIpointLines,
+              jobRefs,
+              itemLocations
+            )
             const allIpointLabelsSelected =
-              poIpointLines.length > 0 &&
-              poIpointLines.every((l) => labelSelected.has(makeLabelKey(summary.po_number, l.id)))
+              ipointLabelKeys.length > 0 && ipointLabelKeys.every((k) => labelSelected.has(k))
             const scanSort = poScanSortByKey[key] ?? { column: 'lastScan' as const, asc: false }
             const aggSorted = sortAggregatedRows(agg, catalogMap, scanSort.column, scanSort.asc)
             const scanTotal = summary.barcodes.length
@@ -726,8 +898,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         </div>
                         <p className="po-info-section-desc">
                           From PO Line Report. Locations come from the ref spreadsheets (e.g. 4152.xlsx)
-                          matched by JobRef + item name. Upload JobRef, PO Line Report, then each ref file.
-                          Install DYMO Connect on this PC for direct printing.
+                          matched by JobRef + item name. Long location lists show a “+N more” link to
+                          open all rooms and pick which labels to print. Install DYMO Connect on this PC
+                          for direct printing.
                         </p>
                         <div className="po-info-scan-table-wrap">
                           <table className="po-info-scan-table po-info-ipoint-table">
@@ -760,9 +933,26 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                             </thead>
                             <tbody>
                               {poIpointLines.map((line) => {
-                                const labelKey = makeLabelKey(summary.po_number, line.id)
                                 const job = jobNameForLine(line, jobRefs)
-                                const loc = locationForLine(line, jobRefs, itemLocations)
+                                const lineLocationNames = locationNamesForLine(
+                                  line,
+                                  jobRefs,
+                                  itemLocations
+                                )
+                                const lineLabelKeys = labelKeysForLine(
+                                  summary.po_number,
+                                  line,
+                                  jobRefs,
+                                  itemLocations
+                                )
+                                const selectedCount = lineLabelKeys.filter((k) =>
+                                  labelSelected.has(k)
+                                ).length
+                                const allLineLabelsSelected =
+                                  lineLabelKeys.length > 0 &&
+                                  selectedCount === lineLabelKeys.length
+                                const someLineLabelsSelected =
+                                  selectedCount > 0 && !allLineLabelsSelected
                                 const isScanned = ipointScanned.has(line.id)
                                 return (
                                   <tr
@@ -772,13 +962,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     }
                                   >
                                     <td className="po-info-scan-checkin-cell">
-                                      <input
-                                        type="checkbox"
-                                        className="po-info-scan-checkin-input"
-                                        checked={labelSelected.has(labelKey)}
-                                        aria-label={`Print label for ${line.item_name}`}
+                                      <IpointPrintCheckbox
+                                        checked={allLineLabelsSelected}
+                                        indeterminate={someLineLabelsSelected}
+                                        ariaLabel={`Print labels for ${line.item_name}`}
                                         onChange={() =>
-                                          toggleLabelSelect(summary.po_number, line.id)
+                                          toggleLabelSelect(summary.po_number, line)
                                         }
                                       />
                                     </td>
@@ -799,7 +988,19 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       )}
                                     </td>
                                     <td className="po-info-meta">{job || line.job_or_customer || '—'}</td>
-                                    <td className="po-info-meta">{loc || '—'}</td>
+                                    <td className="po-info-meta po-info-ipoint-loc-cell">
+                                      <IpointLocationCell
+                                        locationNames={lineLocationNames}
+                                        onViewAll={() =>
+                                          openLocationModal(
+                                            summary.po_number,
+                                            line,
+                                            job,
+                                            lineLocationNames
+                                          )
+                                        }
+                                      />
+                                    </td>
                                     <td className="po-info-meta">{line.po_date || '—'}</td>
                                   </tr>
                                 )
@@ -1240,6 +1441,29 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           openCatalogEditor={lookupOpen.openCatalogEditor}
           onClose={closeBarcodeLookup}
           onCatalogSaved={() => void load()}
+        />
+      )}
+
+      {locationModal && (
+        <IpointLocationsModal
+          poNumber={locationModal.poNumber}
+          line={locationModal.line}
+          jobName={locationModal.jobName}
+          locations={locationModal.locations}
+          selectedLocations={
+            new Set(
+              locationModal.locations.filter((loc) =>
+                labelSelected.has(
+                  makeLabelKey(locationModal.poNumber, locationModal.line.id, loc)
+                )
+              )
+            )
+          }
+          onToggleLocation={handleLocationModalToggle}
+          onToggleAll={handleLocationModalToggleAll}
+          onPrintSelected={() => void handlePrintFromLocationModal()}
+          onClose={closeLocationModal}
+          printing={printingPoKey === normalizePoKey(locationModal.poNumber)}
         />
       )}
     </div>

@@ -1038,3 +1038,175 @@ tr.po-info-ipoint-row-not-scanned td:not(.po-info-ipoint-scanned-cell) {
 tr.po-info-ipoint-row-not-scanned .po-info-scan-item-name {
   color: #fde68a;
 }
+
+.po-info-ipoint-loc-cell {
+  max-width: 14rem;
+}
+
+.po-info-ipoint-loc-preview {
+  display: block;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.po-info-ipoint-loc-more-btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #93c5fd;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.po-info-ipoint-loc-more-btn:hover {
+  color: #bfdbfe;
+}
+
+.po-info-loc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.po-info-loc-modal {
+  width: min(32rem, 100%);
+  max-height: min(85vh, 36rem);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+.po-info-loc-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.5rem;
+  border-bottom: 1px solid #1e293b;
+}
+
+.po-info-loc-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #f1f5f9;
+}
+
+.po-info-loc-modal-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.po-info-loc-modal-close {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.po-info-loc-modal-close:hover {
+  background: #334155;
+}
+
+.po-info-loc-modal-hint {
+  margin: 0;
+  padding: 0.5rem 1rem 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.po-info-loc-modal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.po-info-loc-modal-link-btn {
+  border: none;
+  background: none;
+  color: #93c5fd;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.po-info-loc-modal-count {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.po-info-loc-modal-list {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0 0.5rem 0.5rem;
+  list-style: none;
+}
+
+.po-info-loc-modal-list li {
+  margin: 0;
+}
+
+.po-info-loc-modal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #e2e8f0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.po-info-loc-modal-row:hover {
+  background: rgba(51, 65, 85, 0.45);
+}
+
+.po-info-loc-modal-row input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.po-info-loc-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid #1e293b;
+}
+
+.po-info-loc-modal-cancel {
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: transparent;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.po-info-loc-modal-cancel:hover {
+  background: #1e293b;
+}
