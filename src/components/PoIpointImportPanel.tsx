@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { extractPdfPlainTextForPoLineReport } from '../lib/extractPdfLines'
 import { parsePoLineReportText } from '../lib/parsePoLineReport'
-import { parsePoLineReportXlsx } from '../lib/parsePoLineReportXlsx'
+import { parsePoLineReportXlsx, summarizePoLineReportRows } from '../lib/parsePoLineReportXlsx'
 import {
   parseItemLocationsXlsx,
   refNumberFromFilename,
@@ -59,13 +59,15 @@ function PoIpointImportPanel({
   )
 
   const runImport = useCallback(
-    async (label: string, fn: () => Promise<number>) => {
+    async (label: string, fn: () => Promise<{ count: number; detail?: string }>) => {
       setBusy(label)
       setImportMsg(null)
       onError('')
       try {
-        const n = await fn()
-        setImportMsg(`${label}: imported ${n} row${n === 1 ? '' : 's'} into Supabase.`)
+        const { count, detail } = await fn()
+        setImportMsg(
+          detail ?? `${label}: imported ${count} row${count === 1 ? '' : 's'} into Supabase.`
+        )
         onDataChanged()
       } catch (e) {
         onError(e instanceof Error ? e.message : `${label} failed`)
@@ -76,7 +78,7 @@ function PoIpointImportPanel({
     [onDataChanged, onError]
   )
 
-  const handlePoLineFile = async (file: File) => {
+  const handlePoLineFile = async (file: File): Promise<{ count: number; detail?: string }> => {
     const buf = await file.arrayBuffer()
     const lower = file.name.toLowerCase()
     let rows: import('../lib/parsePoLineReportXlsx').ParsedPoLineItem[] = []
@@ -93,11 +95,19 @@ function PoIpointImportPanel({
       throw new Error('Use .xlsx, .pdf, or .csv for PO Line Report.')
     }
     if (rows.length === 0) throw new Error('No PO lines found in file.')
+    const stats = summarizePoLineReportRows(rows)
     await importPoLineReport(rows, file.name)
-    return rows.length
+    const jobNote =
+      stats.withoutJob > 0
+        ? ` ${stats.withoutJob} line${stats.withoutJob !== 1 ? 's' : ''} have no job/customer (often Stock lines).`
+        : ''
+    return {
+      count: rows.length,
+      detail: `PO Line Report: imported ${stats.total} lines (${stats.uniquePos} POs, ${stats.uniqueJobs} jobs).${jobNote}`,
+    }
   }
 
-  const handleLocationFile = async (file: File) => {
+  const handleLocationFile = async (file: File): Promise<{ count: number }> => {
     const ref = refNumberFromFilename(file.name)
     if (!ref) {
       throw new Error('Filename must include a ref number (e.g. 4152.xlsx or SalesOrder_4152.xlsx).')
@@ -105,7 +115,7 @@ function PoIpointImportPanel({
     const rows = parseItemLocationsXlsx(await file.arrayBuffer())
     if (rows.length === 0) throw new Error('No locations found in spreadsheet.')
     await importItemLocations(ref, rows, file.name)
-    return rows.length
+    return { count: rows.length }
   }
 
   const handleAddJobRef = async () => {
@@ -180,7 +190,8 @@ function PoIpointImportPanel({
                 try {
                   let total = 0
                   for (const f of files) {
-                    total += await handleLocationFile(f)
+                    const { count } = await handleLocationFile(f)
+                    total += count
                   }
                   setImportMsg(
                     `Item locations: imported ${total} row${total === 1 ? '' : 's'} into Supabase.`

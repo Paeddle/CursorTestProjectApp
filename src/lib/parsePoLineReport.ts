@@ -21,31 +21,61 @@ function escapeCsv(s: string | number | null | undefined): string {
   return str
 }
 
+/** Merge PDF rows split across lines (pdf.js often breaks PO / Item / For across cells). */
+export function preprocessPoLineReportText(text: string): string {
+  const raw = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const merged: string[] = []
+
+  for (let i = 0; i < raw.length; i++) {
+    let line = raw[i]!
+    while (i + 1 < raw.length && line.includes('PO:') && !/Item:/i.test(line)) {
+      i++
+      line += ` ${raw[i]}`
+    }
+    while (i + 1 < raw.length && /Item:/i.test(line) && !/For:/i.test(line)) {
+      i++
+      line += ` ${raw[i]}`
+    }
+    merged.push(line)
+  }
+  return merged.join('\n')
+}
+
+function parseCustomerFromLine(trimmed: string): string | null {
+  if (!trimmed.startsWith('Customer:')) return null
+  const afterLabel = trimmed.slice(9).trim()
+  if (!afterLabel || /^\d/.test(afterLabel)) return null
+
+  const customerRegex = /^Customer:(.+?)\s+\d+\s+\d+\s+/
+  const match = trimmed.match(customerRegex)
+  if (match) return match[1]!.trim()
+
+  // Strip trailing iPoint summary columns (counts / dollar amounts).
+  return afterLabel.replace(/\s+\d+(\s+\d+)*(\s+\$[\d,.]+)*.*$/, '').trim() || null
+}
+
 /**
  * Parse text extracted from a PO Line Report PDF (same rules as `scripts/parse-po-report.mjs`).
  */
 export function parsePoLineReportText(text: string): PoLineReportCsvRow[] {
-  const lines = text.split(/\r?\n/)
+  const normalized = preprocessPoLineReportText(text)
+  const lines = normalized.split(/\r?\n/)
   const rows: PoLineReportCsvRow[] = []
-  const poRegex = /PO:(\d+)\s*\|\s*Item:([^|]+)\s*\|\s*For:([^\d$]+?)(\d+)/g
-  const customerRegex = /^Customer:(.+?)\s+\d+\s+\d+\s+/
+  // | or tab between PO / Item / For (xlsx hierarchical uses tabs).
+  const poRegex = /PO:(\d+)\s*[\|\t]\s*Item:([^|\t]+?)\s*[\|\t]\s*For:([^\d$]+?)(\d+)/gi
   let currentCustomer = ''
 
   for (const line of lines) {
     const trimmed = line.trim()
-    if (trimmed.startsWith('Customer:')) {
-      const afterLabel = trimmed.slice(9).trim()
-      if (afterLabel && !/^\d/.test(afterLabel)) {
-        const match = trimmed.match(customerRegex)
-        if (match) currentCustomer = match[1].trim()
-        else currentCustomer = afterLabel.replace(/\s+\d+.*$/, '').trim()
-      }
+    const customer = parseCustomerFromLine(trimmed)
+    if (customer !== null) {
+      currentCustomer = customer
       continue
     }
-    if (!trimmed.includes('PO:') || !trimmed.includes('| Item:')) continue
+    if (!/PO:\d+/i.test(trimmed) || !/Item:/i.test(trimmed)) continue
 
     let m: RegExpExecArray | null
-    const re = new RegExp(poRegex.source, 'g')
+    const re = new RegExp(poRegex.source, poRegex.flags)
     while ((m = re.exec(trimmed)) !== null) {
       const poNumber = m[1]
       const itemName = m[2].trim()

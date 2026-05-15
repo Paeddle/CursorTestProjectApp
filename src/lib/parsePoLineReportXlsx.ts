@@ -116,13 +116,64 @@ function parseHierarchicalSheet(sheet: XLSX.WorkSheet): ParsedPoLineItem[] {
   return parsePoLineReportText(text).map((r) => ({ ...r, po_date: null }))
 }
 
+function sheetLooksStructured(sheet: XLSX.WorkSheet): boolean {
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+  if (rows.length === 0) return false
+  const headers = Object.keys(rows[0] ?? {}).map(normalizeHeader)
+  return headers.some(
+    (h) =>
+      h === 'po_number' ||
+      h === 'po' ||
+      h === 'item_name' ||
+      h === 'item' ||
+      h === 'job_or_customer' ||
+      h === 'customer'
+  )
+}
+
 /** Parse POLineReport .xlsx (structured columns or hierarchical Customer/PO lines). */
 export function parsePoLineReportXlsx(buf: ArrayBuffer): ParsedPoLineItem[] {
   const wb = XLSX.read(buf, { type: 'array' })
-  const sheet = wb.Sheets[wb.SheetNames[0] ?? '']
-  if (!sheet) return []
+  let best: ParsedPoLineItem[] = []
 
-  const structured = parseStructuredSheet(sheet)
-  if (structured.length > 0) return structured
-  return parseHierarchicalSheet(sheet)
+  for (const name of wb.SheetNames) {
+    const sheet = wb.Sheets[name]
+    if (!sheet) continue
+
+    const structured = sheetLooksStructured(sheet) ? parseStructuredSheet(sheet) : []
+    const hierarchical = parseHierarchicalSheet(sheet)
+    const pick =
+      hierarchical.length > structured.length ? hierarchical : structured
+    if (pick.length > best.length) best = pick
+  }
+
+  return best
+}
+
+/** Summary stats for import feedback (job names, empty jobs, sample POs). */
+export function summarizePoLineReportRows(rows: ParsedPoLineItem[]): {
+  total: number
+  withJob: number
+  withoutJob: number
+  uniquePos: number
+  uniqueJobs: number
+} {
+  const pos = new Set<string>()
+  const jobs = new Set<string>()
+  let withJob = 0
+  for (const r of rows) {
+    if (r.po_number) pos.add(r.po_number)
+    const job = (r.job_or_customer || '').trim()
+    if (job) {
+      withJob++
+      jobs.add(job)
+    }
+  }
+  return {
+    total: rows.length,
+    withJob,
+    withoutJob: rows.length - withJob,
+    uniquePos: pos.size,
+    uniqueJobs: jobs.size,
+  }
 }
