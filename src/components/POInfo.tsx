@@ -9,7 +9,16 @@ import {
   type AggregatedPOBarcodeRow,
 } from '../lib/barcodeCatalogLookup'
 import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
+import type { PoItemLocation, PoJobRef, PoLineItem, PoLabelPrintRow } from '../types/poIpoint'
+import {
+  fetchPoItemLocations,
+  fetchPoJobRefs,
+  fetchPoLineItems,
+} from '../services/poIpointService'
+import { jobNameForLine, lineItemsForPo, locationForLine, normalizePoKey } from '../lib/poIpointMatch'
+import { printLabelsWithDymo } from '../lib/dymoLabelPrint'
 import BarcodeLookupModal from './BarcodeLookupModal'
+import PoIpointImportPanel from './PoIpointImportPanel'
 import './POInfo.css'
 
 const STORAGE_BUCKET = 'po-documents'
@@ -182,6 +191,11 @@ function POInfo() {
   const [checkedInMap, setCheckedInMap] = useState<Record<string, boolean>>({})
   const [checkinSavingKey, setCheckinSavingKey] = useState<string | null>(null)
   const [bulkCheckinPoKey, setBulkCheckinPoKey] = useState<string | null>(null)
+  const [jobRefs, setJobRefs] = useState<PoJobRef[]>([])
+  const [lineItems, setLineItems] = useState<PoLineItem[]>([])
+  const [itemLocations, setItemLocations] = useState<PoItemLocation[]>([])
+  const [labelSelected, setLabelSelected] = useState<Set<string>>(new Set())
+  const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
 
   const catalogMap = useMemo(() => buildCatalogLookupMap(catalog), [catalog])
 
@@ -216,15 +230,21 @@ function POInfo() {
     setLoading(true)
     setError(null)
     try {
-      const [list, catRes, chkRes] = await Promise.all([
+      const [list, catRes, chkRes, refs, lines, locs] = await Promise.all([
         loadSummaries(),
         supabase.from('barcode_catalog').select('*').order('item_name', { ascending: true }),
         supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
+        fetchPoJobRefs().catch(() => [] as PoJobRef[]),
+        fetchPoLineItems().catch(() => [] as PoLineItem[]),
+        fetchPoItemLocations().catch(() => [] as PoItemLocation[]),
       ])
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
       setCatalog((catRes.data ?? []) as BarcodeCatalogItem[])
+      setJobRefs(refs)
+      setLineItems(lines)
+      setItemLocations(locs)
       const nextChecked: Record<string, boolean> = {}
       for (const r of chkRes.data ?? []) {
         const row = r as { po_number: string; barcode_value: string; checked_in: boolean }
@@ -249,9 +269,93 @@ function POInfo() {
     load()
   }, [load])
 
+  const displaySummaries = useMemo(() => {
+    const byKey = new Map<string, POCheckinSummary>()
+    for (const s of summaries) {
+      byKey.set(normalizePoKey(s.po_number), s)
+    }
+    for (const item of lineItems) {
+      const k = normalizePoKey(item.po_number)
+      if (!byKey.has(k)) {
+        byKey.set(k, { po_number: item.po_number, barcodes: [], documents: [] })
+      }
+    }
+    return Array.from(byKey.values()).sort((a, b) =>
+      a.po_number.localeCompare(b.po_number, undefined, { numeric: true })
+    )
+  }, [summaries, lineItems])
+
   const filtered = searchPo.trim()
-    ? summaries.filter((s) => s.po_number.toLowerCase().includes(searchPo.trim().toLowerCase()))
-    : summaries
+    ? displaySummaries.filter((s) =>
+        s.po_number.toLowerCase().includes(searchPo.trim().toLowerCase())
+      )
+    : displaySummaries
+
+  const makeLabelKey = (poNumber: string, lineId: string) =>
+    `${normalizePoKey(poNumber)}\u0000${lineId}`
+
+  const buildLabelRowsForPo = useCallback(
+    (poNumber: string): PoLabelPrintRow[] => {
+      const poLines = lineItemsForPo(poNumber, lineItems)
+      const rows: PoLabelPrintRow[] = []
+      for (const line of poLines) {
+        const key = makeLabelKey(poNumber, line.id)
+        if (!labelSelected.has(key)) continue
+        const job = jobNameForLine(line, jobRefs)
+        const loc = locationForLine(line, jobRefs, itemLocations)
+        rows.push({
+          key,
+          po_number: poNumber,
+          item_name: line.item_name,
+          job_name: job,
+          location_name: loc,
+        })
+      }
+      return rows
+    },
+    [lineItems, jobRefs, itemLocations, labelSelected]
+  )
+
+  const handlePrintLabels = async (poNumber: string) => {
+    const rows = buildLabelRowsForPo(poNumber)
+    if (rows.length === 0) {
+      setError('Select at least one iPoint line to print.')
+      return
+    }
+    const poKey = normalizePoKey(poNumber)
+    setPrintingPoKey(poKey)
+    setError(null)
+    try {
+      await printLabelsWithDymo(rows)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Label print failed')
+    } finally {
+      setPrintingPoKey(null)
+    }
+  }
+
+  const toggleLabelSelect = (poNumber: string, lineId: string) => {
+    const k = makeLabelKey(poNumber, lineId)
+    setLabelSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
+      return next
+    })
+  }
+
+  const toggleAllLabelsForPo = (poNumber: string, lines: PoLineItem[]) => {
+    const keys = lines.map((l) => makeLabelKey(poNumber, l.id))
+    const allOn = keys.length > 0 && keys.every((k) => labelSelected.has(k))
+    setLabelSelected((prev) => {
+      const next = new Set(prev)
+      for (const k of keys) {
+        if (allOn) next.delete(k)
+        else next.add(k)
+      }
+      return next
+    })
+  }
 
   const toggleExpanded = (poNumber: string) => {
     const key = poNumber.toLowerCase()
@@ -490,9 +594,17 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       <header className="po-info-header">
         <h1>PO Info</h1>
         <p className="po-info-subtitle">
-          Barcode scans and documents per PO from the scanning web app.
+          Barcode scans, iPoint imports, room locations, and Dymo labels per PO.
         </p>
       </header>
+
+      <PoIpointImportPanel
+        jobRefs={jobRefs}
+        lineItemCount={lineItems.length}
+        locationCount={itemLocations.length}
+        onDataChanged={() => void load()}
+        onError={(msg) => setError(msg || null)}
+      />
 
       <div className="po-info-controls">
         <input
@@ -516,7 +628,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           <p>
             {searchPo.trim()
               ? 'No POs match your filter.'
-              : 'No PO check-in data yet. Data will appear here once the scanning web app pushes barcodes and documents to Supabase.'}
+              : 'No PO data yet. Import a PO Line Report above, or check in packages with the scanner app.'}
           </p>
         </div>
       ) : (
@@ -524,8 +636,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           {filtered.map((summary) => {
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
+            const poIpointLines = lineItemsForPo(summary.po_number, lineItems)
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
+            const allIpointLabelsSelected =
+              poIpointLines.length > 0 &&
+              poIpointLines.every((l) => labelSelected.has(makeLabelKey(summary.po_number, l.id)))
             const scanSort = poScanSortByKey[key] ?? { column: 'lastScan' as const, asc: false }
             const aggSorted = sortAggregatedRows(agg, catalogMap, scanSort.column, scanSort.asc)
             const scanTotal = summary.barcodes.length
@@ -549,6 +665,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     <span className="po-info-card-title">PO {summary.po_number}</span>
                     <span className="po-info-card-badge">
                       {[
+                        poIpointLines.length > 0 &&
+                          `${poIpointLines.length} iPoint line${poIpointLines.length !== 1 ? 's' : ''}`,
                         scanTotal > 0 &&
                           `${unique} barcode${unique !== 1 ? 's' : ''}${
                             scanTotal !== unique ? ` · ${scanTotal} scans` : ''
@@ -577,6 +695,81 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
 
                 {isExpanded && (
                   <div className="po-info-card-body">
+                    {poIpointLines.length > 0 && (
+                      <section className="po-info-section">
+                        <div className="po-info-ipoint-lines-header">
+                          <h4>iPoint line items</h4>
+                          <button
+                            type="button"
+                            className="po-info-print-labels-btn"
+                            disabled={printingPoKey === normalizePoKey(summary.po_number)}
+                            onClick={() => void handlePrintLabels(summary.po_number)}
+                          >
+                            {printingPoKey === normalizePoKey(summary.po_number)
+                              ? 'Printing…'
+                              : 'Print selected labels'}
+                          </button>
+                        </div>
+                        <p className="po-info-section-desc">
+                          From PO Line Report. Select rows and print Dymo labels (job name + room location).
+                          Install DYMO Connect on this PC for direct printing.
+                        </p>
+                        <div className="po-info-scan-table-wrap">
+                          <table className="po-info-scan-table po-info-ipoint-table">
+                            <thead>
+                              <tr>
+                                <th scope="col" className="po-info-scan-th-checkin">
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn po-info-scan-th-checkin-btn"
+                                    title={
+                                      allIpointLabelsSelected
+                                        ? 'Deselect all for printing'
+                                        : 'Select all for printing'
+                                    }
+                                    onClick={() =>
+                                      toggleAllLabelsForPo(summary.po_number, poIpointLines)
+                                    }
+                                  >
+                                    Print
+                                  </button>
+                                </th>
+                                <th scope="col">Item</th>
+                                <th scope="col">Job / customer</th>
+                                <th scope="col">Location</th>
+                                <th scope="col">PO date</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {poIpointLines.map((line) => {
+                                const labelKey = makeLabelKey(summary.po_number, line.id)
+                                const job = jobNameForLine(line, jobRefs)
+                                const loc = locationForLine(line, jobRefs, itemLocations)
+                                return (
+                                  <tr key={line.id}>
+                                    <td className="po-info-scan-checkin-cell">
+                                      <input
+                                        type="checkbox"
+                                        className="po-info-scan-checkin-input"
+                                        checked={labelSelected.has(labelKey)}
+                                        aria-label={`Print label for ${line.item_name}`}
+                                        onChange={() =>
+                                          toggleLabelSelect(summary.po_number, line.id)
+                                        }
+                                      />
+                                    </td>
+                                    <td className="po-info-scan-item-name">{line.item_name}</td>
+                                    <td className="po-info-meta">{job || line.job_or_customer || '—'}</td>
+                                    <td className="po-info-meta">{loc || '—'}</td>
+                                    <td className="po-info-meta">{line.po_date || '—'}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </section>
+                    )}
                     {agg.length > 0 && (
                       <section className="po-info-section">
                         <h4>Barcode scans</h4>

@@ -1,0 +1,12 @@
+# Supabase project config (optional locally). Set project_id via CLI or Dashboard.
+# Deploy functions: supabase functions deploy sync-wire-inventory --project-ref YOUR_REF
+
+[functions.sync-wire-inventory]
+# Database webhooks do not send a Supabase JWT; protect the URL with WIRE_INVENTORY_WEBHOOK_SECRET instead.
+verify_jwt = false
+
+[functions.non-inventory-orders-sync]
+verify_jwt = true
+
+[functions.sync-po-ipoint]
+verify_jwt = true

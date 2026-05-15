@@ -697,3 +697,234 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
 .po-info-catalog-edit-btn:hover {
   background: #334155;
 }
+
+/* iPoint import */
+.po-info-ipoint-section {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+}
+
+.po-info-ipoint-title {
+  margin: 0 0 0.35rem 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.po-info-ipoint-subtitle {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.po-info-ipoint-sync-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.po-info-sync-onedrive-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #3b82f6;
+  background: #1d4ed8;
+  color: #fff;
+  cursor: pointer;
+}
+
+.po-info-sync-onedrive-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.po-info-sync-onedrive-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.po-info-ipoint-last-sync {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.po-info-jobref-hint {
+  margin: -0.25rem 0 0.5rem;
+}
+
+.po-info-ipoint-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.po-info-ipoint-uploads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.po-info-ipoint-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border: 1px dashed #475569;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #0f172a;
+}
+
+.po-info-ipoint-upload:hover {
+  border-color: #64748b;
+  background: #172033;
+}
+
+.po-info-ipoint-upload input[type='file'] {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+.po-info-ipoint-upload-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #f1f5f9;
+}
+
+.po-info-ipoint-upload-hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.po-info-ipoint-busy,
+.po-info-ipoint-success {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.po-info-ipoint-success {
+  color: #86efac;
+}
+
+.po-info-ipoint-empty {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.po-info-jobref-block {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #334155;
+}
+
+.po-info-jobref-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.po-info-jobref-add input {
+  flex: 1;
+  min-width: 140px;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #f1f5f9;
+  font-size: 0.88rem;
+}
+
+.po-info-jobref-ref-input {
+  max-width: 6rem;
+  flex: 0 1 6rem;
+}
+
+.po-info-jobref-add button {
+  padding: 0.45rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #334155;
+  color: #f1f5f9;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.po-info-jobref-add button:hover:not(:disabled) {
+  background: #475569;
+}
+
+.po-info-jobref-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+.po-info-jobref-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.po-info-jobref-table th,
+.po-info-jobref-table td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #334155;
+}
+
+.po-info-jobref-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  background: #0f172a;
+}
+
+.po-info-ipoint-lines-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.po-info-ipoint-lines-header h4 {
+  margin: 0;
+}
+
+.po-info-print-labels-btn {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  border-radius: 6px;
+  border: 1px solid #3b82f6;
+  background: #1d4ed8;
+  color: #fff;
+  cursor: pointer;
+}
+
+.po-info-print-labels-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.po-info-print-labels-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.po-info-ipoint-table .po-info-scan-item-name {
+  max-width: 16rem;
+  word-break: break-word;
+}

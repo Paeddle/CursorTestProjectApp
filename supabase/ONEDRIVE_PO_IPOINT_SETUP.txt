@@ -1,0 +1,61 @@
+OneDrive iPoint sync (automatic PO Info data — no manual upload)
+================================================================
+
+What it does
+------------
+The PO Info page calls a Supabase Edge Function that reads your iPoint export files from
+a OneDrive folder and loads them into:
+
+  - po_job_refs        (JobRef.xlsx)
+  - po_line_items      (POLineReport.pdf / .xlsx / .csv)
+  - po_item_locations  (4152.xlsx, 4973.xlsx, …)
+
+When you save updated exports into that OneDrive folder, open PO Info (or click Sync now)
+and the app pulls the latest files automatically.
+
+OneDrive folder layout
+----------------------
+Create a folder in the same OneDrive account as wire inventory (default name: POInfo):
+
+  POInfo/
+    JobRef.xlsx
+    POLineReport.pdf          (or POLineReport.xlsx / POLineReport.csv)
+    4152.xlsx                 (room locations — filename = ref number)
+    4973.xlsx
+    …
+
+Tip: Point iPoint’s export/save location at this folder, or copy files there after each export.
+
+Supabase Edge Function secrets
+------------------------------
+Uses the same Microsoft Graph app as wire inventory (see ONEDRIVE_WIRE_CSV_SETUP.txt):
+
+  GRAPH_TENANT_ID
+  GRAPH_CLIENT_ID
+  GRAPH_CLIENT_SECRET
+  GRAPH_ONEDRIVE_USER_UPN
+  SUPABASE_SERVICE_ROLE_KEY
+  SUPABASE_URL
+
+Additional (optional):
+
+  ONEDRIVE_PO_IPOINT_FOLDER=POInfo    (folder path under the user’s OneDrive root)
+
+Deploy the function
+-------------------
+From repo root (Supabase CLI logged in):
+
+  supabase functions deploy sync-po-ipoint --project-ref YOUR_PROJECT_REF
+
+Database
+--------
+Run once in SQL Editor if not done yet:
+
+  supabase/add-po-ipoint-import.sql
+
+Testing
+-------
+1. Upload sample files to the OneDrive POInfo folder.
+2. Open PO Info on your DigitalOcean app (or localhost).
+3. Data should sync within a few seconds; check counts at the top of the iPoint section.
+4. If sync fails, open Supabase → Edge Functions → sync-po-ipoint → Logs.
