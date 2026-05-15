@@ -50,12 +50,17 @@ export function parseItemLocationsXlsx(buf: ArrayBuffer): ParsedItemLocationRow[
     const location =
       cellStr(map.get('locationname')) ||
       cellStr(map.get('location_name')) ||
-      cellStr(map.get('location'))
+      cellStr(map.get('location')) ||
+      cellStr(map.get('room')) ||
+      cellStr(map.get('room_name'))
     const product =
       cellStr(map.get('c_product_name')) ||
+      cellStr(map.get('c_productname')) ||
       cellStr(map.get('product_name')) ||
+      cellStr(map.get('productname')) ||
       cellStr(map.get('item')) ||
-      cellStr(map.get('product'))
+      cellStr(map.get('product')) ||
+      cellStr(map.get('description'))
     const manufacturer = cellStr(map.get('manufacturer')) || null
     const qty =
       parseQty(map.get('c_quantity_modified_total_to_order')) ??

@@ -11,6 +11,32 @@ function alphaKey(s: string): string {
   return norm(s).replace(/[^a-z0-9]/g, '')
 }
 
+/** Compare job ref numbers from filenames vs JobRef list (4152, 4152.0, etc.). */
+export function normalizeRefNumber(ref: string | number | null | undefined): string {
+  const s = String(ref ?? '').trim()
+  if (!s) return ''
+  const n = Number.parseFloat(s)
+  if (Number.isFinite(n) && Number.isInteger(n)) return String(Math.trunc(n))
+  const digits = s.replace(/\D/g, '')
+  return digits || s
+}
+
+function significantTokens(s: string): string[] {
+  return norm(s)
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3)
+}
+
+function locationProductLabels(row: PoItemLocation): string[] {
+  const labels: string[] = []
+  const product = (row.product_name || '').trim()
+  const mfr = (row.manufacturer || '').trim()
+  if (product) labels.push(product)
+  if (mfr) labels.push(mfr)
+  if (mfr && product) labels.push(`${mfr} ${product}`)
+  return labels
+}
+
 function jobPrefix(jobOrCustomer: string): string {
   const t = jobOrCustomer.trim()
   const i = t.indexOf(':')
@@ -45,7 +71,12 @@ export function resolveJobRef(
     let score = 0
 
     if (rn === nj) return r
-    if (rn.includes(nj) || nj.includes(rn)) score = 85
+    if (
+      (rn.length >= 8 || nj.length >= 8) &&
+      (rn.includes(nj) || nj.includes(rn))
+    ) {
+      score = 85
+    }
 
     const rPre = jobPrefix(r.job_name)
     const rSlug = jobSlug(r.job_name)
@@ -64,7 +95,7 @@ export function resolveJobRef(
     }
   }
 
-  return best?.ref ?? null
+  return best && best.score >= 75 ? best.ref : null
 }
 
 export function productNamesMatch(a: string, b: string): boolean {
@@ -80,7 +111,41 @@ export function productNamesMatch(a: string, b: string): boolean {
   if (ka === kb) return true
   if (ka.length >= 4 && kb.length >= 4 && (ka.includes(kb) || kb.includes(ka))) return true
 
+  const ta = significantTokens(a)
+  const tb = significantTokens(b)
+  if (ta.length > 0 && tb.length > 0) {
+    const tbSet = new Set(tb)
+    const hits = ta.filter(
+      (t) =>
+        tbSet.has(t) ||
+        [...tbSet].some((u) => u.includes(t) || t.includes(u))
+    )
+    const minTokens = Math.min(ta.length, tb.length)
+    if (hits.length >= 1 && hits.length >= Math.max(1, Math.ceil(minTokens * 0.5))) {
+      return true
+    }
+    const longestA = [...ta].sort((x, y) => y.length - x.length)[0]
+    const longestB = [...tb].sort((x, y) => y.length - x.length)[0]
+    if (
+      longestA &&
+      longestB &&
+      longestA.length >= 4 &&
+      longestB.length >= 4 &&
+      (longestA === longestB ||
+        longestA.includes(longestB) ||
+        longestB.includes(longestA))
+    ) {
+      return true
+    }
+  }
+
   return false
+}
+
+function rowMatchesProduct(row: PoItemLocation, productName: string): boolean {
+  const name = (productName || '').trim()
+  if (!name) return false
+  return locationProductLabels(row).some((label) => productNamesMatch(name, label))
 }
 
 /** All location rows for a product, optionally limited to one job ref number. */
@@ -94,11 +159,11 @@ export function findItemLocations(
 
   let pool = locations
   if (refNumber != null && String(refNumber).trim() !== '') {
-    const ref = String(refNumber).trim()
-    pool = locations.filter((l) => String(l.ref_number).trim() === ref)
+    const ref = normalizeRefNumber(refNumber)
+    pool = locations.filter((l) => normalizeRefNumber(l.ref_number) === ref)
   }
 
-  return pool.filter((l) => productNamesMatch(name, l.product_name))
+  return pool.filter((l) => rowMatchesProduct(l, name))
 }
 
 /** Single best location row (legacy). */
@@ -137,6 +202,17 @@ function locationNamesFromRows(matches: PoItemLocation[]): string[] {
   return dedupeLocationsByName(matches).map((m) => m.location_name.trim()).filter(Boolean)
 }
 
+function groupLocationsByRef(rows: PoItemLocation[]): Map<string, PoItemLocation[]> {
+  const byRef = new Map<string, PoItemLocation[]>()
+  for (const row of rows) {
+    const k = normalizeRefNumber(row.ref_number)
+    if (!k) continue
+    if (!byRef.has(k)) byRef.set(k, [])
+    byRef.get(k)!.push(row)
+  }
+  return byRef
+}
+
 /**
  * Room location rows for a PO line item (same rules as locationForLine, as a list).
  */
@@ -148,29 +224,21 @@ export function locationsForLine(
   const item = (line.item_name || '').trim()
   if (!item || locations.length === 0) return []
 
-  const ref = resolveJobRef(line.job_or_customer, jobRefs)
-
-  if (ref) {
-    const scoped = findItemLocations(item, ref.ref_number, locations)
-    if (scoped.length) return dedupeLocationsByName(scoped)
-  }
-
   const global = findItemLocations(item, null, locations)
   if (global.length === 0) return []
 
-  const byRef = new Map<string, PoItemLocation[]>()
-  for (const row of global) {
-    const k = String(row.ref_number).trim()
-    if (!byRef.has(k)) byRef.set(k, [])
-    byRef.get(k)!.push(row)
+  const byRef = groupLocationsByRef(global)
+  const ref = resolveJobRef(line.job_or_customer, jobRefs)
+
+  if (ref) {
+    const refKey = normalizeRefNumber(ref.ref_number)
+    const inRef = byRef.get(refKey)
+    if (inRef?.length) return dedupeLocationsByName(inRef)
+    // Product not in this ref's file — show matches if only one ref has this product.
+    if (byRef.size === 1) return dedupeLocationsByName(global)
   }
 
   if (byRef.size === 1) return dedupeLocationsByName(global)
-
-  if (ref) {
-    const inRef = byRef.get(String(ref.ref_number).trim())
-    if (inRef?.length) return dedupeLocationsByName(inRef)
-  }
 
   return dedupeLocationsByName(global)
 }

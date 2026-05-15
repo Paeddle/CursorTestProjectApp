@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase'
 import type { ParsedItemLocationRow } from '../lib/parseItemLocationsXlsx'
 import type { ParsedPoLineItem } from '../lib/parsePoLineReportXlsx'
 import type { ParsedJobRefRow } from '../lib/parseJobRefXlsx'
+import { normalizeRefNumber } from '../lib/poIpointMatch'
 import type { LocationFileSummary, PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 const BATCH = 200
@@ -49,14 +50,14 @@ export function summarizeLocationUploads(
   locations: PoItemLocation[],
   jobRefs: PoJobRef[]
 ): LocationFileSummary[] {
-  const linkedRefs = new Set(jobRefs.map((j) => String(j.ref_number).trim()))
+  const linkedRefs = new Set(jobRefs.map((j) => normalizeRefNumber(j.ref_number)))
   const byRef = new Map<
     string,
     { source_file: string | null; imported_at: string; row_count: number }
   >()
 
   for (const loc of locations) {
-    const ref = String(loc.ref_number).trim()
+    const ref = normalizeRefNumber(loc.ref_number)
     if (!ref) continue
     const cur = byRef.get(ref)
     if (!cur) {
