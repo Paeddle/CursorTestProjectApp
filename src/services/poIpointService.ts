@@ -120,11 +120,13 @@ async function deleteItemLocationsForRef(normRef: string): Promise<void> {
     if (delErr) throw new Error(delErr.message)
   }
 
+  let offset = 0
   while (true) {
     const { data, error } = await supabase
       .from('po_item_locations')
       .select('id, ref_number')
-      .limit(PAGE)
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE - 1)
     if (error) throw new Error(error.message)
     if (!data?.length) break
 
@@ -140,9 +142,12 @@ async function deleteItemLocationsForRef(normRef: string): Promise<void> {
           .in('id', chunk)
         if (delErr) throw new Error(delErr.message)
       }
+      offset = 0
+      continue
     }
 
     if (data.length < PAGE) break
+    offset += PAGE
   }
 }
 

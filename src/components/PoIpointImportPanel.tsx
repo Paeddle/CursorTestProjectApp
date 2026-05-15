@@ -233,29 +233,22 @@ function PoIpointImportPanel({
               const files = Array.from(e.target.files ?? [])
               e.target.value = ''
               if (!files.length) return
-              void (async () => {
-                setBusy('locations')
-                onError('')
-                try {
-                  const details: string[] = []
-                  let total = 0
-                  for (const f of files) {
-                    const { count, detail } = await handleLocationFile(f)
-                    total += count
-                    if (detail) details.push(detail)
-                  }
-                  setImportMsg(
+              void runImport('locations', async () => {
+                const details: string[] = []
+                let total = 0
+                for (const f of files) {
+                  const { count, detail } = await handleLocationFile(f)
+                  total += count
+                  if (detail) details.push(detail)
+                }
+                return {
+                  count: total,
+                  detail:
                     details.length > 0
                       ? details.join(' ')
-                      : `Item locations: imported ${total} row${total === 1 ? '' : 's'} into Supabase.`
-                  )
-                  onDataChanged()
-                } catch (err) {
-                  onError(err instanceof Error ? err.message : 'Location import failed')
-                } finally {
-                  setBusy(null)
+                      : undefined,
                 }
-              })()
+              })
             }}
           />
         </label>
