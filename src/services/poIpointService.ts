@@ -6,6 +6,74 @@ import { normalizeRefNumber } from '../lib/poIpointMatch'
 import type { LocationFileSummary, PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 const BATCH = 200
+/** Supabase/PostgREST returns at most 1000 rows per request unless paginated. */
+const PAGE = 1000
+
+async function fetchAllRows<T>(table: string, orderColumn: string): Promise<T[]> {
+  const out: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .order(orderColumn, { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    const chunk = (data ?? []) as T[]
+    out.push(...chunk)
+    if (chunk.length < PAGE) break
+    from += PAGE
+  }
+  return out
+}
+
+/** Remove every row for a job ref (handles legacy ref_number formats). */
+async function deleteItemLocationsForRef(normRef: string): Promise<void> {
+  for (;;) {
+    const { data, error } = await supabase
+      .from('po_item_locations')
+      .select('id')
+      .eq('ref_number', normRef)
+      .limit(BATCH)
+    if (error) throw new Error(error.message)
+    if (!data?.length) break
+    const { error: delErr } = await supabase
+      .from('po_item_locations')
+      .delete()
+      .in(
+        'id',
+        data.map((r) => r.id)
+      )
+    if (delErr) throw new Error(delErr.message)
+  }
+
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('po_item_locations')
+      .select('id, ref_number')
+      .range(offset, offset + PAGE - 1)
+    if (error) throw new Error(error.message)
+    if (!data?.length) break
+
+    const ids = data
+      .filter((r) => normalizeRefNumber(r.ref_number) === normRef)
+      .map((r) => r.id)
+    if (ids.length) {
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const chunk = ids.slice(i, i + BATCH)
+        const { error: delErr } = await supabase
+          .from('po_item_locations')
+          .delete()
+          .in('id', chunk)
+        if (delErr) throw new Error(delErr.message)
+      }
+    }
+
+    if (data.length < PAGE) break
+    offset += PAGE
+  }
+}
 
 async function insertBatches<T extends Record<string, unknown>>(
   table: string,
@@ -28,24 +96,14 @@ export async function fetchPoJobRefs(): Promise<PoJobRef[]> {
 }
 
 export async function fetchPoLineItems(): Promise<PoLineItem[]> {
-  const { data, error } = await supabase
-    .from('po_line_items')
-    .select('*')
-    .order('po_number', { ascending: true })
-  if (error) throw new Error(error.message)
-  return (data ?? []) as PoLineItem[]
+  return fetchAllRows<PoLineItem>('po_line_items', 'po_number')
 }
 
 export async function fetchPoItemLocations(): Promise<PoItemLocation[]> {
-  const { data, error } = await supabase
-    .from('po_item_locations')
-    .select('*')
-    .order('ref_number', { ascending: true })
-  if (error) throw new Error(error.message)
-  return (data ?? []) as PoItemLocation[]
+  return fetchAllRows<PoItemLocation>('po_item_locations', 'ref_number')
 }
 
-/** Group location rows by ref → latest upload file name and whether a job ref exists. */
+/** Group location rows by ref → latest upload batch (file name, row count, job link status). */
 export function summarizeLocationUploads(
   locations: PoItemLocation[],
   jobRefs: PoJobRef[]
@@ -68,9 +126,14 @@ export function summarizeLocationUploads(
       })
       continue
     }
-    cur.row_count++
-    if (loc.imported_at >= cur.imported_at) {
-      cur.imported_at = loc.imported_at
+    if (loc.imported_at > cur.imported_at) {
+      byRef.set(ref, {
+        source_file: loc.source_file,
+        imported_at: loc.imported_at,
+        row_count: 1,
+      })
+    } else if (loc.imported_at === cur.imported_at) {
+      cur.row_count++
       if (loc.source_file) cur.source_file = loc.source_file
     }
   }
@@ -134,15 +197,14 @@ export async function importItemLocations(
   rows: ParsedItemLocationRow[],
   sourceFile: string
 ): Promise<number> {
-  const { error: delErr } = await supabase
-    .from('po_item_locations')
-    .delete()
-    .eq('ref_number', refNumber)
-  if (delErr) throw new Error(delErr.message)
+  const normRef = normalizeRefNumber(refNumber)
+  if (!normRef) throw new Error('Invalid ref number in filename.')
+
+  await deleteItemLocationsForRef(normRef)
 
   const imported_at = new Date().toISOString()
   const payload = rows.map((r) => ({
-    ref_number: refNumber,
+    ref_number: normRef,
     location_name: r.location_name,
     manufacturer: r.manufacturer,
     product_name: r.product_name,

@@ -13,7 +13,7 @@ import {
   importPoLineReport,
   summarizeLocationUploads,
 } from '../services/poIpointService'
-import { productNamesMatch } from '../lib/poIpointMatch'
+import { findItemLocations } from '../lib/poIpointMatch'
 import type { PoItemLocation, PoJobRef } from '../types/poIpoint'
 
 type Props = {
@@ -63,33 +63,12 @@ function PoIpointImportPanel({
   const productLookupHits = useMemo(() => {
     const q = productLookup.trim()
     if (!q || itemLocations.length === 0) return []
-
-    const hits: {
-      id: string
-      ref_number: string
-      product_name: string
-      location_name: string
-    }[] = []
-    for (const loc of itemLocations) {
-      const product = (loc.product_name || '').trim()
-      const location = (loc.location_name || '').trim()
-      if (!product || !location) continue
-      if (!productNamesMatch(q, product) && !productNamesMatch(q, loc.manufacturer || '')) {
-        continue
-      }
-      hits.push({
-        id: loc.id,
-        ref_number: String(loc.ref_number).trim(),
-        product_name: product,
-        location_name: location,
-      })
-    }
-    hits.sort(
+    return findItemLocations(q, null, itemLocations).sort(
       (a, b) =>
-        a.ref_number.localeCompare(b.ref_number, undefined, { numeric: true }) ||
-        a.location_name.localeCompare(b.location_name)
+        String(a.ref_number).localeCompare(String(b.ref_number), undefined, {
+          numeric: true,
+        }) || a.location_name.localeCompare(b.location_name)
     )
-    return hits
   }, [itemLocations, productLookup])
 
   const runImport = useCallback(
@@ -141,15 +120,20 @@ function PoIpointImportPanel({
     }
   }
 
-  const handleLocationFile = async (file: File): Promise<{ count: number }> => {
+  const handleLocationFile = async (
+    file: File
+  ): Promise<{ count: number; detail?: string }> => {
     const ref = refNumberFromFilename(file.name)
     if (!ref) {
       throw new Error('Filename must include a ref number (e.g. 4152.xlsx or SalesOrder_4152.xlsx).')
     }
     const rows = parseItemLocationsXlsx(await file.arrayBuffer())
     if (rows.length === 0) throw new Error('No locations found in spreadsheet.')
-    await importItemLocations(ref, rows, file.name)
-    return { count: rows.length }
+    const count = await importItemLocations(ref, rows, file.name)
+    return {
+      count,
+      detail: `Ref ${ref}: ${count} row${count !== 1 ? 's' : ''} from ${file.name}.`,
+    }
   }
 
   const handleAddJobRef = async () => {
@@ -222,13 +206,17 @@ function PoIpointImportPanel({
                 setBusy('locations')
                 onError('')
                 try {
+                  const details: string[] = []
                   let total = 0
                   for (const f of files) {
-                    const { count } = await handleLocationFile(f)
+                    const { count, detail } = await handleLocationFile(f)
                     total += count
+                    if (detail) details.push(detail)
                   }
                   setImportMsg(
-                    `Item locations: imported ${total} row${total === 1 ? '' : 's'} into Supabase.`
+                    details.length > 0
+                      ? details.join(' ')
+                      : `Item locations: imported ${total} row${total === 1 ? '' : 's'} into Supabase.`
                   )
                   onDataChanged()
                 } catch (err) {
@@ -248,7 +236,8 @@ function PoIpointImportPanel({
       <div className="po-info-location-files-block">
         <h3 className="po-info-ipoint-subtitle">Uploaded location files</h3>
         <p className="po-info-section-desc po-info-jobref-hint">
-          Each ref number you have uploaded appears here. Refs marked{' '}
+          Each ref number you have uploaded appears here (row count is from the latest upload for
+          that ref). Refs marked{' '}
           <strong className="po-info-needs-ref-label">Needs job ref</strong> are not in the job
           reference list yet — add a row below with the job name from the PO Line Report and this
           ref number.
