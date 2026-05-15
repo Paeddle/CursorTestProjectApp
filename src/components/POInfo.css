@@ -991,3 +991,47 @@ tr.po-info-location-file-needs-ref td {
   max-width: 16rem;
   word-break: break-word;
 }
+
+.po-info-ipoint-th-scanned {
+  width: 6.5rem;
+  text-align: center;
+}
+
+.po-info-ipoint-scanned-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.po-info-ipoint-scanned-yes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.po-info-ipoint-scanned-no {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fcd34d;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+tr.po-info-ipoint-row-not-scanned td:not(.po-info-ipoint-scanned-cell) {
+  opacity: 0.92;
+}
+
+tr.po-info-ipoint-row-not-scanned .po-info-scan-item-name {
+  color: #fde68a;
+}

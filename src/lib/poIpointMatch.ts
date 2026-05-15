@@ -1,3 +1,5 @@
+import { lookupCatalogItem } from './barcodeCatalogLookup'
+import type { BarcodeCatalogItem, POBarcode } from '../types/poCheckin'
 import type { PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 function norm(s: string): string {
@@ -177,4 +179,31 @@ export function normalizePoKey(po: string): string {
 export function lineItemsForPo(poNumber: string, items: PoLineItem[]): PoLineItem[] {
   const key = normalizePoKey(poNumber)
   return items.filter((i) => normalizePoKey(i.po_number) === key)
+}
+
+/** Labels from scanner check-ins on a PO (catalog name, part #, raw barcode). */
+export function poScanMatchLabels(
+  barcodes: POBarcode[],
+  catalogMap: Map<string, BarcodeCatalogItem>
+): string[] {
+  const labels: string[] = []
+  for (const b of barcodes) {
+    const v = (b.barcode_value || '').trim()
+    if (!v) continue
+    const cat = lookupCatalogItem(catalogMap, v)
+    if (cat?.item_name?.trim()) labels.push(cat.item_name.trim())
+    if (cat?.part_number?.trim()) labels.push(cat.part_number.trim())
+    labels.push(v)
+  }
+  return labels
+}
+
+/** True if any barcode scan on this PO matches the iPoint line item name. */
+export function ipointLineIsScanned(
+  line: PoLineItem,
+  scanLabels: string[]
+): boolean {
+  const item = (line.item_name || '').trim()
+  if (!item || scanLabels.length === 0) return false
+  return scanLabels.some((label) => label && productNamesMatch(item, label))
 }

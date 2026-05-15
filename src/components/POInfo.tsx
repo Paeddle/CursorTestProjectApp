@@ -15,7 +15,14 @@ import {
   fetchPoJobRefs,
   fetchPoLineItems,
 } from '../services/poIpointService'
-import { jobNameForLine, lineItemsForPo, locationForLine, normalizePoKey } from '../lib/poIpointMatch'
+import {
+  ipointLineIsScanned,
+  jobNameForLine,
+  lineItemsForPo,
+  locationForLine,
+  normalizePoKey,
+  poScanMatchLabels,
+} from '../lib/poIpointMatch'
 import { printLabelsWithDymo } from '../lib/dymoLabelPrint'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import PoIpointImportPanel from './PoIpointImportPanel'
@@ -638,6 +645,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
             const poIpointLines = lineItemsForPo(summary.po_number, lineItems)
+            const poScanLabels = poScanMatchLabels(summary.barcodes, catalogMap)
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
             const allIpointLabelsSelected =
@@ -736,6 +744,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     Print
                                   </button>
                                 </th>
+                                <th scope="col" className="po-info-ipoint-th-scanned">
+                                  Scanned
+                                </th>
                                 <th scope="col">Item</th>
                                 <th scope="col">Job / customer</th>
                                 <th scope="col">Location</th>
@@ -747,8 +758,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const labelKey = makeLabelKey(summary.po_number, line.id)
                                 const job = jobNameForLine(line, jobRefs)
                                 const loc = locationForLine(line, jobRefs, itemLocations)
+                                const isScanned = ipointLineIsScanned(line, poScanLabels)
                                 return (
-                                  <tr key={line.id}>
+                                  <tr
+                                    key={line.id}
+                                    className={
+                                      isScanned ? undefined : 'po-info-ipoint-row-not-scanned'
+                                    }
+                                  >
                                     <td className="po-info-scan-checkin-cell">
                                       <input
                                         type="checkbox"
@@ -759,6 +776,21 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                           toggleLabelSelect(summary.po_number, line.id)
                                         }
                                       />
+                                    </td>
+                                    <td className="po-info-ipoint-scanned-cell">
+                                      {isScanned ? (
+                                        <span
+                                          className="po-info-ipoint-scanned-yes"
+                                          title="Matched to a barcode scan on this PO"
+                                          aria-label="Scanned in"
+                                        >
+                                          ✓
+                                        </span>
+                                      ) : (
+                                        <span className="po-info-ipoint-scanned-no">
+                                          Not scanned
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="po-info-scan-item-name">{line.item_name}</td>
                                     <td className="po-info-meta">{job || line.job_or_customer || '—'}</td>

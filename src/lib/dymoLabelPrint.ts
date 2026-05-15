@@ -24,11 +24,11 @@ const LABEL_XML = `<?xml version="1.0" encoding="utf-8"?>
       <IsVariable>True</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>ShrinkToFit</TextFitMode>
+      <TextFitMode>None</TextFitMode>
       <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
-        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="12" Bold="True"/></Attributes></Element>
+        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="24" Bold="True"/></Attributes></Element>
       </StyledText>
     </TextObject>
     <Bounds X="128" Y="18" Width="2218" Height="608"/>
@@ -98,16 +98,70 @@ export function getDymoPrinterNames(): string[] {
   }
 }
 
-function truncate(s: string, max: number): string {
-  const t = s.trim()
-  if (t.length <= max) return t
-  return t.slice(0, max - 1) + '…'
+/** ~24pt Arial bold on 30323 printable width (2218 twips). */
+const DYMO_MAX_CHARS_PER_LINE = 21
+const BROWSER_JOB_MAX_CHARS_PER_LINE = 22
+const BROWSER_LOC_MAX_CHARS_PER_LINE = 26
+
+/** Break text onto new lines at word boundaries; long tokens split to fit. */
+export function wrapTextToLines(text: string, maxChars: number): string[] {
+  const t = text.trim()
+  if (!t || maxChars < 1) return []
+
+  const lines: string[] = []
+  let current = ''
+
+  const flush = () => {
+    if (current) {
+      lines.push(current)
+      current = ''
+    }
+  }
+
+  const appendToken = (token: string) => {
+    let rest = token
+    while (rest.length > 0) {
+      if (!current) {
+        if (rest.length <= maxChars) {
+          current = rest
+          rest = ''
+        } else {
+          lines.push(rest.slice(0, maxChars))
+          rest = rest.slice(maxChars)
+        }
+        continue
+      }
+
+      const joined = `${current} ${rest}`
+      if (joined.length <= maxChars) {
+        current = joined
+        rest = ''
+      } else {
+        flush()
+      }
+    }
+  }
+
+  for (const word of t.split(/\s+/)) {
+    if (word) appendToken(word)
+  }
+  flush()
+  return lines
 }
 
 function labelLines(row: PoLabelPrintRow): string {
-  const job = truncate(row.job_name || row.item_name, 80)
-  const loc = truncate(row.location_name || '—', 80)
-  return `${job}\n${loc}`
+  const jobLines = wrapTextToLines(row.job_name || row.item_name || '', DYMO_MAX_CHARS_PER_LINE)
+  const locLines = wrapTextToLines(row.location_name || '—', DYMO_MAX_CHARS_PER_LINE)
+  return [...jobLines, ...locLines].join('\n')
+}
+
+function browserLabelParts(row: PoLabelPrintRow): { job: string; loc: string } {
+  return {
+    job: wrapTextToLines(row.job_name || row.item_name || '', BROWSER_JOB_MAX_CHARS_PER_LINE).join(
+      '\n'
+    ),
+    loc: wrapTextToLines(row.location_name || '—', BROWSER_LOC_MAX_CHARS_PER_LINE).join('\n'),
+  }
 }
 
 export async function printLabelsWithDymo(
@@ -142,15 +196,16 @@ export async function printLabelsWithDymo(
 /** Fallback: open print dialog with one label-sized block per row. */
 export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
   const html = rows
-    .map(
-      (r) => `
+    .map((r) => {
+      const { job, loc } = browserLabelParts(r)
+      return `
     <div class="label">
       <div class="label-inner">
-        <div class="label-job">${escapeHtml(r.job_name || r.item_name)}</div>
-        <div class="label-loc">${escapeHtml(r.location_name || '—')}</div>
+        <div class="label-job">${escapeHtml(job)}</div>
+        <div class="label-loc">${escapeHtml(loc)}</div>
       </div>
     </div>`
-    )
+    })
     .join('')
 
   const doc = `<!DOCTYPE html><html><head><title>Labels</title>
@@ -174,14 +229,18 @@ body { margin: 0; }
   padding: 0.08in;
   box-sizing: border-box;
 }
+.label-job,
+.label-loc {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
 .label-job {
   font-weight: bold;
-  font-size: 11pt;
-  line-height: 1.25;
+  font-size: 22pt;
 }
 .label-loc {
-  font-size: 9pt;
-  line-height: 1.25;
+  font-size: 18pt;
 }
 </style></head><body>${html}</body></html>`
 
