@@ -1,8 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { extractPdfPlainTextForPoLineReport } from '../lib/extractPdfLines'
 import { parsePoLineReportText } from '../lib/parsePoLineReport'
 import { parsePoLineReportXlsx } from '../lib/parsePoLineReportXlsx'
-import { parseJobRefXlsx } from '../lib/parseJobRefXlsx'
 import {
   parseItemLocationsXlsx,
   refNumberFromFilename,
@@ -11,21 +10,34 @@ import {
   addJobRef,
   deleteJobRef,
   importItemLocations,
-  importJobRefs,
   importPoLineReport,
+  summarizeLocationUploads,
 } from '../services/poIpointService'
-import type { PoJobRef } from '../types/poIpoint'
+import type { PoItemLocation, PoJobRef } from '../types/poIpoint'
 
 type Props = {
   jobRefs: PoJobRef[]
+  itemLocations: PoItemLocation[]
   lineItemCount: number
   locationCount: number
   onDataChanged: () => void
   onError: (msg: string) => void
 }
 
+function formatImportedAt(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    })
+  } catch {
+    return iso
+  }
+}
+
 function PoIpointImportPanel({
   jobRefs,
+  itemLocations,
   lineItemCount,
   locationCount,
   onDataChanged,
@@ -35,6 +47,16 @@ function PoIpointImportPanel({
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [newJobName, setNewJobName] = useState('')
   const [newRef, setNewRef] = useState('')
+
+  const locationFiles = useMemo(
+    () => summarizeLocationUploads(itemLocations, jobRefs),
+    [itemLocations, jobRefs]
+  )
+
+  const refsNeedingJob = useMemo(
+    () => locationFiles.filter((f) => !f.has_job_ref),
+    [locationFiles]
+  )
 
   const runImport = useCallback(
     async (label: string, fn: () => Promise<number>) => {
@@ -75,17 +97,10 @@ function PoIpointImportPanel({
     return rows.length
   }
 
-  const handleJobRefFile = async (file: File) => {
-    const rows = parseJobRefXlsx(await file.arrayBuffer())
-    if (rows.length === 0) throw new Error('No job references found.')
-    await importJobRefs(rows)
-    return rows.length
-  }
-
   const handleLocationFile = async (file: File) => {
     const ref = refNumberFromFilename(file.name)
     if (!ref) {
-      throw new Error('Filename must be a ref number (e.g. 4152.xlsx).')
+      throw new Error('Filename must include a ref number (e.g. 4152.xlsx or SalesOrder_4152.xlsx).')
     }
     const rows = parseItemLocationsXlsx(await file.arrayBuffer())
     if (rows.length === 0) throw new Error('No locations found in spreadsheet.')
@@ -116,14 +131,16 @@ function PoIpointImportPanel({
     <section className="po-info-ipoint-section">
       <h2 className="po-info-ipoint-title">iPoint data import</h2>
       <p className="po-info-section-desc">
-        Upload iPoint exports below. Each file is parsed in your browser and saved to Supabase.
-        Run <code>supabase/add-po-ipoint-import.sql</code> once if the tables are not created yet.
+        Upload the PO Line Report and location spreadsheets below. Manage job names and ref numbers
+        in the job reference list — no JobRef file upload needed. Copy job names from the PO Line
+        Report so they match exactly.
       </p>
 
       <div className="po-info-ipoint-stats">
         <span>{lineItemCount} PO line{lineItemCount !== 1 ? 's' : ''}</span>
         <span>{jobRefs.length} job ref{jobRefs.length !== 1 ? 's' : ''}</span>
         <span>{locationCount} location row{locationCount !== 1 ? 's' : ''}</span>
+        <span>{locationFiles.length} location file{locationFiles.length !== 1 ? 's' : ''}</span>
       </div>
 
       <div className="po-info-ipoint-uploads">
@@ -144,23 +161,9 @@ function PoIpointImportPanel({
           />
         </label>
         <label className="po-info-ipoint-upload">
-          <span className="po-info-ipoint-upload-label">JobRef</span>
-          <span className="po-info-ipoint-upload-hint">JobRef.xlsx — merges by ref number</span>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            disabled={!!busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              e.target.value = ''
-              if (f) void runImport('JobRef', () => handleJobRefFile(f))
-            }}
-          />
-        </label>
-        <label className="po-info-ipoint-upload">
           <span className="po-info-ipoint-upload-label">Item locations</span>
           <span className="po-info-ipoint-upload-hint">
-            4152.xlsx — ref from filename; replaces that ref
+            e.g. 4152.xlsx — ref number taken from filename
           </span>
           <input
             type="file"
@@ -197,15 +200,72 @@ function PoIpointImportPanel({
       {busy && <p className="po-info-ipoint-busy">Working: {busy}…</p>}
       {importMsg && <p className="po-info-ipoint-success">{importMsg}</p>}
 
+      <div className="po-info-location-files-block">
+        <h3 className="po-info-ipoint-subtitle">Uploaded location files</h3>
+        <p className="po-info-section-desc po-info-jobref-hint">
+          Each ref number you have uploaded appears here. Refs marked{' '}
+          <strong className="po-info-needs-ref-label">Needs job ref</strong> are not in the job
+          reference list yet — add a row below with the job name from the PO Line Report and this
+          ref number.
+        </p>
+        {refsNeedingJob.length > 0 && (
+          <p className="po-info-ipoint-needs-ref-banner">
+            {refsNeedingJob.length} ref{refsNeedingJob.length !== 1 ? 's' : ''} still need a job
+            name: {refsNeedingJob.map((f) => f.ref_number).join(', ')}
+          </p>
+        )}
+        {locationFiles.length === 0 ? (
+          <p className="po-info-ipoint-empty">No location files uploaded yet.</p>
+        ) : (
+          <div className="po-info-jobref-table-wrap">
+            <table className="po-info-jobref-table po-info-location-files-table">
+              <thead>
+                <tr>
+                  <th>Ref #</th>
+                  <th>File name</th>
+                  <th>Rows</th>
+                  <th>Uploaded</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locationFiles.map((f) => (
+                  <tr
+                    key={f.ref_number}
+                    className={f.has_job_ref ? undefined : 'po-info-location-file-needs-ref'}
+                  >
+                    <td className="po-info-jobref-ref">
+                      <code>{f.ref_number}</code>
+                    </td>
+                    <td className="po-info-location-filename">
+                      {f.source_file || '—'}
+                    </td>
+                    <td className="po-info-location-rows">{f.row_count}</td>
+                    <td className="po-info-meta">{formatImportedAt(f.imported_at)}</td>
+                    <td>
+                      {f.has_job_ref ? (
+                        <span className="po-info-location-status-ok">Linked</span>
+                      ) : (
+                        <span className="po-info-location-status-needs">Needs job ref</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="po-info-jobref-block">
         <h3 className="po-info-ipoint-subtitle">Job reference list</h3>
         <p className="po-info-section-desc po-info-jobref-hint">
-          Usually populated from <code>JobRef.xlsx</code>. You can also add or remove rows here.
+          Link each ref number to the job name from the PO Line Report (must match iPoint text).
         </p>
         <div className="po-info-jobref-add">
           <input
             type="text"
-            placeholder="Job name"
+            placeholder="Job name (from PO Line Report)"
             value={newJobName}
             onChange={(e) => setNewJobName(e.target.value)}
             disabled={!!busy}
@@ -223,7 +283,9 @@ function PoIpointImportPanel({
           </button>
         </div>
         {jobRefs.length === 0 ? (
-          <p className="po-info-ipoint-empty">No job refs yet. Upload JobRef.xlsx or add rows above.</p>
+          <p className="po-info-ipoint-empty">
+            No job refs yet. Add rows above for each ref in the uploaded location files list.
+          </p>
         ) : (
           <div className="po-info-jobref-table-wrap">
             <table className="po-info-jobref-table">
@@ -237,8 +299,8 @@ function PoIpointImportPanel({
               <tbody>
                 {jobRefs.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.job_name}</td>
-                    <td>
+                    <td className="po-info-jobref-name">{r.job_name}</td>
+                    <td className="po-info-jobref-ref">
                       <code>{r.ref_number}</code>
                     </td>
                     <td>

@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase'
 import type { ParsedItemLocationRow } from '../lib/parseItemLocationsXlsx'
 import type { ParsedPoLineItem } from '../lib/parsePoLineReportXlsx'
 import type { ParsedJobRefRow } from '../lib/parseJobRefXlsx'
-import type { PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
+import type { LocationFileSummary, PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
 
 const BATCH = 200
 
@@ -42,6 +42,49 @@ export async function fetchPoItemLocations(): Promise<PoItemLocation[]> {
     .order('ref_number', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? []) as PoItemLocation[]
+}
+
+/** Group location rows by ref → latest upload file name and whether a job ref exists. */
+export function summarizeLocationUploads(
+  locations: PoItemLocation[],
+  jobRefs: PoJobRef[]
+): LocationFileSummary[] {
+  const linkedRefs = new Set(jobRefs.map((j) => String(j.ref_number).trim()))
+  const byRef = new Map<
+    string,
+    { source_file: string | null; imported_at: string; row_count: number }
+  >()
+
+  for (const loc of locations) {
+    const ref = String(loc.ref_number).trim()
+    if (!ref) continue
+    const cur = byRef.get(ref)
+    if (!cur) {
+      byRef.set(ref, {
+        source_file: loc.source_file,
+        imported_at: loc.imported_at,
+        row_count: 1,
+      })
+      continue
+    }
+    cur.row_count++
+    if (loc.imported_at >= cur.imported_at) {
+      cur.imported_at = loc.imported_at
+      if (loc.source_file) cur.source_file = loc.source_file
+    }
+  }
+
+  return [...byRef.entries()]
+    .map(([ref_number, v]) => ({
+      ref_number,
+      source_file: v.source_file,
+      row_count: v.row_count,
+      imported_at: v.imported_at,
+      has_job_ref: linkedRefs.has(ref_number),
+    }))
+    .sort((a, b) =>
+      a.ref_number.localeCompare(b.ref_number, undefined, { numeric: true })
+    )
 }
 
 export async function importJobRefs(rows: ParsedJobRefRow[]): Promise<number> {

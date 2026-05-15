@@ -600,6 +600,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
 
       <PoIpointImportPanel
         jobRefs={jobRefs}
+        itemLocations={itemLocations}
         lineItemCount={lineItems.length}
         locationCount={itemLocations.length}
         onDataChanged={() => void load()}
@@ -711,7 +712,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           </button>
                         </div>
                         <p className="po-info-section-desc">
-                          From PO Line Report. Select rows and print Dymo labels (job name + room location).
+                          From PO Line Report. Locations come from the ref spreadsheets (e.g. 4152.xlsx)
+                          matched by JobRef + item name. Upload JobRef, PO Line Report, then each ref file.
                           Install DYMO Connect on this PC for direct printing.
                         </p>
                         <div className="po-info-scan-table-wrap">

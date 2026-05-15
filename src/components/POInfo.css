@@ -823,6 +823,54 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
   color: #94a3b8;
 }
 
+.po-info-location-files-block {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #334155;
+}
+
+.po-info-ipoint-needs-ref-banner {
+  margin: 0 0 0.75rem 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fcd34d;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.po-info-needs-ref-label {
+  color: #fcd34d;
+  font-weight: 600;
+}
+
+.po-info-location-files-table .po-info-location-filename {
+  color: #ffffff !important;
+  word-break: break-word;
+  max-width: 18rem;
+}
+
+.po-info-location-files-table .po-info-location-rows {
+  color: #e2e8f0 !important;
+}
+
+.po-info-location-status-ok {
+  color: #86efac;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.po-info-location-status-needs {
+  color: #fcd34d;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+tr.po-info-location-file-needs-ref td {
+  background: rgba(251, 191, 36, 0.06);
+}
+
 .po-info-jobref-block {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -883,6 +931,21 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
   padding: 0.45rem 0.75rem;
   text-align: left;
   border-bottom: 1px solid #334155;
+}
+
+.po-info-jobref-table tbody td {
+  color: #ffffff !important;
+  background: #0f172a;
+}
+
+.po-info-jobref-name,
+.po-info-jobref-ref,
+.po-info-jobref-ref code {
+  color: #ffffff !important;
+}
+
+.po-info-jobref-name {
+  font-weight: 500;
 }
 
 .po-info-jobref-table th {

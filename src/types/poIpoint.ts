@@ -30,6 +30,15 @@ export interface PoItemLocation {
   created_at: string
 }
 
+/** One uploaded location spreadsheet (grouped by ref number in storage). */
+export interface LocationFileSummary {
+  ref_number: string
+  source_file: string | null
+  row_count: number
+  imported_at: string
+  has_job_ref: boolean
+}
+
 /** Row ready for label printing (merged iPoint + location data). */
 export interface PoLabelPrintRow {
   key: string

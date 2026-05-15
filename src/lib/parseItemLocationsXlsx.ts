@@ -23,11 +23,13 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, '_')
 }
 
-/** Extract 4-digit ref from filename like "4152.xlsx". */
+/** Extract job ref number from filename (4152.xlsx, SalesOrder_4152.xlsx, etc.). */
 export function refNumberFromFilename(name: string): string | null {
   const base = name.replace(/\.[^.]+$/, '').trim()
-  const m = base.match(/^(\d{3,6})$/)
-  return m ? m[1]! : null
+  const exact = base.match(/^(\d{3,6})$/)
+  if (exact) return exact[1]!
+  const embedded = base.match(/(?:^|[^0-9])(\d{3,6})(?:[^0-9]|$)/)
+  return embedded ? embedded[1]! : null
 }
 
 /** Parse job location spreadsheet (4152.xlsx / 4973.xlsx). */
