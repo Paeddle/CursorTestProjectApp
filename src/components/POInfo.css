@@ -1029,6 +1029,12 @@ tr.po-info-location-file-needs-ref td {
   word-break: break-word;
 }
 
+.po-info-ipoint-qty-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .po-info-ipoint-th-scanned {
   width: 7.5rem;
   text-align: center;

@@ -1002,7 +1002,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 </th>
                                 <th scope="col">Job / customer</th>
                                 <th scope="col">Location</th>
-                                <th scope="col">PO date</th>
+                                <th scope="col">Quantity</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1078,7 +1078,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         }
                                       />
                                     </td>
-                                    <td className="po-info-meta">{line.po_date || '—'}</td>
+                                    <td className="po-info-meta po-info-ipoint-qty-cell">
+                                      {(line.quantity ?? '').trim() || '—'}
+                                    </td>
                                   </tr>
                                 )
                               })}
