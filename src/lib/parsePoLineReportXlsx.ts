@@ -34,7 +34,20 @@ function normalizePoNumber(raw: string): string {
 }
 
 function normalizeHeader(h: string): string {
-  return h.trim().toLowerCase().replace(/\s+/g, '_')
+  return h.trim().toLowerCase().replace(/\s+/g, '_').replace(/\./g, '')
+}
+
+/** Quantity requested (Req. column in iPoint PO Line Report). */
+function quantityFromRow(map: Map<string, unknown>): string {
+  return (
+    cellStr(map.get('req')) ||
+    cellStr(map.get('quantity_requested')) ||
+    cellStr(map.get('quantity_req')) ||
+    cellStr(map.get('qty_req')) ||
+    cellStr(map.get('quantity')) ||
+    cellStr(map.get('qty')) ||
+    ''
+  )
 }
 
 export type ParsedPoLineItem = PoLineReportCsvRow & { po_date: string | null }
@@ -95,7 +108,7 @@ function parseStructuredSheet(sheet: XLSX.WorkSheet): ParsedPoLineItem[] {
       part_number: cellStr(map.get('part_number')),
       description: cellStr(map.get('description')),
       color: cellStr(map.get('color')),
-      quantity: cellStr(map.get('quantity')),
+      quantity: quantityFromRow(map),
       job_or_customer: job || '',
       po_date: poDate,
     })

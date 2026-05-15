@@ -54,15 +54,64 @@ function parseCustomerFromLine(trimmed: string): string | null {
   return afterLabel.replace(/\s+\d+(\s+\d+)*(\s+\$[\d,.]+)*.*$/, '').trim() || null
 }
 
+/** Split a line that may contain multiple PO: entries (pdf.js often merges rows). */
+function splitPoSegments(line: string): string[] {
+  return line
+    .split(/(?=PO:\d+)/i)
+    .map((s) => s.trim())
+    .filter((s) => /^PO:\d+/i.test(s))
+}
+
 /**
- * Parse text extracted from a PO Line Report PDF (same rules as `scripts/parse-po-report.mjs`).
+ * Parse quantity from the tail after `For:` — uses Req. (first number before PO date).
+ * Formats: `For:Sales Order   3   3 4/2/26` (Req + Pending) or `For:Sales Order   16 5/6/26` (Req only).
+ */
+function parseForTail(tail: string): { forType: string; quantity: string } {
+  const t = tail.trim()
+  // Req + Pending Rec, then PO date (M/D/YY)
+  let m = t.match(/^(.+?)\s+(\d+)\s+(\d+)\s*(?=\d{1,2}\/)/)
+  if (m) {
+    return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
+  }
+  // Req only, then PO date
+  m = t.match(/^(.+?)\s+(\d+)\s*(?=\d{1,2}\/)/)
+  if (m) {
+    return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
+  }
+  // Fallback: first number after For type
+  m = t.match(/^(.+?)\s+(\d+)/)
+  if (m) {
+    return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
+  }
+  return { forType: t.replace(/\s+/g, ' '), quantity: '' }
+}
+
+function parsePoSegment(
+  segment: string,
+  currentCustomer: string
+): PoLineReportCsvRow | null {
+  const header = /PO:(\d+)\s*[\|\t]\s*Item:([^|\t]+?)\s*[\|\t]\s*For:(.+)/i.exec(segment)
+  if (!header) return null
+
+  const { forType, quantity } = parseForTail(header[3]!)
+  return {
+    po_number: `PO-${header[1]}`,
+    item_name: header[2]!.trim(),
+    part_number: '',
+    description: forType ? `For: ${forType}` : '',
+    color: '',
+    quantity,
+    job_or_customer: currentCustomer,
+  }
+}
+
+/**
+ * Parse text extracted from a PO Line Report PDF (Req. column = quantity requested).
  */
 export function parsePoLineReportText(text: string): PoLineReportCsvRow[] {
   const normalized = preprocessPoLineReportText(text)
   const lines = normalized.split(/\r?\n/)
   const rows: PoLineReportCsvRow[] = []
-  // | or tab between PO / Item / For (xlsx hierarchical uses tabs).
-  const poRegex = /PO:(\d+)\s*[\|\t]\s*Item:([^|\t]+?)\s*[\|\t]\s*For:([^\d$]+?)(\d+)/gi
   let currentCustomer = ''
 
   for (const line of lines) {
@@ -74,22 +123,9 @@ export function parsePoLineReportText(text: string): PoLineReportCsvRow[] {
     }
     if (!/PO:\d+/i.test(trimmed) || !/Item:/i.test(trimmed)) continue
 
-    let m: RegExpExecArray | null
-    const re = new RegExp(poRegex.source, poRegex.flags)
-    while ((m = re.exec(trimmed)) !== null) {
-      const poNumber = m[1]
-      const itemName = m[2].trim()
-      const forType = m[3].trim().replace(/\s+/g, ' ')
-      const quantity = m[4]
-      rows.push({
-        po_number: `PO-${poNumber}`,
-        item_name: itemName,
-        part_number: '',
-        description: forType ? `For: ${forType}` : '',
-        color: '',
-        quantity,
-        job_or_customer: currentCustomer,
-      })
+    for (const segment of splitPoSegments(trimmed)) {
+      const row = parsePoSegment(segment, currentCustomer)
+      if (row) rows.push(row)
     }
   }
   return rows

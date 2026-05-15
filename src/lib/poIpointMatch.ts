@@ -238,19 +238,9 @@ function locationNamesFromRows(matches: PoItemLocation[]): string[] {
   return dedupeLocationsByName(matches).map((m) => m.location_name.trim()).filter(Boolean)
 }
 
-function groupLocationsByRef(rows: PoItemLocation[]): Map<string, PoItemLocation[]> {
-  const byRef = new Map<string, PoItemLocation[]>()
-  for (const row of rows) {
-    const k = normalizeRefNumber(row.ref_number)
-    if (!k) continue
-    if (!byRef.has(k)) byRef.set(k, [])
-    byRef.get(k)!.push(row)
-  }
-  return byRef
-}
-
 /**
- * Room location rows for a PO line item (same rules as locationForLine, as a list).
+ * Room location rows for a PO line item — only from the linked job ref's location file.
+ * No cross-job fallback (avoids showing rooms from other ref spreadsheets).
  */
 export function locationsForLine(
   line: PoLineItem,
@@ -260,23 +250,11 @@ export function locationsForLine(
   const item = (line.item_name || '').trim()
   if (!item || locations.length === 0) return []
 
-  const global = findItemLocations(item, null, locations)
-  if (global.length === 0) return []
-
-  const byRef = groupLocationsByRef(global)
   const ref = resolveJobRef(line.job_or_customer, jobRefs)
+  if (!ref) return []
 
-  if (ref) {
-    const refKey = normalizeRefNumber(ref.ref_number)
-    const inRef = byRef.get(refKey)
-    if (inRef?.length) return dedupeLocationsByName(inRef)
-    // Product not in this ref's file — show matches if only one ref has this product.
-    if (byRef.size === 1) return dedupeLocationsByName(global)
-  }
-
-  if (byRef.size === 1) return dedupeLocationsByName(global)
-
-  return dedupeLocationsByName(global)
+  const inRef = findItemLocations(item, ref.ref_number, locations)
+  return dedupeLocationsByName(inRef)
 }
 
 /** Unique location names for a PO line item. */
@@ -291,8 +269,7 @@ export function locationNamesForLine(
 /**
  * Room location(s) for a PO line item:
  * 1) Resolve job from PO Line Report → JobRef ref number
- * 2) Match item name to product rows in that ref's location file
- * 3) If no job ref, search all location files when only one ref has that product
+ * 2) Match item name to product rows in that ref's location file only
  */
 export function locationForLine(
   line: PoLineItem,

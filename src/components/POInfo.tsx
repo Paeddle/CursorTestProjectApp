@@ -1002,7 +1002,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 </th>
                                 <th scope="col">Job / customer</th>
                                 <th scope="col">Location</th>
-                                <th scope="col">Quantity</th>
+                                <th scope="col" title="Quantity requested (Req. from PO Line Report)">
+                                  Req.
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
