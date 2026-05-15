@@ -594,7 +594,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       <header className="po-info-header">
         <h1>PO Info</h1>
         <p className="po-info-subtitle">
-          Barcode scans, iPoint imports, room locations, and Dymo labels per PO.
+          Barcode scans, iPoint file imports, room locations, and Dymo labels per PO.
         </p>
       </header>
 

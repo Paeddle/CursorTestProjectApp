@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { addJobRef, deleteJobRef, syncPoIpointFromOneDrive } from '../services/poIpointService'
+import { useCallback, useState } from 'react'
+import { extractPdfPlainTextForPoLineReport } from '../lib/extractPdfLines'
+import { parsePoLineReportText } from '../lib/parsePoLineReport'
+import { parsePoLineReportXlsx } from '../lib/parsePoLineReportXlsx'
+import { parseJobRefXlsx } from '../lib/parseJobRefXlsx'
+import {
+  parseItemLocationsXlsx,
+  refNumberFromFilename,
+} from '../lib/parseItemLocationsXlsx'
+import {
+  addJobRef,
+  deleteJobRef,
+  importItemLocations,
+  importJobRefs,
+  importPoLineReport,
+} from '../services/poIpointService'
 import type { PoJobRef } from '../types/poIpoint'
-
-const LAST_SYNC_KEY = 'po_ipoint_onedrive_last_sync_v1'
-/** Minimum time between automatic syncs when opening PO Info. */
-const AUTO_SYNC_INTERVAL_MS = 2 * 60 * 1000
 
 type Props = {
   jobRefs: PoJobRef[]
@@ -14,26 +24,6 @@ type Props = {
   onError: (msg: string) => void
 }
 
-function formatSyncSummary(result: {
-  jobRefs: number
-  poLines: number
-  locations: number
-  files: string[]
-  skipped: string[]
-  folder: string
-}): string {
-  const parts = [
-    `${result.poLines} PO line${result.poLines !== 1 ? 's' : ''}`,
-    `${result.jobRefs} job ref${result.jobRefs !== 1 ? 's' : ''}`,
-    `${result.locations} location row${result.locations !== 1 ? 's' : ''}`,
-  ]
-  let msg = `Synced from OneDrive/${result.folder}: ${parts.join(', ')}.`
-  if (result.skipped.length > 0) {
-    msg += ` Note: ${result.skipped.join('; ')}.`
-  }
-  return msg
-}
-
 function PoIpointImportPanel({
   jobRefs,
   lineItemCount,
@@ -41,52 +31,74 @@ function PoIpointImportPanel({
   onDataChanged,
   onError,
 }: Props) {
-  const [busy, setBusy] = useState(false)
-  const [syncMsg, setSyncMsg] = useState<string | null>(null)
-  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
   const [newJobName, setNewJobName] = useState('')
   const [newRef, setNewRef] = useState('')
-  const syncInFlight = useRef(false)
 
-  const runOneDriveSync = useCallback(
-    async (opts?: { force?: boolean }) => {
-      if (syncInFlight.current) return
-      if (!opts?.force) {
-        const last = Number(localStorage.getItem(LAST_SYNC_KEY) || 0)
-        if (Date.now() - last < AUTO_SYNC_INTERVAL_MS) return
-      }
-      syncInFlight.current = true
-      setBusy(true)
+  const runImport = useCallback(
+    async (label: string, fn: () => Promise<number>) => {
+      setBusy(label)
+      setImportMsg(null)
       onError('')
       try {
-        const result = await syncPoIpointFromOneDrive()
-        localStorage.setItem(LAST_SYNC_KEY, String(Date.now()))
-        setLastSyncAt(new Date().toLocaleString())
-        setSyncMsg(formatSyncSummary(result))
+        const n = await fn()
+        setImportMsg(`${label}: imported ${n} row${n === 1 ? '' : 's'} into Supabase.`)
         onDataChanged()
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'OneDrive sync failed'
-        onError(
-          `${msg}. Ensure sync-po-ipoint is deployed and OneDrive POInfo folder is configured (see supabase/ONEDRIVE_PO_IPOINT_SETUP.txt).`
-        )
+        onError(e instanceof Error ? e.message : `${label} failed`)
       } finally {
-        setBusy(false)
-        syncInFlight.current = false
+        setBusy(null)
       }
     },
     [onDataChanged, onError]
   )
 
-  useEffect(() => {
-    void runOneDriveSync()
-  }, [runOneDriveSync])
+  const handlePoLineFile = async (file: File) => {
+    const buf = await file.arrayBuffer()
+    const lower = file.name.toLowerCase()
+    let rows: import('../lib/parsePoLineReportXlsx').ParsedPoLineItem[] = []
+    if (lower.endsWith('.pdf')) {
+      const text = await extractPdfPlainTextForPoLineReport(buf)
+      if (!text.trim()) throw new Error('No text found in PDF.')
+      rows = parsePoLineReportText(text).map((r) => ({ ...r, po_date: null }))
+    } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+      rows = parsePoLineReportXlsx(buf)
+    } else if (lower.endsWith('.csv')) {
+      const text = new TextDecoder().decode(buf)
+      rows = parsePoLineReportText(text).map((r) => ({ ...r, po_date: null }))
+    } else {
+      throw new Error('Use .xlsx, .pdf, or .csv for PO Line Report.')
+    }
+    if (rows.length === 0) throw new Error('No PO lines found in file.')
+    await importPoLineReport(rows, file.name)
+    return rows.length
+  }
+
+  const handleJobRefFile = async (file: File) => {
+    const rows = parseJobRefXlsx(await file.arrayBuffer())
+    if (rows.length === 0) throw new Error('No job references found.')
+    await importJobRefs(rows)
+    return rows.length
+  }
+
+  const handleLocationFile = async (file: File) => {
+    const ref = refNumberFromFilename(file.name)
+    if (!ref) {
+      throw new Error('Filename must be a ref number (e.g. 4152.xlsx).')
+    }
+    const rows = parseItemLocationsXlsx(await file.arrayBuffer())
+    if (rows.length === 0) throw new Error('No locations found in spreadsheet.')
+    await importItemLocations(ref, rows, file.name)
+    return rows.length
+  }
 
   const handleAddJobRef = async () => {
     if (!newJobName.trim() || !newRef.trim()) {
       onError('Job name and ref number are required.')
       return
     }
-    setBusy(true)
+    setBusy('add-job')
     onError('')
     try {
       await addJobRef(newJobName, newRef)
@@ -96,33 +108,17 @@ function PoIpointImportPanel({
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Failed to add job ref')
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
   return (
     <section className="po-info-ipoint-section">
-      <h2 className="po-info-ipoint-title">iPoint data (OneDrive)</h2>
+      <h2 className="po-info-ipoint-title">iPoint data import</h2>
       <p className="po-info-section-desc">
-        Exports are read automatically from your OneDrive <code>POInfo</code> folder (
-        <code>JobRef.xlsx</code>, <code>POLineReport.pdf</code>, and ref spreadsheets like{' '}
-        <code>4152.xlsx</code>). Save or export from iPoint into that folder — PO Info syncs on
-        load and when you click Sync now. No file upload needed in the browser.
+        Upload iPoint exports below. Each file is parsed in your browser and saved to Supabase.
+        Run <code>supabase/add-po-ipoint-import.sql</code> once if the tables are not created yet.
       </p>
-
-      <div className="po-info-ipoint-sync-row">
-        <button
-          type="button"
-          className="po-info-sync-onedrive-btn"
-          disabled={busy}
-          onClick={() => void runOneDriveSync({ force: true })}
-        >
-          {busy ? 'Syncing from OneDrive…' : 'Sync now'}
-        </button>
-        {lastSyncAt && (
-          <span className="po-info-ipoint-last-sync">Last sync: {lastSyncAt}</span>
-        )}
-      </div>
 
       <div className="po-info-ipoint-stats">
         <span>{lineItemCount} PO line{lineItemCount !== 1 ? 's' : ''}</span>
@@ -130,8 +126,76 @@ function PoIpointImportPanel({
         <span>{locationCount} location row{locationCount !== 1 ? 's' : ''}</span>
       </div>
 
-      {busy && !syncMsg && <p className="po-info-ipoint-busy">Reading OneDrive folder…</p>}
-      {syncMsg && <p className="po-info-ipoint-success">{syncMsg}</p>}
+      <div className="po-info-ipoint-uploads">
+        <label className="po-info-ipoint-upload">
+          <span className="po-info-ipoint-upload-label">PO Line Report</span>
+          <span className="po-info-ipoint-upload-hint">
+            .xlsx, .pdf, or .csv — replaces all stored PO lines
+          </span>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.pdf,.csv"
+            disabled={!!busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) void runImport('PO Line Report', () => handlePoLineFile(f))
+            }}
+          />
+        </label>
+        <label className="po-info-ipoint-upload">
+          <span className="po-info-ipoint-upload-label">JobRef</span>
+          <span className="po-info-ipoint-upload-hint">JobRef.xlsx — merges by ref number</span>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            disabled={!!busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) void runImport('JobRef', () => handleJobRefFile(f))
+            }}
+          />
+        </label>
+        <label className="po-info-ipoint-upload">
+          <span className="po-info-ipoint-upload-label">Item locations</span>
+          <span className="po-info-ipoint-upload-hint">
+            4152.xlsx — ref from filename; replaces that ref
+          </span>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            multiple
+            disabled={!!busy}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? [])
+              e.target.value = ''
+              if (!files.length) return
+              void (async () => {
+                setBusy('locations')
+                onError('')
+                try {
+                  let total = 0
+                  for (const f of files) {
+                    total += await handleLocationFile(f)
+                  }
+                  setImportMsg(
+                    `Item locations: imported ${total} row${total === 1 ? '' : 's'} into Supabase.`
+                  )
+                  onDataChanged()
+                } catch (err) {
+                  onError(err instanceof Error ? err.message : 'Location import failed')
+                } finally {
+                  setBusy(null)
+                }
+              })()
+            }}
+          />
+        </label>
+      </div>
+
+      {busy && <p className="po-info-ipoint-busy">Working: {busy}…</p>}
+      {importMsg && <p className="po-info-ipoint-success">{importMsg}</p>}
 
       <div className="po-info-jobref-block">
         <h3 className="po-info-ipoint-subtitle">Job reference list</h3>
@@ -144,24 +208,22 @@ function PoIpointImportPanel({
             placeholder="Job name"
             value={newJobName}
             onChange={(e) => setNewJobName(e.target.value)}
-            disabled={busy}
+            disabled={!!busy}
           />
           <input
             type="text"
             placeholder="Ref #"
             value={newRef}
             onChange={(e) => setNewRef(e.target.value)}
-            disabled={busy}
+            disabled={!!busy}
             className="po-info-jobref-ref-input"
           />
-          <button type="button" disabled={busy} onClick={() => void handleAddJobRef()}>
+          <button type="button" disabled={!!busy} onClick={() => void handleAddJobRef()}>
             Add
           </button>
         </div>
         {jobRefs.length === 0 ? (
-          <p className="po-info-ipoint-empty">
-            No job refs yet. Add <code>JobRef.xlsx</code> to OneDrive/POInfo and sync.
-          </p>
+          <p className="po-info-ipoint-empty">No job refs yet. Upload JobRef.xlsx or add rows above.</p>
         ) : (
           <div className="po-info-jobref-table-wrap">
             <table className="po-info-jobref-table">
@@ -183,19 +245,19 @@ function PoIpointImportPanel({
                       <button
                         type="button"
                         className="po-info-delete-item"
-                        disabled={busy}
+                        disabled={!!busy}
                         title="Delete job ref"
                         onClick={() => {
                           if (!window.confirm(`Delete job ref ${r.ref_number}?`)) return
                           void (async () => {
-                            setBusy(true)
+                            setBusy('delete')
                             try {
                               await deleteJobRef(r.id)
                               onDataChanged()
                             } catch (err) {
                               onError(err instanceof Error ? err.message : 'Delete failed')
                             } finally {
-                              setBusy(false)
+                              setBusy(null)
                             }
                           })()
                         }}

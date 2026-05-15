@@ -1,26 +1,4 @@
 import { supabase } from '../lib/supabase'
-
-export type PoIpointSyncResult = {
-  ok: true
-  folder: string
-  jobRefs: number
-  poLines: number
-  locations: number
-  files: string[]
-  skipped: string[]
-}
-
-/** Pull iPoint exports from OneDrive into Supabase (no manual file picker). */
-export async function syncPoIpointFromOneDrive(): Promise<PoIpointSyncResult> {
-  const { data, error } = await supabase.functions.invoke('sync-po-ipoint', {
-    body: { action: 'sync' },
-  })
-  if (error) throw new Error(error.message)
-  const payload = data as PoIpointSyncResult & { error?: string }
-  if (payload?.error) throw new Error(payload.error)
-  if (!payload?.ok) throw new Error('Sync returned no data. Is sync-po-ipoint deployed?')
-  return payload
-}
 import type { ParsedItemLocationRow } from '../lib/parseItemLocationsXlsx'
 import type { ParsedPoLineItem } from '../lib/parsePoLineReportXlsx'
 import type { ParsedJobRefRow } from '../lib/parseJobRefXlsx'
@@ -87,7 +65,10 @@ export async function importPoLineReport(
   rows: ParsedPoLineItem[],
   sourceFile: string
 ): Promise<number> {
-  const { error: delErr } = await supabase.from('po_line_items').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+  const { error: delErr } = await supabase
+    .from('po_line_items')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000')
   if (delErr) throw new Error(delErr.message)
 
   const imported_at = new Date().toISOString()
