@@ -1,6 +1,6 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
-/** Minimal 30334-compatible label (2-1/4" x 1-1/4") with two text fields. */
+/** 30334 label (2-1/4" x 1-1/4") — single centered text block (job + location). */
 const LABEL_XML = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
   <PaperOrientation>Landscape</PaperOrientation>
@@ -11,43 +11,23 @@ const LABEL_XML = `<?xml version="1.0" encoding="utf-8"?>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
-      <Name>JOB</Name>
+      <Name>LABEL_TEXT</Name>
       <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
       <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
       <LinkedObjectName></LinkedObjectName>
       <Rotation>Rotation0</Rotation>
       <IsMirrored>False</IsMirrored>
       <IsVariable>True</IsVariable>
-      <HorizontalAlignment>Left</HorizontalAlignment>
-      <VerticalAlignment>Top</VerticalAlignment>
+      <HorizontalAlignment>Center</HorizontalAlignment>
+      <VerticalAlignment>Middle</VerticalAlignment>
       <TextFitMode>ShrinkToFit</TextFitMode>
       <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
-        <Element><String>JOB</String><Attributes><Font Family="Arial" Size="10" Bold="True"/></Attributes></Element>
+        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="10" Bold="True"/></Attributes></Element>
       </StyledText>
     </TextObject>
-    <Bounds X="120" Y="80" Width="3000" Height="520"/>
-  </ObjectInfo>
-  <ObjectInfo>
-    <TextObject>
-      <Name>LOCATION</Name>
-      <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-      <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-      <LinkedObjectName></LinkedObjectName>
-      <Rotation>Rotation0</Rotation>
-      <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
-      <HorizontalAlignment>Left</HorizontalAlignment>
-      <VerticalAlignment>Top</VerticalAlignment>
-      <TextFitMode>ShrinkToFit</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
-      <Verticalized>False</Verticalized>
-      <StyledText>
-        <Element><String>LOCATION</String><Attributes><Font Family="Arial" Size="9" Bold="False"/></Attributes></Element>
-      </StyledText>
-    </TextObject>
-    <Bounds X="120" Y="640" Width="3000" Height="680"/>
+    <Bounds X="60" Y="40" Width="3120" Height="1360"/>
   </ObjectInfo>
 </DieCutLabel>`
 
@@ -120,6 +100,12 @@ function truncate(s: string, max: number): string {
   return t.slice(0, max - 1) + '…'
 }
 
+function labelLines(row: PoLabelPrintRow): string {
+  const job = truncate(row.job_name || row.item_name, 80)
+  const loc = truncate(row.location_name || '—', 80)
+  return `${job}\n${loc}`
+}
+
 export async function printLabelsWithDymo(
   rows: PoLabelPrintRow[],
   printerName?: string
@@ -138,11 +124,7 @@ export async function printLabelsWithDymo(
     if (target) {
       for (const row of rows) {
         const label = fw.openLabelXml(LABEL_XML)
-        label.setObjectText('JOB', truncate(row.job_name || row.item_name, 80))
-        label.setObjectText(
-          'LOCATION',
-          truncate(row.location_name || '—', 80)
-        )
+        label.setObjectText('LABEL_TEXT', labelLines(row))
         label.print(target)
       }
       return { printed: rows.length, method: 'dymo' }
@@ -158,9 +140,11 @@ export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
   const html = rows
     .map(
       (r) => `
-    <div class="label" style="page-break-after:always;width:2.25in;height:1.25in;padding:0.12in;box-sizing:border-box;font-family:Arial,sans-serif;">
-      <div style="font-weight:bold;font-size:11pt;line-height:1.2;margin-bottom:4px;">${escapeHtml(r.job_name || r.item_name)}</div>
-      <div style="font-size:9pt;line-height:1.2;">${escapeHtml(r.location_name || '—')}</div>
+    <div class="label">
+      <div class="label-inner">
+        <div class="label-job">${escapeHtml(r.job_name || r.item_name)}</div>
+        <div class="label-loc">${escapeHtml(r.location_name || '—')}</div>
+      </div>
     </div>`
     )
     .join('')
@@ -169,8 +153,32 @@ export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
 <style>
 @page { size: 2.25in 1.25in; margin: 0; }
 body { margin: 0; }
-.label { break-after: page; }
-@media print { .label { page-break-after: always; } }
+.label {
+  width: 2.25in;
+  height: 1.25in;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, sans-serif;
+  page-break-after: always;
+  break-after: page;
+}
+.label-inner {
+  text-align: center;
+  width: 100%;
+  padding: 0.08in;
+  box-sizing: border-box;
+}
+.label-job {
+  font-weight: bold;
+  font-size: 11pt;
+  line-height: 1.25;
+}
+.label-loc {
+  font-size: 9pt;
+  line-height: 1.25;
+}
 </style></head><body>${html}</body></html>`
 
   const w = window.open('', '_blank', 'width=400,height=300')
