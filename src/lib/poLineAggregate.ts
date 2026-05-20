@@ -37,26 +37,44 @@ export function stockJobLabel(jobOrCustomer: string | null | undefined): string 
   return j || 'Stock'
 }
 
+export type CustomerQtyBreakdown = {
+  job_or_customer: string
+  quantity: number
+}
+
 function aggregateKey(poNumber: string, itemName: string): string {
   return `${normalizePoKey(poNumber)}\0${norm(itemName || '')}`
 }
 
-type AggregateBucket<T> = {
-  row: T
-  qty: number
-  jobs: Set<string>
+function customerPrefix(jobOrCustomer: string): string {
+  const t = jobOrCustomer.trim()
+  const i = t.indexOf(':')
+  return norm(i >= 0 ? t.slice(0, i) : t)
 }
 
-function finalizeJob(jobs: Set<string>): string {
-  const nonStock = [...jobs].filter((j) => j && j !== 'Stock')
-  if (nonStock.length === 0) return 'Stock'
-  if (nonStock.length === 1) return nonStock[0]!
-  return 'Multiple customers'
+/** Human-readable job/customer for UI — always prefer PO Line Report text, not fuzzy job ref. */
+export function displayJobForAggregatedLine(line: AggregatedPoLineItem): string {
+  const parts = line.customerBreakdown.filter((c) => c.job_or_customer && c.job_or_customer !== 'Stock')
+  if (parts.length === 0) {
+    if (line.job_or_customer === 'Stock') return 'Stock'
+    return line.job_or_customer?.trim() || '—'
+  }
+  if (parts.length === 1) return parts[0]!.job_or_customer
+  return parts
+    .map((c) => {
+      const label = c.job_or_customer
+      const pre = customerPrefix(label)
+      return pre ? label.split(':')[0]!.trim() + (c.quantity > 1 ? ` (${c.quantity})` : '') : label
+    })
+    .join('; ')
 }
 
-/** Collapse PO Line Report rows to one row per PO + item with summed Req. quantities. */
+/** Collapse import rows to one row per PO + item (import should keep raw rows; used for CSV preview). */
 export function aggregatePoLineReportRows<T extends PoLineReportCsvRow>(rows: T[]): T[] {
-  const buckets = new Map<string, AggregateBucket<T>>()
+  const buckets = new Map<
+    string,
+    { row: T; qty: number; breakdown: CustomerQtyBreakdown[] }
+  >()
 
   for (const row of rows) {
     const item = (row.item_name || '').trim()
@@ -69,23 +87,22 @@ export function aggregatePoLineReportRows<T extends PoLineReportCsvRow>(rows: T[
 
     const prev = buckets.get(key)
     if (!prev) {
-      const jobs = new Set<string>([job])
       buckets.set(key, {
-        row: {
-          ...row,
-          quantity: formatAggregatedQuantity(qty),
-          job_or_customer: finalizeJob(jobs),
-        },
+        row: { ...row, quantity: formatAggregatedQuantity(qty), job_or_customer: job },
         qty,
-        jobs,
+        breakdown: [{ job_or_customer: job, quantity: qty }],
       })
       continue
     }
 
     prev.qty += qty
-    prev.jobs.add(job)
+    const existing = prev.breakdown.find((b) => norm(b.job_or_customer) === norm(job))
+    if (existing) existing.quantity += qty
+    else prev.breakdown.push({ job_or_customer: job, quantity: qty })
+
     prev.row.quantity = formatAggregatedQuantity(prev.qty)
-    prev.row.job_or_customer = finalizeJob(prev.jobs)
+    prev.row.job_or_customer =
+      prev.breakdown.length > 1 ? 'Multiple customers' : prev.breakdown[0]!.job_or_customer
   }
 
   return [...buckets.values()].map((b) => b.row)
@@ -94,6 +111,8 @@ export function aggregatePoLineReportRows<T extends PoLineReportCsvRow>(rows: T[
 export type AggregatedPoLineItem = PoLineItem & {
   /** Original `po_line_items` rows merged into this line (for locations + scan matching). */
   sourceLineIds: string[]
+  /** Per-customer requested qty before summing (same PO + item, different jobs). */
+  customerBreakdown: CustomerQtyBreakdown[]
 }
 
 /** One row per item on a PO with total requested quantity. */
@@ -104,7 +123,12 @@ export function aggregateLineItemsForPo(
   const poKey = normalizePoKey(poNumber)
   const buckets = new Map<
     string,
-    { line: PoLineItem; qty: number; jobs: Set<string>; sourceLineIds: string[] }
+    {
+      line: PoLineItem
+      qty: number
+      breakdown: CustomerQtyBreakdown[]
+      sourceLineIds: string[]
+    }
   >()
 
   for (const line of items) {
@@ -121,21 +145,25 @@ export function aggregateLineItemsForPo(
       buckets.set(key, {
         line,
         qty,
-        jobs: new Set([job]),
+        breakdown: [{ job_or_customer: job, quantity: qty }],
         sourceLineIds: [line.id],
       })
       continue
     }
 
     prev.qty += qty
-    prev.jobs.add(job)
     prev.sourceLineIds.push(line.id)
+    const existing = prev.breakdown.find((b) => norm(b.job_or_customer) === norm(job))
+    if (existing) existing.quantity += qty
+    else prev.breakdown.push({ job_or_customer: job, quantity: qty })
   }
 
-  return [...buckets.values()].map(({ line, qty, jobs, sourceLineIds }) => ({
+  return [...buckets.values()].map(({ line, qty, breakdown, sourceLineIds }) => ({
     ...line,
     quantity: formatAggregatedQuantity(qty),
-    job_or_customer: finalizeJob(jobs),
+    job_or_customer:
+      breakdown.length > 1 ? 'Multiple customers' : breakdown[0]!.job_or_customer,
     sourceLineIds,
+    customerBreakdown: breakdown,
   }))
 }

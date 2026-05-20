@@ -1,5 +1,4 @@
 import * as XLSX from 'xlsx'
-import { aggregatePoLineReportRows } from './poLineAggregate'
 import { parsePoLineReportText, type PoLineReportCsvRow } from './parsePoLineReport'
 
 function cellStr(v: unknown): string {
@@ -175,7 +174,7 @@ export function parsePoLineReportXlsx(buf: ArrayBuffer): ParsedPoLineItem[] {
     if (pick.length > best.length) best = pick
   }
 
-  return aggregatePoLineReportRows(best)
+  return best
 }
 
 /** Summary stats for import feedback (job names, empty jobs, sample POs). */

@@ -2,8 +2,6 @@
  * PO Line Report PDF text → rows / CSV matching `scripts/parse-po-report.mjs` and `public/po_line_report.csv`.
  */
 
-import { aggregatePoLineReportRows } from './poLineAggregate'
-
 export type PoLineReportCsvRow = {
   po_number: string
   item_name: string
@@ -71,7 +69,10 @@ function splitPoSegments(line: string): string[] {
 export function parseForTail(tail: string): { forType: string; quantity: string } {
   const t = tail.trim()
   // Strip trailing money / Exp Recv columns so we do not confuse them with Req.
-  const core = t.replace(/\s+\$[\d,.]+(?:\s+\$[\d,.]+)*\s*[\d.]*\s*$/i, '').trim()
+  const core = t
+    .replace(/\s+\$[\d,.]+(?:\s+\$[\d,.]+)*\s*[\d.]*\s*$/i, '')
+    .replace(/\t/g, ' ')
+    .trim()
 
   // Req + Pending Rec, then PO date (M/D/YY)
   let m = core.match(/^(.+?)\s+(\d+)\s+(\d+)\s*(?=\d{1,2}\/\d{1,2}\/)/)
@@ -140,7 +141,7 @@ export function parsePoLineReportText(text: string): PoLineReportCsvRow[] {
       if (row) rows.push(row)
     }
   }
-  return aggregatePoLineReportRows(rows)
+  return rows
 }
 
 const PO_LINE_CSV_HEADER =

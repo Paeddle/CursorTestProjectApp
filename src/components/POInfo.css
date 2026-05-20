@@ -907,6 +907,11 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
   font-weight: 600;
 }
 
+.po-info-jobref-linked {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
 .po-info-location-status-needs {
   color: #fcd34d;
   font-size: 0.82rem;

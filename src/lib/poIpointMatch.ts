@@ -64,13 +64,13 @@ function jobSlug(jobOrCustomer: string): string {
   return norm(i >= 0 ? t.slice(i + 1) : t)
 }
 
-/** Match job_or_customer from PO line to a job ref row. */
+/** Match job_or_customer from PO line to a job ref row (strict — avoids wrong customer in UI). */
 export function resolveJobRef(
   jobOrCustomer: string | null | undefined,
   jobRefs: PoJobRef[]
 ): PoJobRef | null {
   const j = (jobOrCustomer || '').trim()
-  if (!j || jobRefs.length === 0) return null
+  if (!j || jobRefs.length === 0 || /multiple customers/i.test(j)) return null
 
   const nj = norm(j)
   const jPre = jobPrefix(j)
@@ -83,26 +83,18 @@ export function resolveJobRef(
 
   for (const r of jobRefs) {
     const rn = norm(r.job_name)
-    let score = 0
-
-    if (rn === nj) return r
-    if (
-      (rn.length >= 8 || nj.length >= 8) &&
-      (rn.includes(nj) || nj.includes(rn))
-    ) {
-      score = 85
-    }
-
     const rPre = jobPrefix(r.job_name)
     const rSlug = jobSlug(r.job_name)
 
-    if (jSlug && rSlug) {
-      if (rSlug === jSlug) score = Math.max(score, 95)
-      else if (rSlug.includes(jSlug) || jSlug.includes(rSlug)) score = Math.max(score, 88)
-    }
+    if (rn === nj) return r
 
-    if (jPre && rPre && jPre === rPre && jSlug && rSlug) {
-      score = Math.max(score, 75)
+    // Company / customer name (before ":") must match — blocks Bottcher → Brandner via shared "-Bottcher".
+    if (!jPre || !rPre || jPre !== rPre) continue
+
+    let score = 0
+    if (jSlug && rSlug) {
+      if (jSlug === rSlug) score = 98
+      else if (jSlug.includes(rSlug) || rSlug.includes(jSlug)) score = 90
     }
 
     const jWords = slugWordTokens(jSlug)
@@ -110,24 +102,14 @@ export function resolveJobRef(
     const sharedWords = jWords.filter(
       (t) => t.length >= 5 && !/^\d+$/.test(t) && rWords.includes(t)
     )
-    if (sharedWords.length >= 2) {
-      score = Math.max(score, 92)
-    } else if (sharedWords.length === 1 && sharedWords[0]!.length >= 6) {
-      score = Math.max(score, 88)
-    }
-
-    const jTail = jSlug.split('-').pop() || ''
-    const rTail = rSlug.split('-').pop() || ''
-    if (jTail.length >= 5 && jTail === rTail) {
-      score = Math.max(score, 92)
-    }
+    if (sharedWords.length >= 2) score = Math.max(score, 92)
 
     if (score > 0 && (!best || score > best.score)) {
       best = { ref: r, score }
     }
   }
 
-  return best && best.score >= 75 ? best.ref : null
+  return best && best.score >= 88 ? best.ref : null
 }
 
 export function productNamesMatch(a: string, b: string): boolean {
@@ -212,9 +194,10 @@ export function findItemLocation(
   return matches[0] ?? null
 }
 
+/** Linked job ref name when confident; otherwise null (use PO line customer text for display). */
 export function jobNameForLine(line: PoLineItem, jobRefs: PoJobRef[]): string | null {
   const ref = resolveJobRef(line.job_or_customer, jobRefs)
-  return ref?.job_name ?? (line.job_or_customer?.trim() || null)
+  return ref?.job_name ?? null
 }
 
 export function dedupeLocationsByName(matches: PoItemLocation[]): PoItemLocation[] {

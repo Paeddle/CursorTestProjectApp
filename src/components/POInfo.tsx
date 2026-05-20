@@ -13,6 +13,7 @@ import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from
 import type { PoItemLocation, PoJobRef, PoLineItem, PoLabelPrintRow } from '../types/poIpoint'
 import {
   aggregateLineItemsForPo,
+  displayJobForAggregatedLine,
   formatRequestedQuantityDisplay,
   type AggregatedPoLineItem,
 } from '../lib/poLineAggregate'
@@ -482,12 +483,11 @@ function POInfo() {
         if (!parsed || parsed.poKey !== poKey) continue
         const line = lineById.get(parsed.lineId)
         if (!line) continue
-        const job = jobNameForLine(line, jobRefs)
         rows.push({
           key,
           po_number: poNumber,
           item_name: line.item_name,
-          job_name: job,
+          job_name: displayJobForAggregatedLine(line),
           location_name: parsed.locationName || null,
         })
       }
@@ -992,8 +992,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           </button>
                         </div>
                         <p className="po-info-section-desc">
-                          From PO Line Report. Req. is the total requested quantity per item (summed across
-                          customers; blank customer lines count as stock). Locations come from the ref
+                          From PO Line Report. Req. is the total requested quantity per item (summed when the
+                          same item is on one PO for multiple customers). Job/customer shows the PO Line
+                          Report name; blank customer means stock. Locations come from the ref
                           spreadsheets (e.g. 4152.xlsx) matched by JobRef + item name. Long location lists show a “+N more” link to
                           open all rooms and pick which labels to print. On this device with DYMO Connect,
                           labels print here; otherwise they are queued for the Print Station on your laptop.
@@ -1031,7 +1032,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                             </thead>
                             <tbody>
                               {poIpointLines.map((line) => {
-                                const job = jobNameForLine(line, jobRefs)
+                                const jobDisplay = displayJobForAggregatedLine(line)
+                                const jobRef = jobNameForLine(line, jobRefs)
                                 const lineCached = ipointBundle?.lineDisplay.get(line.id)
                                 const lineLocationNames =
                                   lineCached?.locationNames ??
@@ -1088,11 +1090,16 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       )}
                                     </td>
                                     <td className="po-info-meta">
-                                      {job ||
-                                        (line.job_or_customer === 'Stock'
-                                          ? 'Stock'
-                                          : line.job_or_customer) ||
-                                        '—'}
+                                      {jobDisplay}
+                                      {jobRef && jobRef !== jobDisplay ? (
+                                        <span
+                                          className="po-info-jobref-linked"
+                                          title="Linked job ref (locations use this when matched)"
+                                        >
+                                          {' '}
+                                          → {jobRef}
+                                        </span>
+                                      ) : null}
                                     </td>
                                     <td className="po-info-meta po-info-ipoint-loc-cell">
                                       <IpointLocationCell
@@ -1101,7 +1108,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                           openLocationModal(
                                             summary.po_number,
                                             line,
-                                            job,
+                                            jobDisplay,
                                             lineLocationNames
                                           )
                                         }
