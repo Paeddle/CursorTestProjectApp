@@ -56,6 +56,44 @@
   line-height: 1.4;
 }
 
+.print-station-banner {
+  background: #1e3a5f;
+  color: #e0f2fe;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  line-height: 1.45;
+  font-size: 0.9rem;
+}
+
+.print-station-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.print-station-printer-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: #334155;
+}
+
+.print-station-details {
+  margin-top: 0.65rem;
+  font-size: 0.8rem;
+}
+
+.print-station-details pre {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.75rem;
+}
+
 .print-station-pending {
   margin: 0 0 0.35rem;
   font-size: 1rem;

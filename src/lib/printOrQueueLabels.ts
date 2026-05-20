@@ -1,5 +1,11 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
-import { isDymoAvailable, loadDymoSdk, printLabelsWithDymo, getDymoPrinterNames } from './dymoLabelPrint'
+import {
+  initDymoFramework,
+  isDymoAvailable,
+  loadDymoSdk,
+  printLabelsWithDymo,
+  getDymoPrinterNames,
+} from './dymoLabelPrint'
 import { isSupabaseConfigured, queueLabelsForPrint } from './labelPrintQueue'
 
 export type PrintOrQueueResult = {
@@ -12,6 +18,7 @@ export type PrintOrQueueResult = {
 
 export async function canPrintLocallyWithDymo(): Promise<boolean> {
   await loadDymoSdk()
+  await initDymoFramework()
   if (!isDymoAvailable()) return false
   return getDymoPrinterNames().length > 0
 }

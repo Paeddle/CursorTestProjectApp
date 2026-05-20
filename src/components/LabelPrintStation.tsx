@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { isDymoAvailable, loadDymoSdk, printLabelsWithDymo, getDymoPrinterNames } from '../lib/dymoLabelPrint'
+import {
+  getDymoDiagnostics,
+  getDymoPrinterNames,
+  printLabelsWithDymo,
+  type DymoDiagnostics,
+} from '../lib/dymoLabelPrint'
 import {
   countPendingLabels,
   fetchOldestPendingBatchId,
@@ -19,6 +24,8 @@ export const PRINT_STATION_ROUTE_PATH = '/print-station' as const
 export function LabelPrintStation() {
   const [dymoReady, setDymoReady] = useState(false)
   const [printerNames, setPrinterNames] = useState<string[]>([])
+  const [dymoDiag, setDymoDiag] = useState<DymoDiagnostics | null>(null)
+  const [dymoChecking, setDymoChecking] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [autoPrint, setAutoPrint] = useState(true)
   const [processing, setProcessing] = useState(false)
@@ -39,11 +46,19 @@ export function LabelPrintStation() {
   }, [])
 
   const refreshDymo = useCallback(async () => {
-    await loadDymoSdk()
-    const ok = isDymoAvailable()
-    setDymoReady(ok)
-    setPrinterNames(ok ? getDymoPrinterNames() : [])
-    return ok
+    setDymoChecking(true)
+    try {
+      const diag = await getDymoDiagnostics()
+      setDymoDiag(diag)
+      const names = getDymoPrinterNames()
+      setPrinterNames(names)
+      const ok = names.length > 0
+      setDymoReady(ok)
+      if (!ok) setStatusLine(diag.summary)
+      return ok
+    } finally {
+      setDymoChecking(false)
+    }
   }, [])
 
   const processNextBatch = useCallback(async (options?: { force?: boolean }) => {
@@ -177,27 +192,56 @@ export function LabelPrintStation() {
       <header className="print-station-header">
         <h1>Label Print Station</h1>
         <p className="print-station-subtitle">
-          Keep this page open on the laptop with DYMO Connect. Labels queued from your tablet in PO Info print
-          here automatically.
+          Keep this page open on the laptop with DYMO Connect, or run <code>npm run print-agent</code> in a
+          terminal (recommended when using the live website URL).
         </p>
       </header>
+
+      {dymoDiag?.isRemoteOrigin && !dymoReady && (
+        <div className="print-station-banner">
+          <strong>Using the live website?</strong> Browsers often block it from talking to DYMO on your PC. Run{' '}
+          <code>npm run print-agent</code> in the project folder on this laptop instead — it prints queued labels
+          without browser restrictions.
+        </div>
+      )}
 
       <div className="print-station-grid">
         <section className="print-station-card" aria-live="polite">
           <h2>Printer</h2>
           {dymoReady && printerNames.length > 0 ? (
-            <p className="print-station-ok">
-              Ready — {printerNames.join(', ')}
-            </p>
+            <p className="print-station-ok">Ready — {printerNames.join(', ')}</p>
           ) : (
-            <p className="print-station-warn">
-              Install <strong>DYMO Connect</strong>, connect your LabelWriter via USB, and allow this browser to
-              access it.
-            </p>
+            <p className="print-station-warn">{dymoDiag?.summary ?? 'Checking DYMO…'}</p>
           )}
-          <button type="button" className="print-station-btn" onClick={() => void refreshDymo()}>
-            Check DYMO again
+          {dymoDiag && (
+            <p className="print-station-hint">{dymoDiag.recommendedAction}</p>
+          )}
+          <button
+            type="button"
+            className="print-station-btn"
+            disabled={dymoChecking}
+            onClick={() => void refreshDymo()}
+          >
+            {dymoChecking ? 'Checking…' : 'Check DYMO again'}
           </button>
+          {dymoDiag && dymoDiag.printers.length > 0 && (
+            <ul className="print-station-printer-list">
+              {dymoDiag.printers.map((p) => (
+                <li key={p.name}>
+                  {p.name} — {p.isConnected ? 'connected' : 'not connected'}
+                </li>
+              ))}
+            </ul>
+          )}
+          {dymoDiag?.environment && (
+            <details className="print-station-details">
+              <summary>Technical details</summary>
+              <pre>{JSON.stringify(dymoDiag.environment, null, 2)}</pre>
+              {dymoDiag.localServiceProbe && (
+                <pre>{JSON.stringify(dymoDiag.localServiceProbe, null, 2)}</pre>
+              )}
+            </details>
+          )}
         </section>
 
         <section className="print-station-card">
