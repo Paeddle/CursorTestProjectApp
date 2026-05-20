@@ -35,6 +35,7 @@ export function LabelPrintStation() {
   const [recent, setRecent] = useState<LabelPrintQueueRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const processingLock = useRef(false)
+  const processDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const printStationUrl =
     typeof window !== 'undefined' ? `${window.location.origin}${PRINT_STATION_ROUTE_PATH}` : PRINT_STATION_ROUTE_PATH
@@ -101,25 +102,34 @@ export function LabelPrintStation() {
           return
         }
 
-        const { data: batchRows, error: batchErr } = await supabase
+        const { data: claimedRows, error: claimErr } = await supabase
           .from('label_print_queue')
-          .select('*')
+          .update({ status: 'printing', error_message: null })
           .eq('batch_id', batchId)
-          .in('status', ['pending', 'failed'])
+          .eq('status', 'pending')
+          .select('*')
           .order('created_at', { ascending: true })
 
-        if (batchErr) throw new Error(batchErr.message)
-        const rows = (batchRows ?? []) as LabelPrintQueueRecord[]
+        if (claimErr) throw new Error(claimErr.message)
+        let rows = (claimedRows ?? []) as LabelPrintQueueRecord[]
+
+        if (rows.length === 0) {
+          const { data: failedRows, error: failedErr } = await supabase
+            .from('label_print_queue')
+            .update({ status: 'printing', error_message: null })
+            .eq('batch_id', batchId)
+            .eq('status', 'failed')
+            .select('*')
+            .order('created_at', { ascending: true })
+
+          if (failedErr) throw new Error(failedErr.message)
+          rows = (failedRows ?? []) as LabelPrintQueueRecord[]
+        }
+
         if (rows.length === 0) return
 
         const po = rows[0]?.po_number ?? 'PO'
         setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
-
-        await supabase
-          .from('label_print_queue')
-          .update({ status: 'printing', error_message: null })
-          .eq('batch_id', batchId)
-          .in('status', ['pending', 'failed'])
 
         const printRows = rows.map(queueRecordToPrintRow)
         await printRowsViaWebService(printRows, printerNames[0])
@@ -167,7 +177,11 @@ export function LabelPrintStation() {
         { event: 'INSERT', schema: 'public', table: 'label_print_queue' },
         () => {
           void refreshCounts()
-          void processNextBatch()
+          if (processDebounceRef.current) clearTimeout(processDebounceRef.current)
+          processDebounceRef.current = setTimeout(() => {
+            processDebounceRef.current = null
+            void processNextBatch()
+          }, 400)
         }
       )
       .on(

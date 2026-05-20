@@ -16,6 +16,7 @@ import {
   displayJobForAggregatedLine,
   formatRequestedQuantityDisplay,
   effectiveRequestedQuantity,
+  stickerCountForPrint,
   resolveAggregatedLine,
   type AggregatedPoLineItem,
 } from '../lib/poLineAggregate'
@@ -533,7 +534,7 @@ function POInfo() {
         if (!line) continue
         if (!quantityByLineId.has(line.id)) {
           const resolved = resolveAggregatedLine(line, customerOverrides, sourceLinesForPo)
-          quantityByLineId.set(line.id, effectiveRequestedQuantity(line, resolved))
+          quantityByLineId.set(line.id, stickerCountForPrint(line, resolved))
         }
         rows.push({
           key,
@@ -685,7 +686,7 @@ function POInfo() {
     const agg = aggregateLineItemsForPo(poNumber, lineItems).find((l) => l.id === line.id)
     const qty =
       agg != null
-        ? effectiveRequestedQuantity(
+        ? stickerCountForPrint(
             agg,
             resolveAggregatedLine(agg, customerOverrides, lineItemsForPo(poNumber, lineItems))
           )

@@ -124,11 +124,14 @@ async function getPrinterName(service) {
   return names.find((n) => /labelwriter|dymo/i.test(n)) ?? names[0]
 }
 
+const LABEL_WRITER_PRINT_PARAMS_XML =
+  '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
+
 async function printLabel(service, printerName, labelXml) {
   const form = {
     printerName,
     labelXml,
-    printParamsXml: '',
+    printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
     labelSetXml: '',
   }
   let lastErr = null

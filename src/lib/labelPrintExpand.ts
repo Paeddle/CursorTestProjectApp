@@ -23,32 +23,16 @@ export function expandLabelRowsByQuantity(
 
   for (const [lineId, lineRows] of byLine) {
     const qty = Math.max(1, Math.round(quantityByLineId.get(lineId) ?? 1))
-    const template = lineRows[0]!
-    const locations = uniqueLocations(lineRows)
 
     for (let i = 0; i < qty; i++) {
-      const location_name =
-        locations.length > 0 ? locations[i % locations.length]! : template.location_name
+      const src = lineRows[i % lineRows.length]!
       expanded.push({
-        ...template,
-        key: `${template.key}@q${i}`,
-        location_name,
+        ...src,
+        key: `${src.key}@q${i}`,
+        location_name: src.location_name ?? null,
       })
     }
   }
 
   return expanded
-}
-
-function uniqueLocations(rows: PoLabelPrintRow[]): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const row of rows) {
-    const loc = (row.location_name ?? '').trim()
-    const key = loc || '\0'
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(loc || '')
-  }
-  return out
 }

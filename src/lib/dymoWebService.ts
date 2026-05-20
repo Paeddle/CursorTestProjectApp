@@ -5,6 +5,10 @@ export type DymoServiceEndpoint = { host: string; port: number }
 
 const SERVICE_PATH = 'DYMO/DLS/Printing'
 const HOSTS = ['127.0.0.1', 'localhost'] as const
+
+/** Explicit copy count — empty params can default to 2 on some DYMO Connect builds. */
+const LABEL_WRITER_PRINT_PARAMS_XML =
+  '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
 const PORT_START = 41951
 const PORT_END = 41960
 
@@ -96,7 +100,7 @@ async function printOneLabel(
   const form = {
     printerName,
     labelXml,
-    printParamsXml: '',
+    printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
     labelSetXml: '',
   }
   let lastErr: Error | null = null

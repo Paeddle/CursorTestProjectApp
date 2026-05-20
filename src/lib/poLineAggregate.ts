@@ -124,7 +124,21 @@ export function effectiveRequestedQuantity(
   if (line.customerBreakdown.length === 1 && line.customerBreakdown[0]!.quantity > 0) {
     return line.customerBreakdown[0]!.quantity
   }
+  // Multi-customer row: never use summed line.quantity (total across customers).
+  if (line.customerBreakdown.length > 1) return 0
   return parseRequestedQuantity(line.quantity)
+}
+
+/**
+ * Physical stickers to print for one aggregated line.
+ * Req. drives the count; location checkboxes only pick which rooms to cycle.
+ */
+export function stickerCountForPrint(
+  line: AggregatedPoLineItem,
+  resolved: ResolvedAggregatedLine
+): number {
+  const req = effectiveRequestedQuantity(line, resolved)
+  return req > 0 ? req : 1
 }
 
 /** Human-readable job/customer — uses selected customer when set. */

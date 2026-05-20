@@ -1,10 +1,10 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
-/** Physical 30323 white shipping (face): ~102mm wide × 59mm tall in Landscape. */
+/** Physical 30323 white shipping (face): ~102mm wide × 59mm tall when fed through LabelWriter. */
 export const LABEL_WIDTH_MM = 102
 export const LABEL_HEIGHT_MM = 59
 
-/** DYMO 30323 Shipping — Landscape printable box (2218×608 @ 128,18). */
+/** DYMO 30323 Shipping — landscape draw area (portrait page 638×2382 rotated). */
 export const LABEL_DRAW_WIDTH = 2382
 export const LABEL_DRAW_HEIGHT = 638
 export const LABEL_PRINTABLE_X = 128
@@ -38,8 +38,8 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <IsVariable>True</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>None</TextFitMode>
-      <UseFullFontHeight>False</UseFullFontHeight>
+      <TextFitMode>ShrinkToFit</TextFitMode>
+      <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
         <!--DYMO_STYLED_TEXT-->

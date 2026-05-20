@@ -31,8 +31,8 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <IsVariable>True</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>None</TextFitMode>
-      <UseFullFontHeight>False</UseFullFontHeight>
+      <TextFitMode>ShrinkToFit</TextFitMode>
+      <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
         <!--DYMO_STYLED_TEXT-->
