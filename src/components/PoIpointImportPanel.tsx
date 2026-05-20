@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { extractPdfPlainTextForPoLineReport } from '../lib/extractPdfLines'
+import {
+  planLocationFileUploads,
+  summarizeLocationUploadPlans,
+  uploadedLocationRefs,
+} from '../lib/locationUploadPlan'
 import { parsePoLineReportText } from '../lib/parsePoLineReport'
 import { parsePoLineReportXlsx, summarizePoLineReportRows } from '../lib/parsePoLineReportXlsx'
 import {
@@ -48,6 +53,11 @@ function PoIpointImportPanel({
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [importMsg, setImportMsg] = useState<string | null>(null)
+  const [locationProgress, setLocationProgress] = useState<{
+    current: number
+    total: number
+    fileName: string
+  } | null>(null)
   const [newJobName, setNewJobName] = useState('')
   const [newRef, setNewRef] = useState('')
   const [productLookup, setProductLookup] = useState('')
@@ -57,6 +67,11 @@ function PoIpointImportPanel({
   const locationFiles = useMemo(
     () => summarizeLocationUploads(itemLocations, jobRefs),
     [itemLocations, jobRefs]
+  )
+
+  const uploadedRefSet = useMemo(
+    () => uploadedLocationRefs(locationFiles),
+    [locationFiles]
   )
 
   useEffect(() => {
@@ -151,7 +166,7 @@ function PoIpointImportPanel({
     }
   }
 
-  const handleLocationFile = async (
+  const handleLocationFile = useCallback(async (
     file: File
   ): Promise<{ count: number; detail?: string }> => {
     const ref = refNumberFromFilename(file.name)
@@ -165,7 +180,107 @@ function PoIpointImportPanel({
       count,
       detail: `Ref ${ref}: ${count} row${count !== 1 ? 's' : ''} from ${file.name}.`,
     }
-  }
+  }, [])
+
+  const handleLocationFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return
+
+      setImportMsg(null)
+      onError('')
+      setBusy('locations')
+
+      const plans = planLocationFileUploads(files, uploadedRefSet)
+      const { toUpload, skipped, invalid } = summarizeLocationUploadPlans(plans)
+
+      if (toUpload.length === 0) {
+        setBusy(null)
+        setLocationProgress(null)
+        const parts: string[] = []
+        if (skipped.length > 0) {
+          parts.push(
+            `Skipped ${skipped.length} file${skipped.length !== 1 ? 's' : ''} (already uploaded or duplicate ref in selection).`
+          )
+        }
+        if (invalid.length > 0) {
+          parts.push(
+            `${invalid.length} file${invalid.length !== 1 ? 's' : ''} skipped (need a ref number in the filename, e.g. 4152.xlsx).`
+          )
+        }
+        setImportMsg(
+          parts.length > 0
+            ? parts.join(' ')
+            : 'No location files selected.'
+        )
+        return
+      }
+
+      const details: string[] = []
+      const errors: string[] = []
+      let totalRows = 0
+      let succeeded = 0
+
+      for (let i = 0; i < toUpload.length; i++) {
+        const plan = toUpload[i]!
+        setLocationProgress({
+          current: i + 1,
+          total: toUpload.length,
+          fileName: plan.file.name,
+        })
+        try {
+          const { count, detail } = await handleLocationFile(plan.file)
+          totalRows += count
+          succeeded++
+          if (detail) details.push(detail)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Import failed'
+          errors.push(`${plan.file.name}: ${msg}`)
+        }
+      }
+
+      setBusy(null)
+      setLocationProgress(null)
+
+      const summaryParts: string[] = []
+      if (succeeded > 0) {
+        summaryParts.push(
+          `Imported ${succeeded} file${succeeded !== 1 ? 's' : ''} (${totalRows.toLocaleString()} location row${totalRows !== 1 ? 's' : ''}).`
+        )
+      }
+      if (skipped.length > 0) {
+        const existing = skipped.filter((p) => p.status === 'skip-existing')
+        const dup = skipped.filter((p) => p.status === 'skip-duplicate')
+        if (existing.length > 0) {
+          summaryParts.push(
+            `Skipped ${existing.length} already uploaded (${existing.map((p) => p.ref).join(', ')}).`
+          )
+        }
+        if (dup.length > 0) {
+          summaryParts.push(
+            `Skipped ${dup.length} duplicate ref${dup.length !== 1 ? 's' : ''} in selection.`
+          )
+        }
+      }
+      if (invalid.length > 0) {
+        summaryParts.push(
+          `${invalid.length} file${invalid.length !== 1 ? 's' : ''} skipped (invalid filename or type).`
+        )
+      }
+
+      setImportMsg(summaryParts.join(' '))
+
+      if (errors.length > 0) {
+        onError(errors.join('\n'))
+      } else {
+        onError('')
+      }
+
+      if (succeeded > 0) {
+        onDataChanged()
+      }
+    },
+    [handleLocationFile, onDataChanged, onError, uploadedRefSet]
+  )
 
   const handleAddJobRef = async () => {
     if (!newJobName.trim() || !newRef.trim()) {
@@ -185,6 +300,12 @@ function PoIpointImportPanel({
       setBusy(null)
     }
   }
+
+  const locationUploadDisabled = !!busy
+  const uploadedRefList = useMemo(
+    () => [...uploadedRefSet].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [uploadedRefSet]
+  )
 
   return (
     <section className="po-info-ipoint-section">
@@ -211,7 +332,7 @@ function PoIpointImportPanel({
           <input
             type="file"
             accept=".xlsx,.xls,.pdf,.csv"
-            disabled={!!busy}
+            disabled={locationUploadDisabled}
             onChange={(e) => {
               const f = e.target.files?.[0]
               e.target.value = ''
@@ -219,42 +340,38 @@ function PoIpointImportPanel({
             }}
           />
         </label>
-        <label className="po-info-ipoint-upload">
+        <label className="po-info-ipoint-upload po-info-ipoint-upload-locations">
           <span className="po-info-ipoint-upload-label">Item locations</span>
           <span className="po-info-ipoint-upload-hint">
-            e.g. 4152.xlsx — ref number taken from filename
+            Select multiple .xlsx files (e.g. 4152.xlsx). Ref # comes from the filename. Files
+            whose ref is already uploaded are skipped automatically.
           </span>
           <input
             type="file"
             accept=".xlsx,.xls"
             multiple
-            disabled={!!busy}
+            disabled={locationUploadDisabled}
             onChange={(e) => {
               const files = Array.from(e.target.files ?? [])
               e.target.value = ''
-              if (!files.length) return
-              void runImport('locations', async () => {
-                const details: string[] = []
-                let total = 0
-                for (const f of files) {
-                  const { count, detail } = await handleLocationFile(f)
-                  total += count
-                  if (detail) details.push(detail)
-                }
-                return {
-                  count: total,
-                  detail:
-                    details.length > 0
-                      ? details.join(' ')
-                      : undefined,
-                }
-              })
+              void handleLocationFiles(files)
             }}
           />
+          {uploadedRefList.length > 0 && (
+            <span className="po-info-ipoint-upload-refs">
+              Already uploaded refs: {uploadedRefList.join(', ')}
+            </span>
+          )}
         </label>
       </div>
 
-      {busy && <p className="po-info-ipoint-busy">Working: {busy}…</p>}
+      {locationProgress && (
+        <p className="po-info-ipoint-progress" role="status">
+          Uploading {locationProgress.current} of {locationProgress.total}:{' '}
+          <strong>{locationProgress.fileName}</strong>
+        </p>
+      )}
+      {busy && !locationProgress && <p className="po-info-ipoint-busy">Working: {busy}…</p>}
       {importMsg && <p className="po-info-ipoint-success">{importMsg}</p>}
 
       <div className="po-info-location-files-block">
@@ -398,17 +515,17 @@ function PoIpointImportPanel({
             placeholder="Job name (from PO Line Report)"
             value={newJobName}
             onChange={(e) => setNewJobName(e.target.value)}
-            disabled={!!busy}
+            disabled={locationUploadDisabled}
           />
           <input
             type="text"
             placeholder="Ref #"
             value={newRef}
             onChange={(e) => setNewRef(e.target.value)}
-            disabled={!!busy}
+            disabled={locationUploadDisabled}
             className="po-info-jobref-ref-input"
           />
-          <button type="button" disabled={!!busy} onClick={() => void handleAddJobRef()}>
+          <button type="button" disabled={locationUploadDisabled} onClick={() => void handleAddJobRef()}>
             Add
           </button>
         </div>
@@ -437,7 +554,7 @@ function PoIpointImportPanel({
                       <button
                         type="button"
                         className="po-info-delete-item"
-                        disabled={!!busy}
+                        disabled={locationUploadDisabled}
                         title="Delete job ref"
                         onClick={() => {
                           if (!window.confirm(`Delete job ref ${r.ref_number}?`)) return

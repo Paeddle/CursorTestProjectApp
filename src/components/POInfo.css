@@ -836,6 +836,23 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
   line-height: 1.35;
 }
 
+.po-info-ipoint-upload-locations {
+  grid-column: 1 / -1;
+}
+
+.po-info-ipoint-upload-refs {
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.4;
+  margin-top: 0.15rem;
+}
+
+.po-info-ipoint-progress {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #93c5fd;
+}
+
 .po-info-ipoint-busy,
 .po-info-ipoint-success {
   margin: 0.5rem 0 0;
