@@ -1,46 +1,41 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
-/** Physical 30323 white shipping label (landscape): 102mm × 59mm on the roll. */
-export const LABEL_WIDTH_MM = 102
-export const LABEL_HEIGHT_MM = 59
+/** Physical 30323 white shipping label: 54–59mm × 101–102mm (portrait on the roll). */
+export const LABEL_WIDTH_MM = 59
+export const LABEL_HEIGHT_MM = 102
 
 /**
- * Drawable area in DYMO's 30323 Shipping landscape coordinate system (twips).
- * Must match DYMO Connect's "30323 Shipping" template — do not convert from mm.
+ * DYMO 30323 Shipping — from LabelWriter spec (dymon paper_size.md).
+ * Page 638×2382 twips; printable area 608×2218 at origin (128, 18).
+ * Portrait orientation (was Landscape with swapped W/H — caused top-left mini box).
  */
-export const LABEL_DRAW_WIDTH = 2382
-export const LABEL_DRAW_HEIGHT = 638
+export const LABEL_PAGE_WIDTH = 638
+export const LABEL_PAGE_HEIGHT = 2382
+export const LABEL_PRINTABLE_X = 128
+export const LABEL_PRINTABLE_Y = 18
+export const LABEL_PRINTABLE_WIDTH = 608
+export const LABEL_PRINTABLE_HEIGHT = 2218
 
-/** Inset so text does not clip on rounded corners. */
-const LABEL_PAD_TWIPS = 24
-
-export const LABEL_TEXT_BOUNDS = {
-  x: LABEL_PAD_TWIPS,
-  y: LABEL_PAD_TWIPS,
-  width: LABEL_DRAW_WIDTH - LABEL_PAD_TWIPS * 2,
-  height: LABEL_DRAW_HEIGHT - LABEL_PAD_TWIPS * 2,
-}
-
-/** Largest font that fits wrapped job + location within the label text bounds. */
+/** Largest font that fits wrapped job + location on the printable area. */
 const LABEL_FONT_STEPS = [
-  { size: 36, charsPerLine: 14, maxLines: 3 },
-  { size: 32, charsPerLine: 17, maxLines: 4 },
-  { size: 28, charsPerLine: 19, maxLines: 5 },
-  { size: 24, charsPerLine: 21, maxLines: 6 },
+  { size: 40, charsPerLine: 12, maxLines: 4 },
+  { size: 36, charsPerLine: 14, maxLines: 5 },
+  { size: 32, charsPerLine: 16, maxLines: 6 },
+  { size: 28, charsPerLine: 18, maxLines: 7 },
+  { size: 24, charsPerLine: 20, maxLines: 8 },
 ] as const
 
 /**
- * DYMO 30323 Shipping (102mm × 59mm landscape).
- * One centered text block (single StyledText element + newlines) so DYMO honors
- * HorizontalAlignment/VerticalAlignment; multiple Element nodes align top-left.
+ * DYMO 30323 Shipping — centered on full printable area.
+ * Single StyledText element with line breaks (required for Center/Middle).
  */
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Landscape</PaperOrientation>
+  <PaperOrientation>Portrait</PaperOrientation>
   <Id>Shipping</Id>
   <PaperName>30323 Shipping</PaperName>
   <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
+    <RoundRectangle X="0" Y="0" Width="${LABEL_PAGE_WIDTH}" Height="${LABEL_PAGE_HEIGHT}" Rx="180" Ry="180"/>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
@@ -50,7 +45,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <LinkedObjectName></LinkedObjectName>
       <Rotation>Rotation0</Rotation>
       <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
+      <IsVariable>False</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
       <TextFitMode>None</TextFitMode>
@@ -60,7 +55,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
         <!--DYMO_STYLED_TEXT-->
       </StyledText>
     </TextObject>
-    <Bounds X="${LABEL_TEXT_BOUNDS.x}" Y="${LABEL_TEXT_BOUNDS.y}" Width="${LABEL_TEXT_BOUNDS.width}" Height="${LABEL_TEXT_BOUNDS.height}"/>
+    <Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>
   </ObjectInfo>
 </DieCutLabel>`
 

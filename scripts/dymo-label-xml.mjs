@@ -1,28 +1,26 @@
-/** Physical 30323 white shipping: 102mm × 59mm (landscape). */
-const LABEL_DRAW_WIDTH = 2382
-const LABEL_DRAW_HEIGHT = 638
-const LABEL_PAD_TWIPS = 24
-const LABEL_TEXT_BOUNDS = {
-  x: LABEL_PAD_TWIPS,
-  y: LABEL_PAD_TWIPS,
-  width: LABEL_DRAW_WIDTH - LABEL_PAD_TWIPS * 2,
-  height: LABEL_DRAW_HEIGHT - LABEL_PAD_TWIPS * 2,
-}
+/** DYMO 30323 Shipping — portrait 638×2382, printable 608×2218 @ (128,18). */
+const LABEL_PAGE_WIDTH = 638
+const LABEL_PAGE_HEIGHT = 2382
+const LABEL_PRINTABLE_X = 128
+const LABEL_PRINTABLE_Y = 18
+const LABEL_PRINTABLE_WIDTH = 608
+const LABEL_PRINTABLE_HEIGHT = 2218
 
 const LABEL_FONT_STEPS = [
-  { size: 36, charsPerLine: 14, maxLines: 3 },
-  { size: 32, charsPerLine: 17, maxLines: 4 },
-  { size: 28, charsPerLine: 19, maxLines: 5 },
-  { size: 24, charsPerLine: 21, maxLines: 6 },
+  { size: 40, charsPerLine: 12, maxLines: 4 },
+  { size: 36, charsPerLine: 14, maxLines: 5 },
+  { size: 32, charsPerLine: 16, maxLines: 6 },
+  { size: 28, charsPerLine: 18, maxLines: 7 },
+  { size: 24, charsPerLine: 20, maxLines: 8 },
 ]
 
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Landscape</PaperOrientation>
+  <PaperOrientation>Portrait</PaperOrientation>
   <Id>Shipping</Id>
   <PaperName>30323 Shipping</PaperName>
   <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
+    <RoundRectangle X="0" Y="0" Width="${LABEL_PAGE_WIDTH}" Height="${LABEL_PAGE_HEIGHT}" Rx="180" Ry="180"/>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
@@ -32,7 +30,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <LinkedObjectName></LinkedObjectName>
       <Rotation>Rotation0</Rotation>
       <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
+      <IsVariable>False</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
       <TextFitMode>None</TextFitMode>
@@ -42,7 +40,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
         <!--DYMO_STYLED_TEXT-->
       </StyledText>
     </TextObject>
-    <Bounds X="${LABEL_TEXT_BOUNDS.x}" Y="${LABEL_TEXT_BOUNDS.y}" Width="${LABEL_TEXT_BOUNDS.width}" Height="${LABEL_TEXT_BOUNDS.height}"/>
+    <Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>
   </ObjectInfo>
 </DieCutLabel>`
 

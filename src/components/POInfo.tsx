@@ -41,6 +41,7 @@ import {
   normalizePoKey,
 } from '../lib/poIpointMatch'
 import { makeLabelKey, parseLabelKey } from '../lib/labelKey'
+import { expandLabelRowsByQuantity } from '../lib/labelPrintExpand'
 import { printOrQueueLabels } from '../lib/printOrQueueLabels'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import IpointLocationsModal from './IpointLocationsModal'
@@ -508,13 +509,19 @@ function POInfo() {
       const poKey = normalizePoKey(poNumber)
       const poLines = aggregateLineItemsForPo(poNumber, lineItems)
       const lineById = new Map(poLines.map((l) => [l.id, l]))
+      const sourceLinesForPo = lineItemsForPo(poNumber, lineItems)
       const rows: PoLabelPrintRow[] = []
+      const quantityByLineId = new Map<string, number>()
 
       for (const key of labelSelected) {
         const parsed = parseLabelKey(key)
         if (!parsed || parsed.poKey !== poKey) continue
         const line = lineById.get(parsed.lineId)
         if (!line) continue
+        if (!quantityByLineId.has(line.id)) {
+          const resolved = resolveAggregatedLine(line, customerOverrides, sourceLinesForPo)
+          quantityByLineId.set(line.id, effectiveRequestedQuantity(line, resolved))
+        }
         rows.push({
           key,
           po_number: poNumber,
@@ -523,7 +530,7 @@ function POInfo() {
           location_name: parsed.locationName || null,
         })
       }
-      return rows
+      return expandLabelRowsByQuantity(rows, quantityByLineId)
     },
     [lineItems, jobRefs, labelSelected, customerOverrides]
   )
@@ -638,7 +645,7 @@ function POInfo() {
   const handlePrintFromLocationModal = async () => {
     if (!locationModal) return
     const { poNumber, line, jobName, locations } = locationModal
-    const rows: PoLabelPrintRow[] = locations
+    const baseRows: PoLabelPrintRow[] = locations
       .filter((loc) => labelSelected.has(makeLabelKey(poNumber, line.id, loc)))
       .map((loc) => ({
         key: makeLabelKey(poNumber, line.id, loc),
@@ -647,6 +654,15 @@ function POInfo() {
         job_name: jobName,
         location_name: loc,
       }))
+    const agg = aggregateLineItemsForPo(poNumber, lineItems).find((l) => l.id === line.id)
+    const qty =
+      agg != null
+        ? effectiveRequestedQuantity(
+            agg,
+            resolveAggregatedLine(agg, customerOverrides, lineItemsForPo(poNumber, lineItems))
+          )
+        : 1
+    const rows = expandLabelRowsByQuantity(baseRows, new Map([[line.id, qty]]))
     await printLabelRows(poNumber, rows)
   }
 
@@ -1041,8 +1057,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           one. Job/customer shows the PO Line Report name; blank customer means stock.
                           Locations come from the ref
                           spreadsheets (e.g. 4152.xlsx) matched by JobRef + item name. Long location lists show a “+N more” link to
-                          open all rooms and pick which labels to print. On this device with DYMO Connect,
-                          labels print here; otherwise they are queued for the Print Station on your laptop.
+                          open all rooms and pick which labels to print. Printing uses the Req. count (e.g.
+                          Req. 3 prints three labels, cycling room names when several locations are selected).
+                          On this device with DYMO Connect, labels print here; otherwise they are queued for the
+                          Print Station on your laptop.
                         </p>
                         <div className="po-info-scan-table-wrap">
                           <table className="po-info-scan-table po-info-ipoint-table">
