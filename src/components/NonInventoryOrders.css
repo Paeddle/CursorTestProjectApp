@@ -1,0 +1,102 @@
+.non-inv-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.non-inv-header {
+  background: #00658f;
+  color: #fff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.non-inv-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.non-inv-header p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.non-inv-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.non-inv-btn {
+  padding: 0.65rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #004d6b;
+  background: #00658f;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.non-inv-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.non-inv-search {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #bfc4c7;
+  background: #f5f6f7;
+}
+
+.non-inv-status,
+.non-inv-error,
+.non-inv-setup,
+.non-inv-empty {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+.non-inv-status {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.non-inv-error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.non-inv-setup,
+.non-inv-empty {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.non-inv-table-wrap {
+  overflow: auto;
+  background: #e0e0e0;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.non-inv-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.non-inv-table th,
+.non-inv-table td {
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid #d6d6d6;
+  text-align: left;
+}
+
+.non-inv-table th {
+  white-space: nowrap;
+  background: #f0f0f0;
+}
