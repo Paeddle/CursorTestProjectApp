@@ -26,6 +26,7 @@ import {
   locationNamesForLine,
   normalizePoKey,
 } from '../lib/poIpointMatch'
+import { makeLabelKey, parseLabelKey } from '../lib/labelKey'
 import { printOrQueueLabels } from '../lib/printOrQueueLabels'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import IpointLocationsModal from './IpointLocationsModal'
@@ -33,10 +34,6 @@ import PoIpointImportPanel from './PoIpointImportPanel'
 import './POInfo.css'
 
 const LOCATION_PREVIEW_COUNT = 2
-
-function makeLabelKey(poNumber: string, lineId: string, locationName = '') {
-  return `${normalizePoKey(poNumber)}\u0000${lineId}\u0000${(locationName || '').trim()}`
-}
 
 function labelKeysForLine(
   poNumber: string,
@@ -56,22 +53,6 @@ function allLabelKeysForPo(
   itemLocations: PoItemLocation[]
 ): string[] {
   return lines.flatMap((line) => labelKeysForLine(poNumber, line, jobRefs, itemLocations))
-}
-
-function parseLabelKey(
-  key: string
-): { poKey: string; lineId: string; locationName: string } | null {
-  const i = key.indexOf('\u0000')
-  if (i === -1) return null
-  const j = key.indexOf('\u0000', i + 1)
-  if (j === -1) {
-    return { poKey: key.slice(0, i), lineId: key.slice(i + 1), locationName: '' }
-  }
-  return {
-    poKey: key.slice(0, i),
-    lineId: key.slice(i + 1, j),
-    locationName: key.slice(j + 1),
-  }
 }
 
 type IpointLocationCellProps = {

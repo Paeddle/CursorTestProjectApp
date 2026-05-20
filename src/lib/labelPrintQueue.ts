@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { sanitizeQueueText } from './labelKey'
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
 export type LabelPrintQueueStatus = 'pending' | 'printing' | 'done' | 'failed'
@@ -44,12 +45,12 @@ export async function queueLabelsForPrint(
   const batchId = crypto.randomUUID()
   const payload = rows.map((row) => ({
     batch_id: batchId,
-    po_number: row.po_number,
-    item_name: row.item_name,
-    job_name: row.job_name,
-    location_name: row.location_name,
-    label_key: row.key,
-    barcode_value: row.barcode_value ?? null,
+    po_number: sanitizeQueueText(row.po_number) ?? row.po_number,
+    item_name: sanitizeQueueText(row.item_name) ?? row.item_name,
+    job_name: sanitizeQueueText(row.job_name),
+    location_name: sanitizeQueueText(row.location_name),
+    label_key: sanitizeQueueText(row.key),
+    barcode_value: sanitizeQueueText(row.barcode_value ?? null),
     status: 'pending' as const,
   }))
 
