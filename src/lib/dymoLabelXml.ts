@@ -2,6 +2,40 @@ import type { PoLabelPrintRow } from '../types/poIpoint'
 
 const DYMO_MAX_CHARS_PER_LINE = 21
 
+/**
+ * DYMO 30323 Shipping (54mm × 101mm). Matches original direct-print layout:
+ * 24pt Arial bold, centered, TextFitMode None (no shrink-to-fit).
+ */
+export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
+<DieCutLabel Version="8.0" Units="twips">
+  <PaperOrientation>Landscape</PaperOrientation>
+  <Id>Shipping</Id>
+  <PaperName>30323 Shipping</PaperName>
+  <DrawCommands>
+    <RoundRectangle X="0" Y="0" Width="2382" Height="638" Rx="180" Ry="180"/>
+  </DrawCommands>
+  <ObjectInfo>
+    <TextObject>
+      <Name>LABEL_TEXT</Name>
+      <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
+      <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
+      <LinkedObjectName></LinkedObjectName>
+      <Rotation>Rotation0</Rotation>
+      <IsMirrored>False</IsMirrored>
+      <IsVariable>True</IsVariable>
+      <HorizontalAlignment>Center</HorizontalAlignment>
+      <VerticalAlignment>Middle</VerticalAlignment>
+      <TextFitMode>None</TextFitMode>
+      <UseFullFontHeight>True</UseFullFontHeight>
+      <Verticalized>False</Verticalized>
+      <StyledText>
+        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="24" Bold="True"/></Attributes></Element>
+      </StyledText>
+    </TextObject>
+    <Bounds X="128" Y="18" Width="2218" Height="608"/>
+  </ObjectInfo>
+</DieCutLabel>`
+
 /** Break text onto new lines at word boundaries; long tokens split to fit. */
 export function wrapTextToLines(text: string, maxChars: number): string[] {
   const t = text.trim()
@@ -48,7 +82,7 @@ export function wrapTextToLines(text: string, maxChars: number): string[] {
   return lines
 }
 
-/** Escape text embedded in DYMO label XML. */
+/** Escape text embedded in DYMO label XML (newlines preserved for multi-line labels). */
 export function escapeXmlText(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -69,50 +103,16 @@ export function labelTextLinesForRow(row: {
   return [...jobLines, ...locLines]
 }
 
-/** DYMO 30323 Shipping label with centered bold text (DYMO Connect + Label Framework). */
-export function buildShipping30323LabelXml(text: string): string {
+/** Build full label XML with job + room lines (same output as setObjectText on LABEL_XML). */
+export function buildLabelXmlForText(text: string): string {
   const escaped = escapeXmlText(text)
-  return `<?xml version="1.0" encoding="utf-8"?>
-<DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Landscape</PaperOrientation>
-  <Id>Shipping</Id>
-  <PaperName>30323 Shipping</PaperName>
-  <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="2382" Height="638" Rx="180" Ry="180"/>
-  </DrawCommands>
-  <ObjectInfo>
-    <TextObject>
-      <Name>LABEL_TEXT</Name>
-      <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-      <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-      <LinkedObjectName></LinkedObjectName>
-      <Rotation>Rotation0</Rotation>
-      <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
-      <HorizontalAlignment>Center</HorizontalAlignment>
-      <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>ShrinkToFit</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
-      <Verticalized>False</Verticalized>
-      <StyledText>
-        <Element>
-          <String xml:space="preserve">${escaped}</String>
-          <Attributes>
-            <Font Family="Arial" Size="24" Bold="True" Italic="False" Underline="False" Strikeout="False"/>
-            <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-          </Attributes>
-        </Element>
-      </StyledText>
-    </TextObject>
-    <Bounds X="128" Y="18" Width="2218" Height="608"/>
-  </ObjectInfo>
-</DieCutLabel>`
+  return LABEL_XML_TEMPLATE.replace('<String>LINE1</String>', `<String>${escaped}</String>`)
 }
 
 export function buildLabelXmlForRow(
   row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>
 ): string {
-  return buildShipping30323LabelXml(labelTextLinesForRow(row).join('\n'))
+  return buildLabelXmlForText(labelTextLinesForRow(row).join('\n'))
 }
 
 /** Interpret DYMO PrintLabel / PrintLabel2 HTTP response bodies. */

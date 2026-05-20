@@ -1,43 +1,11 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
-import { labelTextLinesForRow, wrapTextToLines } from './dymoLabelXml'
+import { LABEL_XML_TEMPLATE, labelTextLinesForRow, wrapTextToLines } from './dymoLabelXml'
 import { printRowsViaWebService } from './dymoWebService'
 
 export { wrapTextToLines } from './dymoLabelXml'
 
-/**
- * DYMO 30323 Shipping (54mm × 101mm / 2-1/8" × 4").
- * Printable area per DYMO spec: origin (18,128), size 608×2218 twips; page 638×2382.
- * Landscape feed on LabelWriter — page dimensions are swapped for print orientation.
- */
-export const LABEL_XML = `<?xml version="1.0" encoding="utf-8"?>
-<DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Landscape</PaperOrientation>
-  <Id>Shipping</Id>
-  <PaperName>30323 Shipping</PaperName>
-  <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="2382" Height="638" Rx="180" Ry="180"/>
-  </DrawCommands>
-  <ObjectInfo>
-    <TextObject>
-      <Name>LABEL_TEXT</Name>
-      <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-      <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-      <LinkedObjectName></LinkedObjectName>
-      <Rotation>Rotation0</Rotation>
-      <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
-      <HorizontalAlignment>Center</HorizontalAlignment>
-      <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>None</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
-      <Verticalized>False</Verticalized>
-      <StyledText>
-        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="24" Bold="True"/></Attributes></Element>
-      </StyledText>
-    </TextObject>
-    <Bounds X="128" Y="18" Width="2218" Height="608"/>
-  </ObjectInfo>
-</DieCutLabel>`
+/** @deprecated Use LABEL_XML_TEMPLATE — kept for SDK openLabelXml. */
+export const LABEL_XML = LABEL_XML_TEMPLATE
 
 export type DymoPrinterInfo = {
   name: string
