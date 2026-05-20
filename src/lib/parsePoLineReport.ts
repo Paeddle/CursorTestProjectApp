@@ -21,20 +21,37 @@ function escapeCsv(s: string | number | null | undefined): string {
   return str
 }
 
-/** Merge PDF rows split across lines (pdf.js often breaks PO / Item / For across cells). */
+const PO_DATE_RE = /\d{1,2}\/\d{1,2}\/\d{2,4}/
+
+/** True when a PO line segment includes For: plus Req./date (or dollar columns). */
+function poLineSegmentComplete(line: string): boolean {
+  const forMatch = /For:(.*)$/is.exec(line)
+  if (!forMatch) return false
+  const tail = forMatch[1]!
+  return PO_DATE_RE.test(tail) || /\$\s*[\d,.]/.test(tail)
+}
+
+/** Merge PDF rows split across lines (pdf.js often breaks PO / Item / For / qty / date). */
 export function preprocessPoLineReportText(text: string): string {
   const raw = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const merged: string[] = []
 
   for (let i = 0; i < raw.length; i++) {
     let line = raw[i]!
-    while (i + 1 < raw.length && line.includes('PO:') && !/Item:/i.test(line)) {
-      i++
-      line += ` ${raw[i]}`
+    if (/^Customer:/i.test(line)) {
+      merged.push(line)
+      continue
     }
-    while (i + 1 < raw.length && /Item:/i.test(line) && !/For:/i.test(line)) {
+    if (!/PO:\d+/i.test(line)) {
+      merged.push(line)
+      continue
+    }
+    while (i + 1 < raw.length) {
+      const next = raw[i + 1]!
+      if (/^Customer:/i.test(next) || /^PO:\d+/i.test(next)) break
+      if (poLineSegmentComplete(line)) break
       i++
-      line += ` ${raw[i]}`
+      line += ` ${next}`
     }
     merged.push(line)
   }
@@ -63,28 +80,46 @@ function splitPoSegments(line: string): string[] {
 }
 
 /**
- * Parse quantity from the tail after `For:` — uses Req. (first number before PO date).
- * Formats: `For:Sales Order   3   3 4/2/26` (Req + Pending) or `For:Sales Order   16 5/6/26` (Req only).
+ * Parse Req. from the tail after `For:`.
+ * iPoint column order: Req. | Pending Rec. | PO Date — in each line that is
+ * `For:Type <req> [pending] <po_date> [$ amounts]`.
  */
 export function parseForTail(tail: string): { forType: string; quantity: string } {
   const t = tail.trim()
-  // Strip trailing money / Exp Recv columns so we do not confuse them with Req.
   const core = t
     .replace(/\s+\$[\d,.]+(?:\s+\$[\d,.]+)*\s*[\d.]*\s*$/i, '')
     .replace(/\t/g, ' ')
     .trim()
 
-  // Req + Pending Rec, then PO date (M/D/YY)
+  const dateMatch = core.match(PO_DATE_RE)
+  if (dateMatch && dateMatch.index != null) {
+    const beforeDate = core.slice(0, dateMatch.index).trim()
+    const forPart = beforeDate.replace(/\s+\d+(\s+\d+)?\s*$/g, '').trim()
+    const numsBefore = [...beforeDate.matchAll(/\b(\d+)\b/g)].map((x) => x[1]!)
+    if (numsBefore.length >= 1) {
+      return {
+        forType: forPart.replace(/\s+/g, ' '),
+        quantity: numsBefore[0]!,
+      }
+    }
+    const afterDate = core.slice(dateMatch.index + dateMatch[0].length).trim()
+    const numsAfter = [...afterDate.matchAll(/\b(\d+)\b/g)].map((x) => x[1]!)
+    if (numsAfter.length >= 1) {
+      return {
+        forType: forPart.replace(/\s+/g, ' ') || beforeDate.replace(/\s+/g, ' '),
+        quantity: numsAfter[0]!,
+      }
+    }
+  }
+
   let m = core.match(/^(.+?)\s+(\d+)\s+(\d+)\s*(?=\d{1,2}\/\d{1,2}\/)/)
   if (m) {
     return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
   }
-  // Req only, then PO date
   m = core.match(/^(.+?)\s+(\d+)\s*(?=\d{1,2}\/\d{1,2}\/)/)
   if (m) {
     return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
   }
-  // Fallback: first number after For type (avoid grabbing year fragments)
   m = core.match(/^(.+?)\s+(\d+)(?:\s|$)/)
   if (m) {
     return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }

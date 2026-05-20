@@ -15,8 +15,15 @@ import {
   aggregateLineItemsForPo,
   displayJobForAggregatedLine,
   formatRequestedQuantityDisplay,
+  effectiveRequestedQuantity,
+  resolveAggregatedLine,
   type AggregatedPoLineItem,
 } from '../lib/poLineAggregate'
+import {
+  readPoLineCustomerOverrides,
+  writePoLineCustomerOverride,
+} from '../lib/poLineCustomerOverride'
+import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
   buildIpointLocationIndex,
@@ -47,11 +54,13 @@ function labelKeysForLine(
   line: AggregatedPoLineItem,
   jobRefs: PoJobRef[],
   itemLocations: PoItemLocation[],
-  sourceLines: PoLineItem[]
+  sourceLines: PoLineItem[],
+  activeSourceLineIds?: string[]
 ): string[] {
   const names = new Set<string>()
   const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
-  for (const id of line.sourceLineIds) {
+  const ids = activeSourceLineIds ?? line.sourceLineIds
+  for (const id of ids) {
     const src = sourceById.get(id)
     if (!src) continue
     for (const name of locationNamesForLine(src, jobRefs, itemLocations)) {
@@ -61,6 +70,26 @@ function labelKeysForLine(
   const list = [...names].sort((a, b) => a.localeCompare(b))
   if (list.length === 0) return [makeLabelKey(poNumber, line.id, '')]
   return list.map((name) => makeLabelKey(poNumber, line.id, name))
+}
+
+function locationNamesForAggregatedLine(
+  line: AggregatedPoLineItem,
+  sourceLines: PoLineItem[],
+  jobRefs: PoJobRef[],
+  itemLocations: PoItemLocation[],
+  activeSourceLineIds?: string[]
+): string[] {
+  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
+  const ids = activeSourceLineIds ?? line.sourceLineIds
+  const names = new Set<string>()
+  for (const id of ids) {
+    const src = sourceById.get(id)
+    if (!src) continue
+    for (const name of locationNamesForLine(src, jobRefs, itemLocations)) {
+      names.add(name)
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b))
 }
 
 function allLabelKeysForPo(
@@ -313,6 +342,9 @@ function POInfo() {
   const [itemLocations, setItemLocations] = useState<PoItemLocation[]>([])
   const [ipointLoading, setIpointLoading] = useState(true)
   const [labelSelected, setLabelSelected] = useState<Set<string>>(new Set())
+  const [customerOverrides, setCustomerOverrides] = useState<Record<string, string>>(() =>
+    readPoLineCustomerOverrides()
+  )
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [locationModal, setLocationModal] = useState<{
@@ -487,14 +519,18 @@ function POInfo() {
           key,
           po_number: poNumber,
           item_name: line.item_name,
-          job_name: displayJobForAggregatedLine(line),
+          job_name: displayJobForAggregatedLine(line, customerOverrides),
           location_name: parsed.locationName || null,
         })
       }
       return rows
     },
-    [lineItems, jobRefs, labelSelected]
+    [lineItems, jobRefs, labelSelected, customerOverrides]
   )
+
+  const handleCustomerSelect = (poNumber: string, itemName: string, jobOrCustomer: string) => {
+    setCustomerOverrides(writePoLineCustomerOverride(poNumber, itemName, jobOrCustomer))
+  }
 
   const printLabelRows = async (poNumber: string, rows: PoLabelPrintRow[]) => {
     if (rows.length === 0) {
@@ -535,7 +571,15 @@ function POInfo() {
 
   const toggleLabelSelect = (poNumber: string, line: AggregatedPoLineItem) => {
     const sourceLines = lineItemsForPo(poNumber, lineItems)
-    const keys = labelKeysForLine(poNumber, line, jobRefs, itemLocations, sourceLines)
+    const resolved = resolveAggregatedLine(line, customerOverrides, sourceLines)
+    const keys = labelKeysForLine(
+      poNumber,
+      line,
+      jobRefs,
+      itemLocations,
+      sourceLines,
+      resolved.activeSourceLineIds
+    )
     const allOn = keys.every((k) => labelSelected.has(k))
     setLabelSelected((prev) => {
       const next = new Set(prev)
@@ -992,9 +1036,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           </button>
                         </div>
                         <p className="po-info-section-desc">
-                          From PO Line Report. Req. is the total requested quantity per item (summed when the
-                          same item is on one PO for multiple customers). Job/customer shows the PO Line
-                          Report name; blank customer means stock. Locations come from the ref
+                          From PO Line Report. Req. is the requested quantity for the selected customer (per
+                          PDF Req. column). When an item has multiple customers, use the dropdown to pick
+                          one. Job/customer shows the PO Line Report name; blank customer means stock.
+                          Locations come from the ref
                           spreadsheets (e.g. 4152.xlsx) matched by JobRef + item name. Long location lists show a “+N more” link to
                           open all rooms and pick which labels to print. On this device with DYMO Connect,
                           labels print here; otherwise they are queued for the Print Station on your laptop.
@@ -1032,21 +1077,55 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                             </thead>
                             <tbody>
                               {poIpointLines.map((line) => {
-                                const jobDisplay = displayJobForAggregatedLine(line)
-                                const jobRef = jobNameForLine(line, jobRefs)
+                                const sourceLinesForPo = lineItemsForPo(
+                                  summary.po_number,
+                                  lineItems
+                                )
+                                const resolved = resolveAggregatedLine(
+                                  line,
+                                  customerOverrides,
+                                  sourceLinesForPo
+                                )
+                                const jobDisplay = displayJobForAggregatedLine(
+                                  line,
+                                  customerOverrides
+                                )
+                                const sourceById = new Map(
+                                  sourceLinesForPo.map((l) => [l.id, l])
+                                )
+                                const primarySource = resolved.activeSourceLineIds[0]
+                                  ? sourceById.get(resolved.activeSourceLineIds[0])
+                                  : null
+                                const jobRef = primarySource
+                                  ? jobNameForLine(primarySource, jobRefs)
+                                  : jobNameForLine(line, jobRefs)
                                 const lineCached = ipointBundle?.lineDisplay.get(line.id)
                                 const lineLocationNames =
-                                  lineCached?.locationNames ??
-                                  (ipointLoading ? [] : [])
+                                  resolved.isMultiCustomer && !resolved.selectedCustomer
+                                    ? []
+                                    : resolved.isMultiCustomer || resolved.selectedCustomer
+                                      ? locationNamesForAggregatedLine(
+                                          line,
+                                          sourceLinesForPo,
+                                          jobRefs,
+                                          itemLocations,
+                                          resolved.activeSourceLineIds
+                                        )
+                                      : (lineCached?.locationNames ??
+                                        (ipointLoading ? [] : []))
                                 const lineLabelKeys =
-                                  lineCached?.labelKeys ??
-                                  labelKeysForLine(
-                                    summary.po_number,
-                                    line,
-                                    jobRefs,
-                                    itemLocations,
-                                    lineItemsForPo(summary.po_number, lineItems)
-                                  )
+                                  resolved.isMultiCustomer && !resolved.selectedCustomer
+                                    ? []
+                                    : labelKeysForLine(
+                                        summary.po_number,
+                                        line,
+                                        jobRefs,
+                                        itemLocations,
+                                        sourceLinesForPo,
+                                        resolved.activeSourceLineIds.length > 0
+                                          ? resolved.activeSourceLineIds
+                                          : undefined
+                                      )
                                 const selectedCount = lineLabelKeys.filter((k: string) =>
                                   labelSelected.has(k)
                                 ).length
@@ -1090,7 +1169,21 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       )}
                                     </td>
                                     <td className="po-info-meta">
-                                      {jobDisplay}
+                                      {resolved.isMultiCustomer ? (
+                                        <PoLineCustomerSelect
+                                          breakdown={line.customerBreakdown}
+                                          selectedCustomer={resolved.selectedCustomer}
+                                          onSelect={(job) =>
+                                            handleCustomerSelect(
+                                              summary.po_number,
+                                              line.item_name,
+                                              job
+                                            )
+                                          }
+                                        />
+                                      ) : (
+                                        jobDisplay
+                                      )}
                                       {jobRef && jobRef !== jobDisplay ? (
                                         <span
                                           className="po-info-jobref-linked"
@@ -1115,7 +1208,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       />
                                     </td>
                                     <td className="po-info-meta po-info-ipoint-qty-cell">
-                                      {formatRequestedQuantityDisplay(line.quantity)}
+                                      {formatRequestedQuantityDisplay(
+                                        effectiveRequestedQuantity(line, resolved)
+                                      )}
                                     </td>
                                   </tr>
                                 )

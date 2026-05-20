@@ -1,5 +1,6 @@
 import type { PoLineItem } from '../types/poIpoint'
 import type { PoLineReportCsvRow } from './parsePoLineReport'
+import { poLineItemKey } from './poLineCustomerOverride'
 import { normalizePoKey } from './poIpointMatch'
 
 function norm(s: string): string {
@@ -46,27 +47,98 @@ function aggregateKey(poNumber: string, itemName: string): string {
   return `${normalizePoKey(poNumber)}\0${norm(itemName || '')}`
 }
 
-function customerPrefix(jobOrCustomer: string): string {
-  const t = jobOrCustomer.trim()
-  const i = t.indexOf(':')
-  return norm(i >= 0 ? t.slice(0, i) : t)
+function normJob(job: string): string {
+  return job.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-/** Human-readable job/customer for UI — always prefer PO Line Report text, not fuzzy job ref. */
-export function displayJobForAggregatedLine(line: AggregatedPoLineItem): string {
-  const parts = line.customerBreakdown.filter((c) => c.job_or_customer && c.job_or_customer !== 'Stock')
-  if (parts.length === 0) {
-    if (line.job_or_customer === 'Stock') return 'Stock'
-    return line.job_or_customer?.trim() || '—'
+/** Resolve which customer row applies (saved pick, single customer, or first of several). */
+export function resolveSelectedCustomer(
+  line: AggregatedPoLineItem,
+  overrides: Record<string, string>
+): string | null {
+  if (line.customerBreakdown.length === 0) return null
+
+  const key = poLineItemKey(line.po_number, line.item_name)
+  const saved = overrides[key]?.trim()
+  if (saved) {
+    const hit = line.customerBreakdown.find((c) => normJob(c.job_or_customer) === normJob(saved))
+    if (hit) return hit.job_or_customer
   }
-  if (parts.length === 1) return parts[0]!.job_or_customer
-  return parts
-    .map((c) => {
-      const label = c.job_or_customer
-      const pre = customerPrefix(label)
-      return pre ? label.split(':')[0]!.trim() + (c.quantity > 1 ? ` (${c.quantity})` : '') : label
+  if (line.customerBreakdown.length === 1) {
+    return line.customerBreakdown[0]!.job_or_customer
+  }
+  return line.customerBreakdown[0]!.job_or_customer
+}
+
+export type ResolvedAggregatedLine = {
+  selectedCustomer: string | null
+  quantity: number
+  isMultiCustomer: boolean
+  /** Source row ids for the selected customer only. */
+  activeSourceLineIds: string[]
+}
+
+export function resolveAggregatedLine(
+  line: AggregatedPoLineItem,
+  overrides: Record<string, string>,
+  sourceLines: PoLineItem[] = []
+): ResolvedAggregatedLine {
+  const isMultiCustomer = line.customerBreakdown.length > 1
+  const selectedCustomer = resolveSelectedCustomer(line, overrides)
+  const entry = selectedCustomer
+    ? line.customerBreakdown.find((c) => normJob(c.job_or_customer) === normJob(selectedCustomer))
+    : null
+  const quantity =
+    entry?.quantity ??
+    (line.customerBreakdown.length === 1 ? line.customerBreakdown[0]!.quantity : 0)
+
+  let activeSourceLineIds = line.sourceLineIds
+  if (selectedCustomer && sourceLines.length > 0) {
+    const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
+    activeSourceLineIds = line.sourceLineIds.filter((id) => {
+      const src = sourceById.get(id)
+      return src && norm(stockJobLabel(src.job_or_customer)) === norm(selectedCustomer)
     })
-    .join('; ')
+  }
+
+  return {
+    selectedCustomer,
+    quantity,
+    isMultiCustomer,
+    activeSourceLineIds,
+  }
+}
+
+/** Req. to show in PO Info — per selected customer, with fallbacks when DB qty is missing. */
+export function effectiveRequestedQuantity(
+  line: AggregatedPoLineItem,
+  resolved: ResolvedAggregatedLine
+): number {
+  if (resolved.quantity > 0) return resolved.quantity
+  if (resolved.selectedCustomer) {
+    const entry = line.customerBreakdown.find(
+      (c) => normJob(c.job_or_customer) === normJob(resolved.selectedCustomer!)
+    )
+    if (entry && entry.quantity > 0) return entry.quantity
+  }
+  if (line.customerBreakdown.length === 1 && line.customerBreakdown[0]!.quantity > 0) {
+    return line.customerBreakdown[0]!.quantity
+  }
+  return parseRequestedQuantity(line.quantity)
+}
+
+/** Human-readable job/customer — uses selected customer when set. */
+export function displayJobForAggregatedLine(
+  line: AggregatedPoLineItem,
+  overrides: Record<string, string> = {}
+): string {
+  const selected = resolveSelectedCustomer(line, overrides)
+  if (selected) return selected
+  if (line.customerBreakdown.length === 0) {
+    return line.job_or_customer === 'Stock' ? 'Stock' : line.job_or_customer?.trim() || '—'
+  }
+  if (line.customerBreakdown.length > 1) return 'Multiple customers'
+  return line.customerBreakdown[0]!.job_or_customer
 }
 
 /** Collapse import rows to one row per PO + item (import should keep raw rows; used for CSV preview). */

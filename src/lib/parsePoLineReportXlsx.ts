@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { parseRequestedQuantity } from './poLineAggregate'
 import { parsePoLineReportText, type PoLineReportCsvRow } from './parsePoLineReport'
 
 function cellStr(v: unknown): string {
@@ -182,14 +183,17 @@ export function summarizePoLineReportRows(rows: ParsedPoLineItem[]): {
   total: number
   withJob: number
   withoutJob: number
+  withQuantity: number
   uniquePos: number
   uniqueJobs: number
 } {
   const pos = new Set<string>()
   const jobs = new Set<string>()
   let withJob = 0
+  let withQuantity = 0
   for (const r of rows) {
     if (r.po_number) pos.add(r.po_number)
+    if (parseRequestedQuantity(r.quantity) > 0) withQuantity++
     const job = (r.job_or_customer || '').trim()
     if (job && job !== 'Stock') {
       withJob++
@@ -201,6 +205,7 @@ export function summarizePoLineReportRows(rows: ParsedPoLineItem[]): {
     total: rows.length,
     withJob,
     withoutJob: stockLines,
+    withQuantity,
     uniquePos: pos.size,
     uniqueJobs: jobs.size,
   }

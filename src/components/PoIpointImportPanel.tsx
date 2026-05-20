@@ -160,9 +160,13 @@ function PoIpointImportPanel({
       stats.withoutJob > 0
         ? ` ${stats.withoutJob} stock line${stats.withoutJob !== 1 ? 's' : ''} (blank customer).`
         : ''
+    const qtyNote =
+      stats.withQuantity < stats.total
+        ? ` ${stats.withQuantity} line${stats.withQuantity !== 1 ? 's' : ''} have Req. quantities (${stats.total - stats.withQuantity} missing — re-export or use PDF/CSV if Excel dropped the Req. column).`
+        : ` All ${stats.withQuantity} lines include Req. quantities.`
     return {
       count: rows.length,
-      detail: `PO Line Report: imported ${stats.total} item line${stats.total !== 1 ? 's' : ''} (${stats.uniquePos} POs) with Req. totals per item.${stockNote}`,
+      detail: `PO Line Report: imported ${stats.total} line${stats.total !== 1 ? 's' : ''} (${stats.uniquePos} POs).${qtyNote}${stockNote}`,
     }
   }
 

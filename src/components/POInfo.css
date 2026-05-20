@@ -1150,6 +1150,84 @@ tr.po-info-ipoint-row-not-scanned .po-info-scan-item-name {
   color: #bfdbfe;
 }
 
+.po-info-customer-picker {
+  position: relative;
+  display: inline-block;
+}
+
+.po-info-customer-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.po-info-customer-picker-btn:hover {
+  border-color: #64748b;
+  background: #334155;
+}
+
+.po-info-customer-picker-caret {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.po-info-customer-picker-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 16rem;
+  max-width: 24rem;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #0f172a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.po-info-customer-picker-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.po-info-customer-picker-option:hover,
+.po-info-customer-picker-option.is-selected {
+  background: #1e293b;
+}
+
+.po-info-customer-picker-option-name {
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.po-info-customer-picker-option-qty {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
 .po-info-loc-modal-backdrop {
   position: fixed;
   inset: 0;
