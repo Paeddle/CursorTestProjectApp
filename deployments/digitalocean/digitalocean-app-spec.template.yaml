@@ -57,6 +57,7 @@ static_sites:
     routes:
       - path: /
       - path: /wire
+      - path: /print-station
     envs:
       - key: VITE_AFTERSHIP_API_KEY
         scope: BUILD_TIME
