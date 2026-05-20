@@ -1,41 +1,10 @@
 const LABEL_DRAW_WIDTH = 2382
 const LABEL_DRAW_HEIGHT = 638
+const LABEL_PRINTABLE_X = 128
+const LABEL_PRINTABLE_Y = 18
+const LABEL_PRINTABLE_WIDTH = 2218
+const LABEL_PRINTABLE_HEIGHT = 608
 export const LABEL_TEXT_OBJECT_NAME = 'TEXT'
-
-export const LABEL_XML_SKELETON = `<?xml version="1.0" encoding="utf-8"?>
-<DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Landscape</PaperOrientation>
-  <Id>Shipping</Id>
-  <PaperName>30323 Shipping</PaperName>
-  <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
-  </DrawCommands>
-  <ObjectInfo>
-    <TextObject>
-      <Name>${LABEL_TEXT_OBJECT_NAME}</Name>
-      <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-      <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-      <LinkedObjectName></LinkedObjectName>
-      <Rotation>Rotation0</Rotation>
-      <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
-      <HorizontalAlignment>Center</HorizontalAlignment>
-      <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>ShrinkToFit</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
-      <Verticalized>False</Verticalized>
-      <StyledText>
-        <Element>
-          <String> </String>
-          <Attributes>
-            <Font Family="Arial" Size="28" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>
-          </Attributes>
-        </Element>
-      </StyledText>
-    </TextObject>
-    <Bounds X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}"/>
-  </ObjectInfo>
-</DieCutLabel>`
 
 const LABEL_FONT_STEPS = [
   { size: 36, charsPerLine: 22, maxLines: 3 },
@@ -112,19 +81,57 @@ export function labelLayoutForRow(row) {
   return { fontSize: fallback.size, lines: lines.slice(0, fallback.maxLines) }
 }
 
+function fontAttributesXml(fontSize) {
+  return `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/><ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>`
+}
+
 function buildStyledTextXml(lines, fontSize) {
-  const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
-  const body = lines.map((line) => escapeXmlText(line)).join('&#10;')
-  return `        <Element><String>${body || '(no text)'}</String><Attributes>${font}</Attributes></Element>`
+  const attrs = fontAttributesXml(fontSize)
+  const textLines = lines.length > 0 ? lines : ['(no text)']
+  return textLines
+    .map(
+      (line) =>
+        `<Element><String>${escapeXmlText(line)}</String><Attributes>${attrs}</Attributes></Element>`
+    )
+    .join('')
+}
+
+export function buildLabelXml(lines, fontSize) {
+  const styled = buildStyledTextXml(lines, fontSize)
+  return (
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    `<DieCutLabel Version="8.0" Units="twips">` +
+    `<PaperOrientation>Landscape</PaperOrientation>` +
+    `<Id>Shipping</Id>` +
+    `<PaperName>30323 Shipping</PaperName>` +
+    `<DrawCommands>` +
+    `<RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>` +
+    `</DrawCommands>` +
+    `<ObjectInfo>` +
+    `<TextObject>` +
+    `<Name>${LABEL_TEXT_OBJECT_NAME}</Name>` +
+    `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
+    `<LinkedObjectName></LinkedObjectName>` +
+    `<Rotation>Rotation0</Rotation>` +
+    `<IsMirrored>False</IsMirrored>` +
+    `<IsVariable>False</IsVariable>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment>` +
+    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    `<TextFitMode>ShrinkToFit</TextFitMode>` +
+    `<UseFullFontHeight>True</UseFullFontHeight>` +
+    `<Verticalized>False</Verticalized>` +
+    `<StyledText>${styled}</StyledText>` +
+    `</TextObject>` +
+    `<Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>` +
+    `</ObjectInfo>` +
+    `</DieCutLabel>`
+  )
 }
 
 export function buildLabelXmlForRow(row) {
   const { fontSize, lines } = labelLayoutForRow(row)
-  const styled = buildStyledTextXml(lines, fontSize)
-  return LABEL_XML_SKELETON.replace(
-    /<StyledText>[\s\S]*?<\/StyledText>/,
-    `<StyledText>\n${styled}\n      </StyledText>`
-  )
+  return buildLabelXml(lines, fontSize)
 }
 
 export function assertDymoPrintSucceeded(result, endpoint) {

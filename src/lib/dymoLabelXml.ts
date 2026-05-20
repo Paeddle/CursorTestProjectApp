@@ -7,51 +7,17 @@ export const LABEL_HEIGHT_MM = 59
 /** DYMO 30323 Shipping — landscape draw area (portrait page 638×2382 rotated). */
 export const LABEL_DRAW_WIDTH = 2382
 export const LABEL_DRAW_HEIGHT = 638
+export const LABEL_PRINTABLE_X = 128
+export const LABEL_PRINTABLE_Y = 18
+export const LABEL_PRINTABLE_WIDTH = 2218
+export const LABEL_PRINTABLE_HEIGHT = 608
 
 /** DYMO object name — must match &lt;Name&gt; in the label XML. */
 export const LABEL_TEXT_OBJECT_NAME = 'TEXT'
 
-/**
- * Empty 30323 template for DYMO Connect framework (setObjectText after openLabelXml).
- * Text box covers the full draw area so Center/Middle alignment works.
- */
-export const LABEL_XML_SKELETON = `<?xml version="1.0" encoding="utf-8"?>
-<DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Landscape</PaperOrientation>
-  <Id>Shipping</Id>
-  <PaperName>30323 Shipping</PaperName>
-  <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
-  </DrawCommands>
-  <ObjectInfo>
-    <TextObject>
-      <Name>${LABEL_TEXT_OBJECT_NAME}</Name>
-      <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
-      <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
-      <LinkedObjectName></LinkedObjectName>
-      <Rotation>Rotation0</Rotation>
-      <IsMirrored>False</IsMirrored>
-      <IsVariable>True</IsVariable>
-      <HorizontalAlignment>Center</HorizontalAlignment>
-      <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>ShrinkToFit</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
-      <Verticalized>False</Verticalized>
-      <StyledText>
-        <Element>
-          <String> </String>
-          <Attributes>
-            <Font Family="Arial" Size="28" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>
-          </Attributes>
-        </Element>
-      </StyledText>
-    </TextObject>
-    <Bounds X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}"/>
-  </ObjectInfo>
-</DieCutLabel>`
-
-/** @deprecated Use LABEL_XML_SKELETON */
-export const LABEL_XML_TEMPLATE = LABEL_XML_SKELETON
+/** @deprecated Use buildLabelXmlForRow — kept for imports. */
+export const LABEL_XML_SKELETON = ''
+export const LABEL_XML_TEMPLATE = ''
 
 const LABEL_FONT_STEPS = [
   { size: 36, charsPerLine: 22, maxLines: 3 },
@@ -175,21 +141,53 @@ export function labelPlainTextForRow(row: {
   return lines.join('\n')
 }
 
-function buildStyledTextXml(lines: string[], fontSize: number): string {
-  const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
-  const body = lines.map((line) => escapeXmlText(line)).join('&#10;')
-  if (!body.trim()) {
-    return `        <Element><String>(no text)</String><Attributes>${font}</Attributes></Element>`
-  }
-  return `        <Element><String>${body}</String><Attributes>${font}</Attributes></Element>`
+function fontAttributesXml(fontSize: number): string {
+  return `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/><ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>`
 }
 
-/** Full label XML for DYMO Connect HTTP PrintLabel2 (no framework). */
+/** One &lt;Element&gt; per line — format DYMO Connect accepts for PrintLabel2 and the JS SDK. */
+function buildStyledTextXml(lines: string[], fontSize: number): string {
+  const attrs = fontAttributesXml(fontSize)
+  const textLines = lines.length > 0 ? lines : ['(no text)']
+  return textLines
+    .map(
+      (line) =>
+        `<Element><String>${escapeXmlText(line)}</String><Attributes>${attrs}</Attributes></Element>`
+    )
+    .join('')
+}
+
+/** Complete 30323 label file (no regex surgery — avoids invalid XML on PrintLabel2). */
 export function buildLabelXml(lines: string[], fontSize: number): string {
   const styled = buildStyledTextXml(lines, fontSize)
-  return LABEL_XML_SKELETON.replace(
-    /<StyledText>[\s\S]*?<\/StyledText>/,
-    `<StyledText>\n${styled}\n      </StyledText>`
+  return (
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    `<DieCutLabel Version="8.0" Units="twips">` +
+    `<PaperOrientation>Landscape</PaperOrientation>` +
+    `<Id>Shipping</Id>` +
+    `<PaperName>30323 Shipping</PaperName>` +
+    `<DrawCommands>` +
+    `<RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>` +
+    `</DrawCommands>` +
+    `<ObjectInfo>` +
+    `<TextObject>` +
+    `<Name>${LABEL_TEXT_OBJECT_NAME}</Name>` +
+    `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
+    `<LinkedObjectName></LinkedObjectName>` +
+    `<Rotation>Rotation0</Rotation>` +
+    `<IsMirrored>False</IsMirrored>` +
+    `<IsVariable>False</IsVariable>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment>` +
+    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    `<TextFitMode>ShrinkToFit</TextFitMode>` +
+    `<UseFullFontHeight>True</UseFullFontHeight>` +
+    `<Verticalized>False</Verticalized>` +
+    `<StyledText>${styled}</StyledText>` +
+    `</TextObject>` +
+    `<Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>` +
+    `</ObjectInfo>` +
+    `</DieCutLabel>`
   )
 }
 

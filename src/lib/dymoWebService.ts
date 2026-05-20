@@ -15,6 +15,12 @@ const PORT_END = 41960
 let cachedService: DymoServiceEndpoint | null = null
 let cachedPrinter: string | null = null
 
+function encodeFormBody(fields: Record<string, string>): string {
+  return Object.entries(fields)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&')
+}
+
 async function dymoRequest(
   host: string,
   port: number,
@@ -25,8 +31,8 @@ async function dymoRequest(
   const url = `https://${host}:${port}/${SERVICE_PATH}/${endpoint}`
   const init: RequestInit = { method }
   if (form) {
-    init.body = new URLSearchParams(form)
-    init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
+    init.body = encodeFormBody(form)
+    init.headers = { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
   }
   const res = await fetch(url, init)
   const ct = res.headers.get('content-type') ?? ''

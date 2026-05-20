@@ -1,10 +1,8 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 import {
+  buildLabelXmlForRow,
   labelLayoutForRow,
-  labelPlainTextForRow,
   labelTextLinesForRow,
-  LABEL_TEXT_OBJECT_NAME,
-  LABEL_XML_SKELETON,
   LABEL_XML_TEMPLATE,
 } from './dymoLabelXml'
 import { printRowsViaWebService } from './dymoWebService'
@@ -275,8 +273,7 @@ async function printRowsViaFramework(
   if (!target) throw new Error('No DYMO LabelWriter printer found.')
 
   for (const row of rows) {
-    const label = fw.openLabelXml(LABEL_XML_SKELETON)
-    label.setObjectText(LABEL_TEXT_OBJECT_NAME, labelPlainTextForRow(row))
+    const label = fw.openLabelXml(buildLabelXmlForRow(row))
     label.print(target)
   }
   return { printed: rows.length, printer: target }
@@ -303,15 +300,15 @@ export async function printLabelsDirect(
   const errors: string[] = []
 
   try {
-    await printRowsViaWebService(rows, printerName)
-    return { printed: rows.length, method: 'dymo-web' }
+    const result = await printRowsViaFramework(rows, printerName)
+    return { printed: result.printed, method: 'dymo-framework' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
   try {
-    const result = await printRowsViaFramework(rows, printerName)
-    return { printed: result.printed, method: 'dymo-framework' }
+    await printRowsViaWebService(rows, printerName)
+    return { printed: rows.length, method: 'dymo-web' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
