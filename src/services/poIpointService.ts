@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import type { ParsedItemLocationRow } from '../lib/parseItemLocationsXlsx'
+import { aggregatePoLineReportRows, parseRequestedQuantity } from '../lib/poLineAggregate'
 import type { ParsedPoLineItem } from '../lib/parsePoLineReportXlsx'
 import type { ParsedJobRefRow } from '../lib/parseJobRefXlsx'
 import { clearIpointCache, readIpointCache, writeIpointCache } from '../lib/poIpointCache'
@@ -306,13 +307,17 @@ export async function importPoLineReport(
     .neq('id', '00000000-0000-0000-0000-000000000000')
   if (delErr) throw new Error(delErr.message)
 
+  const aggregated = aggregatePoLineReportRows(rows)
   const imported_at = new Date().toISOString()
-  const payload = rows.map((r) => ({
+  const payload = aggregated.map((r) => ({
     po_number: r.po_number,
     item_name: r.item_name,
-    job_or_customer: r.job_or_customer || null,
+    job_or_customer: (r.job_or_customer || '').trim() || 'Stock',
     po_date: r.po_date,
-    quantity: r.quantity || null,
+    quantity: (() => {
+      const n = parseRequestedQuantity(r.quantity)
+      return n > 0 ? String(n) : null
+    })(),
     source_file: sourceFile,
     imported_at,
   }))

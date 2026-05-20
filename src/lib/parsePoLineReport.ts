@@ -2,6 +2,8 @@
  * PO Line Report PDF text → rows / CSV matching `scripts/parse-po-report.mjs` and `public/po_line_report.csv`.
  */
 
+import { aggregatePoLineReportRows } from './poLineAggregate'
+
 export type PoLineReportCsvRow = {
   po_number: string
   item_name: string
@@ -66,31 +68,40 @@ function splitPoSegments(line: string): string[] {
  * Parse quantity from the tail after `For:` — uses Req. (first number before PO date).
  * Formats: `For:Sales Order   3   3 4/2/26` (Req + Pending) or `For:Sales Order   16 5/6/26` (Req only).
  */
-function parseForTail(tail: string): { forType: string; quantity: string } {
+export function parseForTail(tail: string): { forType: string; quantity: string } {
   const t = tail.trim()
+  // Strip trailing money / Exp Recv columns so we do not confuse them with Req.
+  const core = t.replace(/\s+\$[\d,.]+(?:\s+\$[\d,.]+)*\s*[\d.]*\s*$/i, '').trim()
+
   // Req + Pending Rec, then PO date (M/D/YY)
-  let m = t.match(/^(.+?)\s+(\d+)\s+(\d+)\s*(?=\d{1,2}\/)/)
+  let m = core.match(/^(.+?)\s+(\d+)\s+(\d+)\s*(?=\d{1,2}\/\d{1,2}\/)/)
   if (m) {
     return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
   }
   // Req only, then PO date
-  m = t.match(/^(.+?)\s+(\d+)\s*(?=\d{1,2}\/)/)
+  m = core.match(/^(.+?)\s+(\d+)\s*(?=\d{1,2}\/\d{1,2}\/)/)
   if (m) {
     return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
   }
-  // Fallback: first number after For type
-  m = t.match(/^(.+?)\s+(\d+)/)
+  // Fallback: first number after For type (avoid grabbing year fragments)
+  m = core.match(/^(.+?)\s+(\d+)(?:\s|$)/)
   if (m) {
     return { forType: m[1]!.trim().replace(/\s+/g, ' '), quantity: m[2]! }
   }
-  return { forType: t.replace(/\s+/g, ' '), quantity: '' }
+  return { forType: core.replace(/\s+/g, ' '), quantity: '' }
 }
+
+/** PO / Item / For may be separated by pipe, tab, or spaces (browser PDF extract uses spaces). */
+const PO_LINE_FIELD_SEP = '[\\|\\t\\s]+'
 
 function parsePoSegment(
   segment: string,
   currentCustomer: string
 ): PoLineReportCsvRow | null {
-  const header = /PO:(\d+)\s*[\|\t]\s*Item:([^|\t]+?)\s*[\|\t]\s*For:(.+)/i.exec(segment)
+  const header = new RegExp(
+    `PO:(\\d+)\\s*${PO_LINE_FIELD_SEP}\\s*Item:([^|\\t]+?)\\s*${PO_LINE_FIELD_SEP}\\s*For:(.+)`,
+    'i'
+  ).exec(segment)
   if (!header) return null
 
   const { forType, quantity } = parseForTail(header[3]!)
@@ -107,6 +118,7 @@ function parsePoSegment(
 
 /**
  * Parse text extracted from a PO Line Report PDF (Req. column = quantity requested).
+ * Returns one row per PO + item with total Req. quantity (stock lines use blank customer).
  */
 export function parsePoLineReportText(text: string): PoLineReportCsvRow[] {
   const normalized = preprocessPoLineReportText(text)
@@ -128,7 +140,7 @@ export function parsePoLineReportText(text: string): PoLineReportCsvRow[] {
       if (row) rows.push(row)
     }
   }
-  return rows
+  return aggregatePoLineReportRows(rows)
 }
 
 const PO_LINE_CSV_HEADER =

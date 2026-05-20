@@ -12,9 +12,14 @@ import {
 import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
 import type { PoItemLocation, PoJobRef, PoLineItem, PoLabelPrintRow } from '../types/poIpoint'
 import {
-  buildIpointLineDisplayCache,
+  aggregateLineItemsForPo,
+  formatRequestedQuantityDisplay,
+  type AggregatedPoLineItem,
+} from '../lib/poLineAggregate'
+import {
+  buildAggregatedIpointLineDisplayCache,
   buildIpointLocationIndex,
-  ipointScannedLineIdsForPo,
+  ipointScannedIdsForAggregatedLines,
 } from '../lib/poIpointIndex'
 import {
   fetchPoIpointData,
@@ -38,22 +43,35 @@ const LOCATION_PREVIEW_COUNT = 2
 
 function labelKeysForLine(
   poNumber: string,
-  line: PoLineItem,
+  line: AggregatedPoLineItem,
   jobRefs: PoJobRef[],
-  itemLocations: PoItemLocation[]
+  itemLocations: PoItemLocation[],
+  sourceLines: PoLineItem[]
 ): string[] {
-  const names = locationNamesForLine(line, jobRefs, itemLocations)
-  if (names.length === 0) return [makeLabelKey(poNumber, line.id, '')]
-  return names.map((name) => makeLabelKey(poNumber, line.id, name))
+  const names = new Set<string>()
+  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
+  for (const id of line.sourceLineIds) {
+    const src = sourceById.get(id)
+    if (!src) continue
+    for (const name of locationNamesForLine(src, jobRefs, itemLocations)) {
+      names.add(name)
+    }
+  }
+  const list = [...names].sort((a, b) => a.localeCompare(b))
+  if (list.length === 0) return [makeLabelKey(poNumber, line.id, '')]
+  return list.map((name) => makeLabelKey(poNumber, line.id, name))
 }
 
 function allLabelKeysForPo(
   poNumber: string,
-  lines: PoLineItem[],
+  lines: AggregatedPoLineItem[],
   jobRefs: PoJobRef[],
-  itemLocations: PoItemLocation[]
+  itemLocations: PoItemLocation[],
+  sourceLines: PoLineItem[]
 ): string[] {
-  return lines.flatMap((line) => labelKeysForLine(poNumber, line, jobRefs, itemLocations))
+  return lines.flatMap((line) =>
+    labelKeysForLine(poNumber, line, jobRefs, itemLocations, sourceLines)
+  )
 }
 
 type IpointLocationCellProps = {
@@ -413,10 +431,10 @@ function POInfo() {
     const map = new Map<
       string,
       {
-        lines: PoLineItem[]
+        lines: AggregatedPoLineItem[]
         scanned: Set<string>
         labelKeys: string[]
-        lineDisplay: ReturnType<typeof buildIpointLineDisplayCache>
+        lineDisplay: ReturnType<typeof buildAggregatedIpointLineDisplayCache>
       }
     >()
     if (ipointLocationIndex.all.length === 0) return map
@@ -425,19 +443,22 @@ function POInfo() {
       const poKey = summary.po_number.toLowerCase()
       if (!expandedPo.has(poKey)) continue
 
-      const lines = lineItemsForPo(summary.po_number, lineItems)
-      if (lines.length === 0) continue
+      const sourceLines = lineItemsForPo(summary.po_number, lineItems)
+      if (sourceLines.length === 0) continue
 
-      const lineDisplay = buildIpointLineDisplayCache(
+      const lines = aggregateLineItemsForPo(summary.po_number, lineItems)
+      const lineDisplay = buildAggregatedIpointLineDisplayCache(
         summary.po_number,
         lines,
+        sourceLines,
         jobRefs,
         ipointLocationIndex,
         makeLabelKey
       )
       const labelKeys = lines.flatMap((line) => lineDisplay.get(line.id)?.labelKeys ?? [])
-      const scanned = ipointScannedLineIdsForPo(
+      const scanned = ipointScannedIdsForAggregatedLines(
         lines,
+        sourceLines,
         summary.barcodes,
         catalogMap,
         ipointLocationIndex,
@@ -452,7 +473,7 @@ function POInfo() {
   const buildLabelRowsForPo = useCallback(
     (poNumber: string): PoLabelPrintRow[] => {
       const poKey = normalizePoKey(poNumber)
-      const poLines = lineItemsForPo(poNumber, lineItems)
+      const poLines = aggregateLineItemsForPo(poNumber, lineItems)
       const lineById = new Map(poLines.map((l) => [l.id, l]))
       const rows: PoLabelPrintRow[] = []
 
@@ -512,8 +533,9 @@ function POInfo() {
     })
   }
 
-  const toggleLabelSelect = (poNumber: string, line: PoLineItem) => {
-    const keys = labelKeysForLine(poNumber, line, jobRefs, itemLocations)
+  const toggleLabelSelect = (poNumber: string, line: AggregatedPoLineItem) => {
+    const sourceLines = lineItemsForPo(poNumber, lineItems)
+    const keys = labelKeysForLine(poNumber, line, jobRefs, itemLocations, sourceLines)
     const allOn = keys.every((k) => labelSelected.has(k))
     setLabelSelected((prev) => {
       const next = new Set(prev)
@@ -525,8 +547,9 @@ function POInfo() {
     })
   }
 
-  const toggleAllLabelsForPo = (poNumber: string, lines: PoLineItem[]) => {
-    const keys = allLabelKeysForPo(poNumber, lines, jobRefs, itemLocations)
+  const toggleAllLabelsForPo = (poNumber: string, lines: AggregatedPoLineItem[]) => {
+    const sourceLines = lineItemsForPo(poNumber, lineItems)
+    const keys = allLabelKeysForPo(poNumber, lines, jobRefs, itemLocations, sourceLines)
     const allOn = keys.length > 0 && keys.every((k) => labelSelected.has(k))
     setLabelSelected((prev) => {
       const next = new Set(prev)
@@ -882,14 +905,21 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
             const ipointBundle = expandedIpointByPoKey.get(key)
-            const poIpointLines = ipointBundle?.lines ?? lineItemsForPo(summary.po_number, lineItems)
+            const poIpointLines =
+              ipointBundle?.lines ?? aggregateLineItemsForPo(summary.po_number, lineItems)
             const ipointScanned = ipointBundle?.scanned ?? new Set<string>()
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
             const ipointLabelKeys =
               ipointBundle?.labelKeys ??
               (isExpanded && ipointLocationIndex.all.length > 0
-                ? allLabelKeysForPo(summary.po_number, poIpointLines, jobRefs, itemLocations)
+                ? allLabelKeysForPo(
+                    summary.po_number,
+                    poIpointLines,
+                    jobRefs,
+                    itemLocations,
+                    lineItemsForPo(summary.po_number, lineItems)
+                  )
                 : [])
             const allIpointLabelsSelected =
               ipointLabelKeys.length > 0 && ipointLabelKeys.every((k) => labelSelected.has(k))
@@ -962,8 +992,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           </button>
                         </div>
                         <p className="po-info-section-desc">
-                          From PO Line Report. Locations come from the ref spreadsheets (e.g. 4152.xlsx)
-                          matched by JobRef + item name. Long location lists show a “+N more” link to
+                          From PO Line Report. Req. is the total requested quantity per item (summed across
+                          customers; blank customer lines count as stock). Locations come from the ref
+                          spreadsheets (e.g. 4152.xlsx) matched by JobRef + item name. Long location lists show a “+N more” link to
                           open all rooms and pick which labels to print. On this device with DYMO Connect,
                           labels print here; otherwise they are queued for the Print Station on your laptop.
                         </p>
@@ -1004,18 +1035,17 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const lineCached = ipointBundle?.lineDisplay.get(line.id)
                                 const lineLocationNames =
                                   lineCached?.locationNames ??
-                                  (ipointLoading
-                                    ? []
-                                    : locationNamesForLine(line, jobRefs, itemLocations))
+                                  (ipointLoading ? [] : [])
                                 const lineLabelKeys =
                                   lineCached?.labelKeys ??
                                   labelKeysForLine(
                                     summary.po_number,
                                     line,
                                     jobRefs,
-                                    itemLocations
+                                    itemLocations,
+                                    lineItemsForPo(summary.po_number, lineItems)
                                   )
-                                const selectedCount = lineLabelKeys.filter((k) =>
+                                const selectedCount = lineLabelKeys.filter((k: string) =>
                                   labelSelected.has(k)
                                 ).length
                                 const allLineLabelsSelected =
@@ -1057,7 +1087,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         </span>
                                       )}
                                     </td>
-                                    <td className="po-info-meta">{job || line.job_or_customer || '—'}</td>
+                                    <td className="po-info-meta">
+                                      {job ||
+                                        (line.job_or_customer === 'Stock'
+                                          ? 'Stock'
+                                          : line.job_or_customer) ||
+                                        '—'}
+                                    </td>
                                     <td className="po-info-meta po-info-ipoint-loc-cell">
                                       <IpointLocationCell
                                         locationNames={lineLocationNames}
@@ -1072,7 +1108,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       />
                                     </td>
                                     <td className="po-info-meta po-info-ipoint-qty-cell">
-                                      {(line.quantity ?? '').trim() || '—'}
+                                      {formatRequestedQuantityDisplay(line.quantity)}
                                     </td>
                                   </tr>
                                 )

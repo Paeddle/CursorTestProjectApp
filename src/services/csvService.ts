@@ -1,5 +1,6 @@
 // CSV Service - single source: PO Line Report (po_line_report.csv)
 import Papa from 'papaparse'
+import { aggregatePoLineReportRows, stockJobLabel } from '../lib/poLineAggregate'
 
 export interface TrackingInfo {
   id: string
@@ -144,20 +145,36 @@ class CSVService {
   async loadPOItems(): Promise<Map<string, POItem[]>> {
     try {
       const rows = await this.loadCSVFile(PO_LINE_REPORT_PATH)
+      const parsed = rows
+        .map((row) => {
+          const poNumber = (row.po_number || '').toString().trim()
+          const item_name = (row.item_name || '').toString().trim()
+          if (!poNumber || !item_name) return null
+          return {
+            po_number: poNumber,
+            item_name,
+            part_number: (row.part_number || '').toString().trim(),
+            description: (row.description || '').toString().trim(),
+            color: (row.color || '').toString().trim(),
+            quantity: String(row.quantity != null && row.quantity !== '' ? row.quantity : '0'),
+            job_or_customer: stockJobLabel((row.job_or_customer || '').toString()),
+          }
+        })
+        .filter(Boolean) as import('../lib/parsePoLineReport').PoLineReportCsvRow[]
+
+      const aggregated = aggregatePoLineReportRows(parsed)
       const itemsMap = new Map<string, POItem[]>()
 
-      for (const row of rows) {
-        const poNumber = (row.po_number || '').toString().trim()
-        if (!poNumber) continue
-
+      for (const row of aggregated) {
+        const poNumber = row.po_number
         const item: POItem = {
           po_number: poNumber,
-          item_name: (row.item_name || '').toString().trim(),
-          part_number: (row.part_number || '').toString().trim(),
-          description: (row.description || '').toString().trim(),
-          color: (row.color || '').toString().trim(),
-          quantity: row.quantity != null && row.quantity !== '' ? row.quantity : 0,
-          job_or_customer: (row.job_or_customer || '').toString().trim(),
+          item_name: row.item_name,
+          part_number: row.part_number,
+          description: row.description,
+          color: row.color,
+          quantity: row.quantity,
+          job_or_customer: row.job_or_customer,
         }
 
         const key = poNumber.toLowerCase()

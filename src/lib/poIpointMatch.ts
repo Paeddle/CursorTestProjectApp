@@ -217,7 +217,7 @@ export function jobNameForLine(line: PoLineItem, jobRefs: PoJobRef[]): string | 
   return ref?.job_name ?? (line.job_or_customer?.trim() || null)
 }
 
-function dedupeLocationsByName(matches: PoItemLocation[]): PoItemLocation[] {
+export function dedupeLocationsByName(matches: PoItemLocation[]): PoItemLocation[] {
   const seen = new Set<string>()
   const out: PoItemLocation[] = []
   for (const row of matches) {

@@ -141,13 +141,13 @@ function PoIpointImportPanel({
     if (rows.length === 0) throw new Error('No PO lines found in file.')
     const stats = summarizePoLineReportRows(rows)
     await importPoLineReport(rows, file.name)
-    const jobNote =
+    const stockNote =
       stats.withoutJob > 0
-        ? ` ${stats.withoutJob} line${stats.withoutJob !== 1 ? 's' : ''} have no job/customer (often Stock lines).`
+        ? ` ${stats.withoutJob} stock line${stats.withoutJob !== 1 ? 's' : ''} (blank customer).`
         : ''
     return {
       count: rows.length,
-      detail: `PO Line Report: imported ${stats.total} lines (${stats.uniquePos} POs, ${stats.uniqueJobs} jobs).${jobNote}`,
+      detail: `PO Line Report: imported ${stats.total} item line${stats.total !== 1 ? 's' : ''} (${stats.uniquePos} POs) with Req. totals per item.${stockNote}`,
     }
   }
 

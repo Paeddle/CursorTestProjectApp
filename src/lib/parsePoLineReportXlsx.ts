@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { aggregatePoLineReportRows } from './poLineAggregate'
 import { parsePoLineReportText, type PoLineReportCsvRow } from './parsePoLineReport'
 
 function cellStr(v: unknown): string {
@@ -37,17 +38,28 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, '_').replace(/\./g, '')
 }
 
-/** Quantity requested (Req. column in iPoint PO Line Report). */
+/** Quantity requested (Req. column in iPoint PO Line Report — not Pending Rec.). */
 function quantityFromRow(map: Map<string, unknown>): string {
-  return (
+  const req =
     cellStr(map.get('req')) ||
+    cellStr(map.get('req.')) ||
     cellStr(map.get('quantity_requested')) ||
     cellStr(map.get('quantity_req')) ||
     cellStr(map.get('qty_req')) ||
-    cellStr(map.get('quantity')) ||
-    cellStr(map.get('qty')) ||
+    cellStr(map.get('requested')) ||
     ''
-  )
+  if (req) return req
+
+  return cellStr(map.get('quantity')) || cellStr(map.get('qty')) || ''
+}
+
+function isStockForType(map: Map<string, unknown>): boolean {
+  const forType =
+    cellStr(map.get('for')) ||
+    cellStr(map.get('for_type')) ||
+    cellStr(map.get('description')) ||
+    ''
+  return /for:\s*stock/i.test(forType) || /^stock$/i.test(forType)
 }
 
 export type ParsedPoLineItem = PoLineReportCsvRow & { po_date: string | null }
@@ -78,11 +90,14 @@ function parseStructuredSheet(sheet: XLSX.WorkSheet): ParsedPoLineItem[] {
       cellStr(map.get('item_name')) ||
       cellStr(map.get('item')) ||
       cellStr(map.get('product'))
-    const job =
+    let job =
       cellStr(map.get('job_or_customer')) ||
       cellStr(map.get('customer')) ||
       cellStr(map.get('job')) ||
       currentCustomer
+    if (!job && (isStockForType(map) || !currentCustomer)) {
+      job = ''
+    }
     const poDate =
       parseExcelDate(map.get('po_date')) ||
       parseExcelDate(map.get('date')) ||
@@ -160,7 +175,7 @@ export function parsePoLineReportXlsx(buf: ArrayBuffer): ParsedPoLineItem[] {
     if (pick.length > best.length) best = pick
   }
 
-  return best
+  return aggregatePoLineReportRows(best)
 }
 
 /** Summary stats for import feedback (job names, empty jobs, sample POs). */
@@ -177,15 +192,16 @@ export function summarizePoLineReportRows(rows: ParsedPoLineItem[]): {
   for (const r of rows) {
     if (r.po_number) pos.add(r.po_number)
     const job = (r.job_or_customer || '').trim()
-    if (job) {
+    if (job && job !== 'Stock') {
       withJob++
       jobs.add(job)
     }
   }
+  const stockLines = rows.filter((r) => (r.job_or_customer || '').trim() === 'Stock').length
   return {
     total: rows.length,
     withJob,
-    withoutJob: rows.length - withJob,
+    withoutJob: stockLines,
     uniquePos: pos.size,
     uniqueJobs: jobs.size,
   }
