@@ -1,6 +1,27 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
-/** Largest font that fits wrapped job + location within the 30323 text bounds. */
+/** Physical 30323 white shipping label (landscape): 102mm × 59mm on the roll. */
+export const LABEL_WIDTH_MM = 102
+export const LABEL_HEIGHT_MM = 59
+
+/**
+ * Drawable area in DYMO's 30323 Shipping landscape coordinate system (twips).
+ * Must match DYMO Connect's "30323 Shipping" template — do not convert from mm.
+ */
+export const LABEL_DRAW_WIDTH = 2382
+export const LABEL_DRAW_HEIGHT = 638
+
+/** Inset so text does not clip on rounded corners. */
+const LABEL_PAD_TWIPS = 24
+
+export const LABEL_TEXT_BOUNDS = {
+  x: LABEL_PAD_TWIPS,
+  y: LABEL_PAD_TWIPS,
+  width: LABEL_DRAW_WIDTH - LABEL_PAD_TWIPS * 2,
+  height: LABEL_DRAW_HEIGHT - LABEL_PAD_TWIPS * 2,
+}
+
+/** Largest font that fits wrapped job + location within the label text bounds. */
 const LABEL_FONT_STEPS = [
   { size: 36, charsPerLine: 14, maxLines: 3 },
   { size: 32, charsPerLine: 17, maxLines: 4 },
@@ -9,8 +30,9 @@ const LABEL_FONT_STEPS = [
 ] as const
 
 /**
- * DYMO 30323 Shipping (54mm × 101mm). Large fixed font per label (no shrink-to-fit),
- * centered horizontally and vertically; long text wraps to multiple lines.
+ * DYMO 30323 Shipping (102mm × 59mm landscape).
+ * One centered text block (single StyledText element + newlines) so DYMO honors
+ * HorizontalAlignment/VerticalAlignment; multiple Element nodes align top-left.
  */
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -18,7 +40,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
   <Id>Shipping</Id>
   <PaperName>30323 Shipping</PaperName>
   <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="2382" Height="638" Rx="180" Ry="180"/>
+    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
@@ -32,13 +54,13 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
       <TextFitMode>None</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
+      <UseFullFontHeight>False</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
         <!--DYMO_STYLED_TEXT-->
       </StyledText>
     </TextObject>
-    <Bounds X="128" Y="18" Width="2218" Height="608"/>
+    <Bounds X="${LABEL_TEXT_BOUNDS.x}" Y="${LABEL_TEXT_BOUNDS.y}" Width="${LABEL_TEXT_BOUNDS.width}" Height="${LABEL_TEXT_BOUNDS.height}"/>
   </ObjectInfo>
 </DieCutLabel>`
 
@@ -139,14 +161,11 @@ export function labelTextLinesForRow(row: {
   return labelLayoutForRow(row).lines
 }
 
+/** One Element + line breaks — required for Center/Middle alignment in DYMO. */
 function buildStyledTextXml(lines: string[], fontSize: number): string {
   const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
-  return lines
-    .map(
-      (line) =>
-        `        <Element><String>${escapeXmlText(line)}</String><Attributes>${font}</Attributes></Element>`
-    )
-    .join('\n')
+  const body = lines.map((line) => escapeXmlText(line)).join('&#10;')
+  return `        <Element><String>${body}</String><Attributes>${font}</Attributes></Element>`
 }
 
 export function buildLabelXml(lines: string[], fontSize: number): string {

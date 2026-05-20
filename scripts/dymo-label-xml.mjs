@@ -1,3 +1,14 @@
+/** Physical 30323 white shipping: 102mm × 59mm (landscape). */
+const LABEL_DRAW_WIDTH = 2382
+const LABEL_DRAW_HEIGHT = 638
+const LABEL_PAD_TWIPS = 24
+const LABEL_TEXT_BOUNDS = {
+  x: LABEL_PAD_TWIPS,
+  y: LABEL_PAD_TWIPS,
+  width: LABEL_DRAW_WIDTH - LABEL_PAD_TWIPS * 2,
+  height: LABEL_DRAW_HEIGHT - LABEL_PAD_TWIPS * 2,
+}
+
 const LABEL_FONT_STEPS = [
   { size: 36, charsPerLine: 14, maxLines: 3 },
   { size: 32, charsPerLine: 17, maxLines: 4 },
@@ -11,7 +22,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
   <Id>Shipping</Id>
   <PaperName>30323 Shipping</PaperName>
   <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="2382" Height="638" Rx="180" Ry="180"/>
+    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
@@ -25,13 +36,13 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
       <TextFitMode>None</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
+      <UseFullFontHeight>False</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
         <!--DYMO_STYLED_TEXT-->
       </StyledText>
     </TextObject>
-    <Bounds X="128" Y="18" Width="2218" Height="608"/>
+    <Bounds X="${LABEL_TEXT_BOUNDS.x}" Y="${LABEL_TEXT_BOUNDS.y}" Width="${LABEL_TEXT_BOUNDS.width}" Height="${LABEL_TEXT_BOUNDS.height}"/>
   </ObjectInfo>
 </DieCutLabel>`
 
@@ -107,12 +118,8 @@ export function labelLayoutForRow(row) {
 
 function buildStyledTextXml(lines, fontSize) {
   const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
-  return lines
-    .map(
-      (line) =>
-        `        <Element><String>${escapeXmlText(line)}</String><Attributes>${font}</Attributes></Element>`
-    )
-    .join('\n')
+  const body = lines.map((line) => escapeXmlText(line)).join('&#10;')
+  return `        <Element><String>${body}</String><Attributes>${font}</Attributes></Element>`
 }
 
 export function buildLabelXmlForRow(row) {
