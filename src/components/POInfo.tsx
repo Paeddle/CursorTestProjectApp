@@ -42,6 +42,7 @@ import {
 } from '../lib/poIpointMatch'
 import { makeLabelKey, parseLabelKey } from '../lib/labelKey'
 import { expandLabelRowsByQuantity } from '../lib/labelPrintExpand'
+import { findAggregatedLineForLabelKey } from '../lib/labelPrintSelection'
 import { printOrQueueLabels } from '../lib/printOrQueueLabels'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import IpointLocationsModal from './IpointLocationsModal'
@@ -430,6 +431,11 @@ function POInfo() {
     }
   }, [])
 
+  const handleIpointDataChanged = useCallback(() => {
+    setLabelSelected(new Set())
+    void load({ force: true })
+  }, [load])
+
   useEffect(() => {
     if (!isConfigured()) {
       setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env')
@@ -508,7 +514,6 @@ function POInfo() {
     (poNumber: string): PoLabelPrintRow[] => {
       const poKey = normalizePoKey(poNumber)
       const poLines = aggregateLineItemsForPo(poNumber, lineItems)
-      const lineById = new Map(poLines.map((l) => [l.id, l]))
       const sourceLinesForPo = lineItemsForPo(poNumber, lineItems)
       const rows: PoLabelPrintRow[] = []
       const quantityByLineId = new Map<string, number>()
@@ -516,7 +521,15 @@ function POInfo() {
       for (const key of labelSelected) {
         const parsed = parseLabelKey(key)
         if (!parsed || parsed.poKey !== poKey) continue
-        const line = lineById.get(parsed.lineId)
+        const line = findAggregatedLineForLabelKey(
+          key,
+          poNumber,
+          poLines,
+          jobRefs,
+          itemLocations,
+          sourceLinesForPo,
+          customerOverrides
+        )
         if (!line) continue
         if (!quantityByLineId.has(line.id)) {
           const resolved = resolveAggregatedLine(line, customerOverrides, sourceLinesForPo)
@@ -532,7 +545,7 @@ function POInfo() {
       }
       return expandLabelRowsByQuantity(rows, quantityByLineId)
     },
-    [lineItems, jobRefs, labelSelected, customerOverrides]
+    [lineItems, jobRefs, itemLocations, labelSelected, customerOverrides]
   )
 
   const handleCustomerSelect = (poNumber: string, itemName: string, jobOrCustomer: string) => {
@@ -559,9 +572,24 @@ function POInfo() {
   }
 
   const handlePrintLabels = async (poNumber: string) => {
+    const poKey = normalizePoKey(poNumber)
     const rows = buildLabelRowsForPo(poNumber)
     if (rows.length === 0) {
-      setError('Select at least one iPoint line or location to print.')
+      const hasStaleForPo = [...labelSelected].some((k) => parseLabelKey(k)?.poKey === poKey)
+      if (hasStaleForPo) {
+        setLabelSelected((prev) => {
+          const next = new Set(prev)
+          for (const k of prev) {
+            if (parseLabelKey(k)?.poKey === poKey) next.delete(k)
+          }
+          return next
+        })
+        setError(
+          'Print selections are out of date (for example after a PO Line re-import). Re-check the Print boxes, then click Print selected labels again.'
+        )
+      } else {
+        setError('Select at least one iPoint line or location to print.')
+      }
       return
     }
     await printLabelRows(poNumber, rows)
@@ -918,7 +946,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
         lineItemCount={lineItems.length}
         locationCount={itemLocations.length}
         ipointLoading={ipointLoading}
-        onDataChanged={() => void load({ force: true })}
+        onDataChanged={handleIpointDataChanged}
         onError={(msg) => setError(msg || null)}
       />
 
