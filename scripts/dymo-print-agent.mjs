@@ -83,15 +83,22 @@ async function dymoRequest(host, port, endpoint, method = 'GET', form = null) {
   return body
 }
 
+async function tryPort(host, port) {
+  try {
+    await dymoRequest(host, port, 'StatusConnected')
+    return { host, port }
+  } catch {
+    return null
+  }
+}
+
 async function findDymoService() {
+  const primary = await tryPort('127.0.0.1', 41951)
+  if (primary) return primary
   for (const host of ['127.0.0.1', 'localhost']) {
-    for (let port = 41951; port <= 41960; port++) {
-      try {
-        await dymoRequest(host, port, 'StatusConnected')
-        return { host, port }
-      } catch {
-        /* try next */
-      }
+    for (let port = 41952; port <= 41960; port++) {
+      const hit = await tryPort(host, port)
+      if (hit) return hit
     }
   }
   return null
@@ -134,17 +141,8 @@ async function printLabel(service, printerName, labelXml) {
     printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
     labelSetXml: '',
   }
-  let lastErr = null
-  for (const endpoint of ['PrintLabel2', 'PrintLabel']) {
-    try {
-      const result = await dymoRequest(service.host, service.port, endpoint, 'POST', form)
-      assertDymoPrintSucceeded(result, endpoint)
-      return
-    } catch (err) {
-      lastErr = err
-    }
-  }
-  throw lastErr ?? new Error('Print failed')
+  const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', form)
+  assertDymoPrintSucceeded(result, 'PrintLabel2')
 }
 
 function log(msg) {

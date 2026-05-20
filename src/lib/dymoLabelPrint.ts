@@ -1,8 +1,10 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 import {
-  buildLabelXmlForRow,
   labelLayoutForRow,
+  labelPlainTextForRow,
   labelTextLinesForRow,
+  LABEL_TEXT_OBJECT_NAME,
+  LABEL_XML_SKELETON,
   LABEL_XML_TEMPLATE,
 } from './dymoLabelXml'
 import { printRowsViaWebService } from './dymoWebService'
@@ -254,6 +256,33 @@ function browserLabelParts(row: PoLabelPrintRow): { lines: string[]; fontSize: n
   return { lines, fontSize }
 }
 
+async function printRowsViaFramework(
+  rows: PoLabelPrintRow[],
+  printerName?: string
+): Promise<{ printed: number; printer: string }> {
+  await loadDymoSdk()
+  await initDymoFramework()
+  const fw = window.dymo?.label?.framework
+  if (!fw || !isDymoAvailable()) {
+    throw new Error('DYMO Connect framework is not available on this PC.')
+  }
+
+  const printers = getDymoPrinterNames()
+  const target =
+    printerName && printers.includes(printerName)
+      ? printerName
+      : printers.find((n) => /labelwriter|dymo/i.test(n)) ?? printers[0]
+  if (!target) throw new Error('No DYMO LabelWriter printer found.')
+
+  for (const row of rows) {
+    const label = fw.openLabelXml(LABEL_XML_SKELETON)
+    label.setObjectText(LABEL_TEXT_OBJECT_NAME, labelPlainTextForRow(row))
+    label.print(target)
+  }
+  return { printed: rows.length, printer: target }
+}
+
+/** Prefer framework (centered layout); fall back to HTTP print service, then browser. */
 export async function printLabelsWithDymo(
   rows: PoLabelPrintRow[],
   printerName?: string
@@ -261,29 +290,17 @@ export async function printLabelsWithDymo(
   if (rows.length === 0) return { printed: 0, method: 'browser' }
 
   try {
+    await printRowsViaFramework(rows, printerName)
+    return { printed: rows.length, method: 'dymo' }
+  } catch {
+    /* try DYMO Connect HTTP API */
+  }
+
+  try {
     await printRowsViaWebService(rows, printerName)
     return { printed: rows.length, method: 'dymo' }
   } catch {
-    /* try legacy SDK below */
-  }
-
-  await loadDymoSdk()
-  await initDymoFramework()
-  const fw = window.dymo?.label?.framework
-
-  if (fw && isDymoAvailable()) {
-    const printers = getDymoPrinterNames()
-    const target =
-      printerName && printers.includes(printerName)
-        ? printerName
-        : printers.find((n) => /labelwriter|dymo/i.test(n)) ?? printers[0]
-    if (target) {
-      for (const row of rows) {
-        const label = fw.openLabelXml(buildLabelXmlForRow(row))
-        label.print(target)
-      }
-      return { printed: rows.length, method: 'dymo' }
-    }
+    /* browser fallback */
   }
 
   printLabelsInBrowser(rows)

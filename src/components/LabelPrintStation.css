@@ -177,6 +177,38 @@
   cursor: not-allowed;
 }
 
+.print-station-error-log {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+}
+
+.print-station-error-log h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: #991b1b;
+}
+
+.print-station-error-log-list {
+  margin: 0.5rem 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #7f1d1d;
+}
+
+.print-station-error-log-list li {
+  margin-bottom: 0.35rem;
+}
+
+.print-station-error-log-list time {
+  font-weight: 600;
+  margin-right: 0.35rem;
+}
+
 .print-station-error {
   background: #fee2e2;
   border: 1px solid #fca5a5;

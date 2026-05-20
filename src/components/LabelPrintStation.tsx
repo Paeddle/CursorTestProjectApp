@@ -4,8 +4,14 @@ import { supabase } from '../lib/supabase'
 import {
   connectLocalDymo,
   openDymoCertificateCheckPage,
-  printRowsViaWebService,
 } from '../lib/dymoWebService'
+import {
+  getDymoPrinterNames,
+  initDymoFramework,
+  isDymoAvailable,
+  loadDymoSdk,
+  printLabelsWithDymo,
+} from '../lib/dymoLabelPrint'
 import {
   countPendingLabels,
   countFailedLabels,
@@ -34,8 +40,15 @@ export function LabelPrintStation() {
   const [statusLine, setStatusLine] = useState('Starting…')
   const [recent, setRecent] = useState<LabelPrintQueueRecord[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [errorLog, setErrorLog] = useState<{ at: string; msg: string }[]>([])
   const processingLock = useRef(false)
   const processDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const recordError = useCallback((msg: string) => {
+    const at = new Date().toLocaleTimeString()
+    setError(msg)
+    setErrorLog((prev) => [{ at, msg }, ...prev].slice(0, 12))
+  }, [])
 
   const printStationUrl =
     typeof window !== 'undefined' ? `${window.location.origin}${PRINT_STATION_ROUTE_PATH}` : PRINT_STATION_ROUTE_PATH
@@ -48,20 +61,26 @@ export function LabelPrintStation() {
       const activity = await fetchRecentQueueActivity()
       setRecent(activity)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load queue status')
+      recordError(e instanceof Error ? e.message : 'Failed to load queue status')
     }
-  }, [])
+  }, [recordError])
 
   const refreshDymo = useCallback(async () => {
     setDymoChecking(true)
     setConnectError(null)
     try {
+      await loadDymoSdk()
+      await initDymoFramework()
       const result = await connectLocalDymo()
-      setDymoReady(result.ok)
-      setPrinterNames(result.printers)
-      if (result.ok) {
+      const frameworkNames = isDymoAvailable() ? getDymoPrinterNames() : []
+      const printers =
+        frameworkNames.length > 0 ? frameworkNames : result.printers
+      const ok = result.ok || frameworkNames.length > 0
+      setDymoReady(ok)
+      setPrinterNames(printers)
+      if (ok) {
         localStorage.setItem(SETUP_KEY, '1')
-        setStatusLine(`Ready — ${result.printers.join(', ')}`)
+        setStatusLine(`Ready — ${printers.join(', ')}`)
         return true
       }
       setConnectError(result.error)
@@ -85,13 +104,12 @@ export function LabelPrintStation() {
       let batchId: string | null = null
       processingLock.current = true
       setProcessing(true)
-      setError(null)
 
       try {
         const { data: nextRow } = await supabase
           .from('label_print_queue')
           .select('batch_id')
-          .in('status', ['pending', 'failed'])
+          .eq('status', 'pending')
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle()
@@ -111,30 +129,17 @@ export function LabelPrintStation() {
           .order('created_at', { ascending: true })
 
         if (claimErr) throw new Error(claimErr.message)
-        let rows = (claimedRows ?? []) as LabelPrintQueueRecord[]
-
-        if (rows.length === 0) {
-          const { data: failedRows, error: failedErr } = await supabase
-            .from('label_print_queue')
-            .update({ status: 'printing', error_message: null })
-            .eq('batch_id', batchId)
-            .eq('status', 'failed')
-            .select('*')
-            .order('created_at', { ascending: true })
-
-          if (failedErr) throw new Error(failedErr.message)
-          rows = (failedRows ?? []) as LabelPrintQueueRecord[]
-        }
-
+        const rows = (claimedRows ?? []) as LabelPrintQueueRecord[]
         if (rows.length === 0) return
 
         const po = rows[0]?.po_number ?? 'PO'
         setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
 
         const printRows = rows.map(queueRecordToPrintRow)
-        await printRowsViaWebService(printRows, printerNames[0])
+        await printLabelsWithDymo(printRows, printerNames[0])
         await markBatchStatus(batchId, 'printing', 'done')
         setStatusLine(`Printed ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}.`)
+        setError(null)
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Print failed'
         if (batchId) {
@@ -144,22 +149,21 @@ export function LabelPrintStation() {
             await markBatchStatus(batchId, 'pending', 'failed', msg)
           }
         }
-        setError(msg)
-        setStatusLine('Print failed — see error below.')
+        recordError(msg)
+        setStatusLine('Print failed — see error log below.')
       } finally {
         processingLock.current = false
         setProcessing(false)
         await refreshCounts()
         if (autoPrint) {
           const remaining = await countPendingLabels()
-          const failed = await countFailedLabels()
-          if (remaining > 0 || failed > 0) {
-            window.setTimeout(() => void processNextBatch(), 400)
+          if (remaining > 0) {
+            window.setTimeout(() => void processNextBatch(), 1200)
           }
         }
       }
     },
-    [autoPrint, dymoReady, printerNames, refreshCounts, refreshDymo]
+    [autoPrint, dymoReady, printerNames, recordError, refreshCounts, refreshDymo]
   )
 
   useEffect(() => {
@@ -193,8 +197,8 @@ export function LabelPrintStation() {
 
     const poll = window.setInterval(() => {
       void refreshCounts()
-      void processNextBatch()
-    }, 6000)
+      if (!processingLock.current) void processNextBatch()
+    }, 8000)
 
     return () => {
       void supabase.removeChannel(channel)
@@ -203,8 +207,8 @@ export function LabelPrintStation() {
   }, [refreshCounts, processNextBatch])
 
   useEffect(() => {
-    if (dymoReady) void processNextBatch()
-  }, [dymoReady, processNextBatch])
+    if (dymoReady && pendingCount > 0) void processNextBatch()
+  }, [dymoReady, pendingCount, processNextBatch])
 
   if (!isSupabaseConfigured()) {
     return (
@@ -311,7 +315,7 @@ export function LabelPrintStation() {
                   void refreshCounts()
                   void processNextBatch({ force: true })
                 })
-                .catch((e) => setError(e instanceof Error ? e.message : 'Retry failed'))
+                .catch((e) => recordError(e instanceof Error ? e.message : 'Retry failed'))
             }}
           >
             Retry failed labels
@@ -320,6 +324,23 @@ export function LabelPrintStation() {
       </div>
 
       {error && <div className="print-station-error">{error}</div>}
+
+      {errorLog.length > 0 && (
+        <section className="print-station-error-log" aria-label="Recent errors">
+          <h2>Recent errors</h2>
+          <p className="print-station-muted">
+            If labels still print in the corner, hard-refresh this page (Ctrl+F5) after deploy. Use only
+            Print Station <em>or</em> <code>npm run print-agent</code>, not both at once.
+          </p>
+          <ul className="print-station-error-log-list">
+            {errorLog.map((entry, i) => (
+              <li key={`${entry.at}-${i}`}>
+                <time>{entry.at}</time> {entry.msg}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="print-station-recent">
         <h2>Recent activity</h2>

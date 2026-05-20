@@ -1,18 +1,8 @@
 const LABEL_DRAW_WIDTH = 2382
 const LABEL_DRAW_HEIGHT = 638
-const LABEL_PRINTABLE_X = 128
-const LABEL_PRINTABLE_Y = 18
-const LABEL_PRINTABLE_WIDTH = 2218
-const LABEL_PRINTABLE_HEIGHT = 608
+export const LABEL_TEXT_OBJECT_NAME = 'TEXT'
 
-const LABEL_FONT_STEPS = [
-  { size: 48, charsPerLine: 22, maxLines: 3 },
-  { size: 42, charsPerLine: 24, maxLines: 4 },
-  { size: 36, charsPerLine: 28, maxLines: 5 },
-  { size: 30, charsPerLine: 32, maxLines: 6 },
-]
-
-export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
+export const LABEL_XML_SKELETON = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
   <PaperOrientation>Landscape</PaperOrientation>
   <Id>Shipping</Id>
@@ -22,7 +12,7 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
-      <Name>LABEL_TEXT</Name>
+      <Name>${LABEL_TEXT_OBJECT_NAME}</Name>
       <ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>
       <BackColor Alpha="0" Red="255" Green="255" Blue="255"/>
       <LinkedObjectName></LinkedObjectName>
@@ -35,14 +25,24 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
-        <!--DYMO_STYLED_TEXT-->
+        <Element>
+          <String> </String>
+          <Attributes>
+            <Font Family="Arial" Size="28" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>
+          </Attributes>
+        </Element>
       </StyledText>
     </TextObject>
-    <Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>
+    <Bounds X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}"/>
   </ObjectInfo>
 </DieCutLabel>`
 
-const STYLED_TEXT_PLACEHOLDER = '        <!--DYMO_STYLED_TEXT-->'
+const LABEL_FONT_STEPS = [
+  { size: 36, charsPerLine: 22, maxLines: 3 },
+  { size: 32, charsPerLine: 24, maxLines: 4 },
+  { size: 28, charsPerLine: 28, maxLines: 5 },
+  { size: 24, charsPerLine: 32, maxLines: 6 },
+]
 
 export function escapeXmlText(text) {
   return String(text)
@@ -120,9 +120,10 @@ function buildStyledTextXml(lines, fontSize) {
 
 export function buildLabelXmlForRow(row) {
   const { fontSize, lines } = labelLayoutForRow(row)
-  return LABEL_XML_TEMPLATE.replace(
-    STYLED_TEXT_PLACEHOLDER,
-    buildStyledTextXml(lines, fontSize)
+  const styled = buildStyledTextXml(lines, fontSize)
+  return LABEL_XML_SKELETON.replace(
+    /<StyledText>[\s\S]*?<\/StyledText>/,
+    `<StyledText>\n${styled}\n      </StyledText>`
   )
 }
 

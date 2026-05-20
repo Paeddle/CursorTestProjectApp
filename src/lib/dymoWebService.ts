@@ -37,16 +37,30 @@ async function dymoRequest(
   return body
 }
 
+async function tryDymoPort(host: string, port: number): Promise<DymoServiceEndpoint | null> {
+  try {
+    await dymoRequest(host, port, 'StatusConnected')
+    return { host, port }
+  } catch {
+    return null
+  }
+}
+
 export async function findDymoWebService(): Promise<DymoServiceEndpoint | null> {
   if (cachedService) return cachedService
+
+  const primary = await tryDymoPort('127.0.0.1', PORT_START)
+  if (primary) {
+    cachedService = primary
+    return primary
+  }
+
   for (const host of HOSTS) {
-    for (let port = PORT_START; port <= PORT_END; port++) {
-      try {
-        await dymoRequest(host, port, 'StatusConnected')
-        cachedService = { host, port }
-        return cachedService
-      } catch {
-        /* try next */
+    for (let port = PORT_START + 1; port <= PORT_END; port++) {
+      const hit = await tryDymoPort(host, port)
+      if (hit) {
+        cachedService = hit
+        return hit
       }
     }
   }
@@ -103,20 +117,11 @@ async function printOneLabel(
     printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
     labelSetXml: '',
   }
-  let lastErr: Error | null = null
-  for (const endpoint of ['PrintLabel2', 'PrintLabel'] as const) {
-    try {
-      const result = await dymoRequest(service.host, service.port, endpoint, 'POST', form)
-      assertDymoPrintSucceeded(result, endpoint)
-      return
-    } catch (e) {
-      lastErr = e instanceof Error ? e : new Error(String(e))
-    }
-  }
-  throw lastErr ?? new Error('Print failed')
+  const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', form)
+  assertDymoPrintSucceeded(result, 'PrintLabel2')
 }
 
-/** Direct HTTP print (same path as npm run print-agent). Works in browser when local network access is allowed. */
+/** Direct HTTP print (print agent). Works in browser when local network access is allowed. */
 export async function printRowsViaWebService(
   rows: PoLabelPrintRow[],
   printerName?: string
@@ -144,7 +149,7 @@ export type LocalDymoConnectResult = {
   error: string | null
 }
 
-/** Probe DYMO and cache service + printers for Print Station. */
+/** Probe DYMO HTTP service and cache endpoint + printers for Print Station. */
 export async function connectLocalDymo(): Promise<LocalDymoConnectResult> {
   cachedService = null
   cachedPrinter = null
