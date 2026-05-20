@@ -130,6 +130,27 @@ export async function countPendingLabels(): Promise<number> {
   return count ?? 0
 }
 
+export async function countFailedLabels(): Promise<number> {
+  const { count, error } = await supabase
+    .from('label_print_queue')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'failed')
+
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
+export async function retryFailedQueueItems(): Promise<number> {
+  const { data, error } = await supabase
+    .from('label_print_queue')
+    .update({ status: 'pending', error_message: null, processed_at: null })
+    .eq('status', 'failed')
+    .select('id')
+
+  if (error) throw new Error(error.message)
+  return data?.length ?? 0
+}
+
 export async function fetchRecentQueueActivity(limit = 12): Promise<LabelPrintQueueRecord[]> {
   const { data, error } = await supabase
     .from('label_print_queue')

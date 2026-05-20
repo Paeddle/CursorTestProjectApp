@@ -9,9 +9,9 @@ import {
 } from '../lib/dymoLabelPrint'
 import {
   countPendingLabels,
-  fetchOldestPendingBatchId,
-  fetchPendingBatchRows,
+  countFailedLabels,
   fetchRecentQueueActivity,
+  retryFailedQueueItems,
   isSupabaseConfigured,
   markBatchStatus,
   queueRecordToPrintRow,
@@ -27,6 +27,7 @@ export function LabelPrintStation() {
   const [dymoDiag, setDymoDiag] = useState<DymoDiagnostics | null>(null)
   const [dymoChecking, setDymoChecking] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const [failedCount, setFailedCount] = useState(0)
   const [autoPrint, setAutoPrint] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [statusLine, setStatusLine] = useState('Starting…')
@@ -36,8 +37,9 @@ export function LabelPrintStation() {
 
   const refreshCounts = useCallback(async () => {
     try {
-      const n = await countPendingLabels()
+      const [n, f] = await Promise.all([countPendingLabels(), countFailedLabels()])
       setPendingCount(n)
+      setFailedCount(f)
       const activity = await fetchRecentQueueActivity()
       setRecent(activity)
     } catch (e) {
@@ -77,20 +79,40 @@ export function LabelPrintStation() {
     setError(null)
 
     try {
-      batchId = await fetchOldestPendingBatchId()
+      const { data: nextRow } = await supabase
+        .from('label_print_queue')
+        .select('batch_id')
+        .in('status', ['pending', 'failed'])
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      batchId = nextRow?.batch_id ?? null
       if (!batchId) {
         setStatusLine('Idle — no labels waiting in queue.')
         return
       }
 
-      const rows = await fetchPendingBatchRows(batchId)
+      const { data: batchRows, error: batchErr } = await supabase
+        .from('label_print_queue')
+        .select('*')
+        .eq('batch_id', batchId)
+        .in('status', ['pending', 'failed'])
+        .order('created_at', { ascending: true })
+
+      if (batchErr) throw new Error(batchErr.message)
+      const rows = (batchRows ?? []) as LabelPrintQueueRecord[]
       if (rows.length === 0) {
         return
       }
 
       const po = rows[0]?.po_number ?? 'PO'
       setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
-      await markBatchStatus(batchId, 'pending', 'printing')
+      await supabase
+        .from('label_print_queue')
+        .update({ status: 'printing', error_message: null })
+        .eq('batch_id', batchId)
+        .in('status', ['pending', 'failed'])
 
       const printRows = rows.map(queueRecordToPrintRow)
       await printLabelsWithDymo(printRows)
@@ -247,8 +269,13 @@ export function LabelPrintStation() {
         <section className="print-station-card">
           <h2>Queue</h2>
           <p className="print-station-pending">
-            <span className="print-station-pending-num">{pendingCount}</span> label
-            {pendingCount !== 1 ? 's' : ''} waiting
+            <span className="print-station-pending-num">{pendingCount}</span> waiting
+            {failedCount > 0 && (
+              <span className="print-station-failed-count">
+                {' '}
+                · <strong>{failedCount}</strong> failed (auto-retry)
+              </span>
+            )}
           </p>
           <p className="print-station-status">{processing ? 'Printing…' : statusLine}</p>
           <label className="print-station-auto">
@@ -266,6 +293,22 @@ export function LabelPrintStation() {
             onClick={handleProcessNow}
           >
             Print next batch now
+          </button>
+          <button
+            type="button"
+            className="print-station-btn"
+            disabled={processing}
+            onClick={() => {
+              void retryFailedQueueItems()
+                .then((n) => {
+                  setStatusLine(n > 0 ? `Re-queued ${n} failed label(s).` : 'No failed labels to retry.')
+                  void refreshCounts()
+                  void processNextBatch({ force: true })
+                })
+                .catch((e) => setError(e instanceof Error ? e.message : 'Retry failed'))
+            }}
+          >
+            Retry failed labels
           </button>
         </section>
       </div>
@@ -285,7 +328,10 @@ export function LabelPrintStation() {
                   {row.job_name || row.item_name}
                   {row.location_name ? ` · ${row.location_name}` : ''}
                 </span>
-                <span className="print-station-recent-status">{row.status}</span>
+                <span className="print-station-recent-status">
+                  {row.status}
+                  {row.error_message ? ` — ${row.error_message}` : ''}
+                </span>
               </li>
             ))}
           </ul>

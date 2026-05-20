@@ -1,4 +1,7 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
+import { labelTextLinesForRow, wrapTextToLines } from './dymoLabelXml'
+
+export { wrapTextToLines } from './dymoLabelXml'
 
 /**
  * DYMO 30323 Shipping (54mm × 101mm / 2-1/8" × 4").
@@ -263,61 +266,11 @@ export async function getDymoDiagnostics(): Promise<DymoDiagnostics> {
   }
 }
 
-/** ~24pt Arial bold on 30323 printable width (2218 twips). */
-const DYMO_MAX_CHARS_PER_LINE = 21
 const BROWSER_JOB_MAX_CHARS_PER_LINE = 22
 const BROWSER_LOC_MAX_CHARS_PER_LINE = 26
 
-/** Break text onto new lines at word boundaries; long tokens split to fit. */
-export function wrapTextToLines(text: string, maxChars: number): string[] {
-  const t = text.trim()
-  if (!t || maxChars < 1) return []
-
-  const lines: string[] = []
-  let current = ''
-
-  const flush = () => {
-    if (current) {
-      lines.push(current)
-      current = ''
-    }
-  }
-
-  const appendToken = (token: string) => {
-    let rest = token
-    while (rest.length > 0) {
-      if (!current) {
-        if (rest.length <= maxChars) {
-          current = rest
-          rest = ''
-        } else {
-          lines.push(rest.slice(0, maxChars))
-          rest = rest.slice(maxChars)
-        }
-        continue
-      }
-
-      const joined = `${current} ${rest}`
-      if (joined.length <= maxChars) {
-        current = joined
-        rest = ''
-      } else {
-        flush()
-      }
-    }
-  }
-
-  for (const word of t.split(/\s+/)) {
-    if (word) appendToken(word)
-  }
-  flush()
-  return lines
-}
-
 export function labelLinesForRow(row: PoLabelPrintRow): string {
-  const jobLines = wrapTextToLines(row.job_name || row.item_name || '', DYMO_MAX_CHARS_PER_LINE)
-  const locLines = wrapTextToLines(row.location_name || '—', DYMO_MAX_CHARS_PER_LINE)
-  return [...jobLines, ...locLines].join('\n')
+  return labelTextLinesForRow(row).join('\n')
 }
 
 function browserLabelParts(row: PoLabelPrintRow): { job: string; loc: string } {
