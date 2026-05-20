@@ -263,8 +263,8 @@ async function printRowsViaFramework(
   await loadDymoSdk()
   await initDymoFramework()
   const fw = window.dymo?.label?.framework
-  if (!fw || !isDymoAvailable()) {
-    throw new Error('DYMO Connect framework is not available on this PC.')
+  if (!fw) {
+    throw new Error('DYMO Connect JavaScript SDK did not load.')
   }
 
   const printers = getDymoPrinterNames()
@@ -282,7 +282,44 @@ async function printRowsViaFramework(
   return { printed: rows.length, printer: target }
 }
 
-/** Prefer framework (centered layout); fall back to HTTP print service, then browser. */
+function formatDymoPrintErrors(errors: string[]): string {
+  return (
+    `Direct DYMO print failed.\n${errors.map((e) => `• ${e}`).join('\n')}\n\n` +
+    'On this laptop in Chrome or Edge: open site settings for this page, allow Local network access, ' +
+    'then click Connect printer again. Labels should feed automatically — no browser print dialog.'
+  )
+}
+
+/**
+ * Print straight to the LabelWriter (no browser window / print dialog).
+ * Tries DYMO Connect HTTP first (same path as print-agent), then the JS framework.
+ */
+export async function printLabelsDirect(
+  rows: PoLabelPrintRow[],
+  printerName?: string
+): Promise<{ printed: number; method: 'dymo-web' | 'dymo-framework' }> {
+  if (rows.length === 0) throw new Error('No labels to print.')
+
+  const errors: string[] = []
+
+  try {
+    await printRowsViaWebService(rows, printerName)
+    return { printed: rows.length, method: 'dymo-web' }
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e))
+  }
+
+  try {
+    const result = await printRowsViaFramework(rows, printerName)
+    return { printed: result.printed, method: 'dymo-framework' }
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e))
+  }
+
+  throw new Error(formatDymoPrintErrors(errors))
+}
+
+/** Local dev fallback may open a browser print dialog; Print Station uses printLabelsDirect only. */
 export async function printLabelsWithDymo(
   rows: PoLabelPrintRow[],
   printerName?: string
@@ -290,17 +327,10 @@ export async function printLabelsWithDymo(
   if (rows.length === 0) return { printed: 0, method: 'browser' }
 
   try {
-    await printRowsViaFramework(rows, printerName)
-    return { printed: rows.length, method: 'dymo' }
-  } catch {
-    /* try DYMO Connect HTTP API */
-  }
-
-  try {
-    await printRowsViaWebService(rows, printerName)
-    return { printed: rows.length, method: 'dymo' }
-  } catch {
-    /* browser fallback */
+    const result = await printLabelsDirect(rows, printerName)
+    return { printed: result.printed, method: 'dymo' }
+  } catch (directErr) {
+    if (isRemoteAppOrigin()) throw directErr
   }
 
   printLabelsInBrowser(rows)

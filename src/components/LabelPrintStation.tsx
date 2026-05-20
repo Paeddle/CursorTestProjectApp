@@ -10,7 +10,7 @@ import {
   initDymoFramework,
   isDymoAvailable,
   loadDymoSdk,
-  printLabelsWithDymo,
+  printLabelsDirect,
 } from '../lib/dymoLabelPrint'
 import {
   countPendingLabels,
@@ -136,9 +136,11 @@ export function LabelPrintStation() {
         setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
 
         const printRows = rows.map(queueRecordToPrintRow)
-        await printLabelsWithDymo(printRows, printerNames[0])
+        await printLabelsDirect(printRows, printerNames[0])
         await markBatchStatus(batchId, 'printing', 'done')
-        setStatusLine(`Printed ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}.`)
+        setStatusLine(
+          `Printed ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po} on ${printerNames[0]}.`
+        )
         setError(null)
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Print failed'
@@ -251,7 +253,12 @@ export function LabelPrintStation() {
             </a>
           </li>
           <li>
-            If the browser asks to access devices on your local network, choose <strong>Allow</strong>.
+            When Chrome or Edge asks to access devices on your <strong>local network</strong>, choose{' '}
+            <strong>Allow</strong> (required for automatic printing — no print dialog).
+          </li>
+          <li>
+            If a separate browser print window appears, local network access was blocked — fix site
+            permissions and hard-refresh this page.
           </li>
         </ol>
         <div className="print-station-setup-actions">
