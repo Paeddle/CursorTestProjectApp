@@ -1,0 +1,190 @@
+.print-station-page {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.print-station-header {
+  background: #00658f;
+  color: #fff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.print-station-header h1 {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+}
+
+.print-station-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  opacity: 0.92;
+  line-height: 1.45;
+}
+
+.print-station-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.print-station-card {
+  background: #e8e8e8;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+}
+
+.print-station-card h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.print-station-ok {
+  margin: 0 0 0.75rem;
+  color: #15803d;
+  font-weight: 500;
+}
+
+.print-station-warn {
+  margin: 0 0 0.75rem;
+  color: #92400e;
+  line-height: 1.4;
+}
+
+.print-station-pending {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.print-station-pending-num {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #00658f;
+  margin-right: 0.25rem;
+}
+
+.print-station-status {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.print-station-auto {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.print-station-btn {
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.print-station-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.print-station-btn-primary {
+  background: #00658f;
+  color: #fff;
+  border-color: #004d6b;
+}
+
+.print-station-btn-primary:hover:not(:disabled) {
+  background: #005077;
+}
+
+.print-station-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.print-station-error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.print-station-recent h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.print-station-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.print-station-recent-item {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: #e8e8e8;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+  align-items: center;
+}
+
+.print-station-recent--failed {
+  background: #fee2e2;
+}
+
+.print-station-recent-po {
+  font-weight: 600;
+}
+
+.print-station-recent-status {
+  text-transform: capitalize;
+  color: #64748b;
+}
+
+.print-station-muted {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.print-station-footer {
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.print-station-link {
+  color: #00658f;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.print-station-link:hover {
+  text-decoration: underline;
+}
+
+.print-station-setup {
+  background: #e8e8e8;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+}
+
+@media (max-width: 520px) {
+  .print-station-recent-item {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}

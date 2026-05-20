@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { WIRE_ROUTE_PATH } from '../modules/wire'
+import { PRINT_STATION_ROUTE_PATH } from './LabelPrintStation'
 import './Sidebar.css'
 
 const NAV_HIDE_DELAY_MS = 2500
@@ -55,6 +56,7 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
     { id: 'order-history', label: 'Order History', icon: '📋' },
     { id: 'non-inventory-orders', label: 'Non-Inventory Orders', icon: '🧾' },
     { id: 'po-info', label: 'PO Info', icon: '📥' },
+    { id: 'print-station', label: 'Print Station', icon: '🖨️' },
     { id: 'wire', label: 'Wire Tracker', icon: '🔌' },
     { id: 'purchase-list', label: 'Purchase List', icon: '📑' },
     { id: 'analytics', label: 'Analytics', icon: '📊' },
@@ -146,6 +148,17 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
                 <li key={item.id}>
                   <NavLink
                     to={WIRE_ROUTE_PATH}
+                    className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+                    onClick={closeAfterNavigate}
+                  >
+                    <span className="menu-icon">{item.icon}</span>
+                    <span className="menu-label">{item.label}</span>
+                  </NavLink>
+                </li>
+              ) : item.id === 'print-station' ? (
+                <li key={item.id}>
+                  <NavLink
+                    to={PRINT_STATION_ROUTE_PATH}
                     className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
                     onClick={closeAfterNavigate}
                   >

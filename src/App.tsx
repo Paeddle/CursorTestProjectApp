@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar'
 import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
 import { WirePage, WIRE_ROUTE_PATH } from './modules/wire'
+import LabelPrintStation, { PRINT_STATION_ROUTE_PATH } from './components/LabelPrintStation'
 import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
@@ -17,6 +18,7 @@ type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
 function App() {
   const location = useLocation()
   const isWireRoute = location.pathname === WIRE_ROUTE_PATH
+  const isPrintStationRoute = location.pathname === PRINT_STATION_ROUTE_PATH
   const [activePage, setActivePage] = useState('tracking')
   const [trackings, setTrackings] = useState<TrackingInfo[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -578,7 +580,9 @@ function App() {
         onOpenChange={setNavOpen}
       />
       <div className="main-content">
-        {isWireRoute ? (
+        {isPrintStationRoute ? (
+          <LabelPrintStation />
+        ) : isWireRoute ? (
           <WirePage />
         ) : activePage === 'analytics' ? (
           <Analytics poItemsMap={poItemsMap} trackings={trackings} />

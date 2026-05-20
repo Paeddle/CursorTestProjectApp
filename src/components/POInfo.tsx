@@ -26,7 +26,7 @@ import {
   locationNamesForLine,
   normalizePoKey,
 } from '../lib/poIpointMatch'
-import { printLabelsWithDymo } from '../lib/dymoLabelPrint'
+import { printOrQueueLabels } from '../lib/printOrQueueLabels'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import IpointLocationsModal from './IpointLocationsModal'
 import PoIpointImportPanel from './PoIpointImportPanel'
@@ -313,6 +313,7 @@ function POInfo() {
   const [ipointLoading, setIpointLoading] = useState(true)
   const [labelSelected, setLabelSelected] = useState<Set<string>>(new Set())
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [locationModal, setLocationModal] = useState<{
     poNumber: string
     line: PoLineItem
@@ -500,8 +501,10 @@ function POInfo() {
     const poKey = normalizePoKey(poNumber)
     setPrintingPoKey(poKey)
     setError(null)
+    setNotice(null)
     try {
-      await printLabelsWithDymo(rows)
+      const result = await printOrQueueLabels(rows)
+      setNotice(result.message)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Label print failed')
     } finally {
@@ -835,7 +838,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       <header className="po-info-header">
         <h1>PO Info</h1>
         <p className="po-info-subtitle">
-          Barcode scans, iPoint file imports, room locations, and Dymo labels per PO.
+          Barcode scans, iPoint file imports, room locations, and Dymo labels per PO. On a tablet, labels queue
+          to the warehouse printer — keep <strong>Print Station</strong> open on the laptop with DYMO Connect.
         </p>
       </header>
 
@@ -867,6 +871,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
         </button>
       </div>
 
+      {notice && <div className="po-info-notice">{notice}</div>}
       {error && <div className="po-info-error">{error}</div>}
 
       {ipointLoading && !loading && (
@@ -973,8 +978,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         <p className="po-info-section-desc">
                           From PO Line Report. Locations come from the ref spreadsheets (e.g. 4152.xlsx)
                           matched by JobRef + item name. Long location lists show a “+N more” link to
-                          open all rooms and pick which labels to print. Install DYMO Connect on this PC
-                          for direct printing.
+                          open all rooms and pick which labels to print. On this device with DYMO Connect,
+                          labels print here; otherwise they are queued for the Print Station on your laptop.
                         </p>
                         <div className="po-info-scan-table-wrap">
                           <table className="po-info-scan-table po-info-ipoint-table">
