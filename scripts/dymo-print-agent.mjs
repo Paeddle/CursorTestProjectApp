@@ -3,18 +3,48 @@
  * Polls Supabase label_print_queue and prints via https://127.0.0.1:41951+.
  *
  * Usage (from repo root): npm run print-agent
+ *   (hyphen required — not "npm run print agent")
  */
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { createClient } from '@supabase/supabase-js'
-import { assertDymoPrintSucceeded, buildLabelXmlForRow } from './dymo-label-xml.mjs'
-
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const POLL_MS = 3000
+
+function fail(msg) {
+  console.error('')
+  console.error('Print agent failed to start:')
+  console.error(`  ${msg}`)
+  console.error('')
+  console.error('From the project root folder, run:')
+  console.error('  npm run print-agent')
+  console.error('')
+  console.error('Requires: Node 18+, npm install, .env with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, DYMO Connect running.')
+  process.exit(1)
+}
+
+const nodeMajor = Number.parseInt(String(process.versions.node).split('.')[0] ?? '0', 10)
+if (nodeMajor < 18) {
+  fail(`Node ${process.versions.node} is too old. Install Node 18 or newer from https://nodejs.org`)
+}
+
+let createClient
+let assertDymoPrintSucceeded
+let buildLabelXmlForRow
+try {
+  ;({ createClient } = await import('@supabase/supabase-js'))
+  ;({ assertDymoPrintSucceeded, buildLabelXmlForRow } = await import('./dymo-label-xml.mjs'))
+} catch (e) {
+  const msg = e instanceof Error ? e.message : String(e)
+  if (/cannot find module|not found/i.test(msg)) {
+    fail(`${msg}\n  Run "npm install" in the project root (${root})`)
+  }
+  fail(msg)
+}
+
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {}
@@ -118,13 +148,26 @@ function log(msg) {
   console.log(`[${new Date().toLocaleTimeString()}] ${msg}`)
 }
 
+function loadAllEnv() {
+  const paths = [
+    path.join(root, '.env'),
+    path.join(root, 'scanner-app', '.env'),
+  ]
+  const merged = { ...process.env }
+  for (const p of paths) {
+    Object.assign(merged, loadEnvFile(p))
+  }
+  return merged
+}
+
 async function main() {
-  const env = { ...loadEnvFile(path.join(root, '.env')), ...process.env }
+  const env = loadAllEnv()
   const url = env.VITE_SUPABASE_URL
   const key = env.VITE_SUPABASE_ANON_KEY
   if (!url || !key) {
-    console.error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env')
-    process.exit(1)
+    fail(
+      'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.\n  Copy env.example to .env in the project root (same keys as the main app).'
+    )
   }
 
   const supabase = createClient(url, key)
@@ -220,6 +263,8 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e)
+  console.error('')
+  console.error('Print agent error:', e instanceof Error ? e.message : e)
+  if (e instanceof Error && e.stack) console.error(e.stack)
   process.exit(1)
 })
