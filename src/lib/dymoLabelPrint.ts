@@ -1,5 +1,6 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 import { labelTextLinesForRow, wrapTextToLines } from './dymoLabelXml'
+import { printRowsViaWebService } from './dymoWebService'
 
 export { wrapTextToLines } from './dymoLabelXml'
 
@@ -287,6 +288,13 @@ export async function printLabelsWithDymo(
   printerName?: string
 ): Promise<{ printed: number; method: 'dymo' | 'browser' }> {
   if (rows.length === 0) return { printed: 0, method: 'browser' }
+
+  try {
+    await printRowsViaWebService(rows, printerName)
+    return { printed: rows.length, method: 'dymo' }
+  } catch {
+    /* try legacy SDK below */
+  }
 
   await loadDymoSdk()
   await initDymoFramework()

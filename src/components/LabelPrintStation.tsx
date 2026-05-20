@@ -2,11 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import {
-  getDymoDiagnostics,
-  getDymoPrinterNames,
-  printLabelsWithDymo,
-  type DymoDiagnostics,
-} from '../lib/dymoLabelPrint'
+  connectLocalDymo,
+  openDymoCertificateCheckPage,
+  printRowsViaWebService,
+} from '../lib/dymoWebService'
 import {
   countPendingLabels,
   countFailedLabels,
@@ -21,11 +20,13 @@ import './LabelPrintStation.css'
 
 export const PRINT_STATION_ROUTE_PATH = '/print-station' as const
 
+const SETUP_KEY = 'order-tracker-print-station-ready'
+
 export function LabelPrintStation() {
   const [dymoReady, setDymoReady] = useState(false)
   const [printerNames, setPrinterNames] = useState<string[]>([])
-  const [dymoDiag, setDymoDiag] = useState<DymoDiagnostics | null>(null)
   const [dymoChecking, setDymoChecking] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [failedCount, setFailedCount] = useState(0)
   const [autoPrint, setAutoPrint] = useState(true)
@@ -34,6 +35,9 @@ export function LabelPrintStation() {
   const [recent, setRecent] = useState<LabelPrintQueueRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const processingLock = useRef(false)
+
+  const printStationUrl =
+    typeof window !== 'undefined' ? `${window.location.origin}${PRINT_STATION_ROUTE_PATH}` : PRINT_STATION_ROUTE_PATH
 
   const refreshCounts = useCallback(async () => {
     try {
@@ -49,102 +53,104 @@ export function LabelPrintStation() {
 
   const refreshDymo = useCallback(async () => {
     setDymoChecking(true)
+    setConnectError(null)
     try {
-      const diag = await getDymoDiagnostics()
-      setDymoDiag(diag)
-      const names = getDymoPrinterNames()
-      setPrinterNames(names)
-      const ok = names.length > 0
-      setDymoReady(ok)
-      if (!ok) setStatusLine(diag.summary)
-      return ok
+      const result = await connectLocalDymo()
+      setDymoReady(result.ok)
+      setPrinterNames(result.printers)
+      if (result.ok) {
+        localStorage.setItem(SETUP_KEY, '1')
+        setStatusLine(`Ready — ${result.printers.join(', ')}`)
+        return true
+      }
+      setConnectError(result.error)
+      setStatusLine(result.error ?? 'Printer not connected')
+      return false
     } finally {
       setDymoChecking(false)
     }
   }, [])
 
-  const processNextBatch = useCallback(async (options?: { force?: boolean }) => {
-    if (processingLock.current) return
-    if (!autoPrint && !options?.force) return
+  const processNextBatch = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (processingLock.current) return
+      if (!autoPrint && !options?.force) return
 
-    const dymoOk = await refreshDymo()
-    if (!dymoOk || getDymoPrinterNames().length === 0) {
-      setStatusLine('Waiting for DYMO Connect and a connected LabelWriter…')
-      return
-    }
-
-    let batchId: string | null = null
-    processingLock.current = true
-    setProcessing(true)
-    setError(null)
-
-    try {
-      const { data: nextRow } = await supabase
-        .from('label_print_queue')
-        .select('batch_id')
-        .in('status', ['pending', 'failed'])
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-
-      batchId = nextRow?.batch_id ?? null
-      if (!batchId) {
-        setStatusLine('Idle — no labels waiting in queue.')
-        return
+      if (!dymoReady || printerNames.length === 0) {
+        const ok = await refreshDymo()
+        if (!ok) return
       }
 
-      const { data: batchRows, error: batchErr } = await supabase
-        .from('label_print_queue')
-        .select('*')
-        .eq('batch_id', batchId)
-        .in('status', ['pending', 'failed'])
-        .order('created_at', { ascending: true })
+      let batchId: string | null = null
+      processingLock.current = true
+      setProcessing(true)
+      setError(null)
 
-      if (batchErr) throw new Error(batchErr.message)
-      const rows = (batchRows ?? []) as LabelPrintQueueRecord[]
-      if (rows.length === 0) {
-        return
-      }
+      try {
+        const { data: nextRow } = await supabase
+          .from('label_print_queue')
+          .select('batch_id')
+          .in('status', ['pending', 'failed'])
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
 
-      const po = rows[0]?.po_number ?? 'PO'
-      setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
-      await supabase
-        .from('label_print_queue')
-        .update({ status: 'printing', error_message: null })
-        .eq('batch_id', batchId)
-        .in('status', ['pending', 'failed'])
+        batchId = nextRow?.batch_id ?? null
+        if (!batchId) {
+          setStatusLine('Idle — no labels waiting in queue.')
+          return
+        }
 
-      const printRows = rows.map(queueRecordToPrintRow)
-      await printLabelsWithDymo(printRows)
-      await markBatchStatus(batchId, 'printing', 'done')
-      setStatusLine(`Printed ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}.`)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Print failed'
-      if (batchId) {
-        try {
-          await markBatchStatus(batchId, 'printing', 'failed', msg)
-        } catch {
-          await markBatchStatus(batchId, 'pending', 'failed', msg)
+        const { data: batchRows, error: batchErr } = await supabase
+          .from('label_print_queue')
+          .select('*')
+          .eq('batch_id', batchId)
+          .in('status', ['pending', 'failed'])
+          .order('created_at', { ascending: true })
+
+        if (batchErr) throw new Error(batchErr.message)
+        const rows = (batchRows ?? []) as LabelPrintQueueRecord[]
+        if (rows.length === 0) return
+
+        const po = rows[0]?.po_number ?? 'PO'
+        setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
+
+        await supabase
+          .from('label_print_queue')
+          .update({ status: 'printing', error_message: null })
+          .eq('batch_id', batchId)
+          .in('status', ['pending', 'failed'])
+
+        const printRows = rows.map(queueRecordToPrintRow)
+        await printRowsViaWebService(printRows, printerNames[0])
+        await markBatchStatus(batchId, 'printing', 'done')
+        setStatusLine(`Printed ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}.`)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Print failed'
+        if (batchId) {
+          try {
+            await markBatchStatus(batchId, 'printing', 'failed', msg)
+          } catch {
+            await markBatchStatus(batchId, 'pending', 'failed', msg)
+          }
+        }
+        setError(msg)
+        setStatusLine('Print failed — see error below.')
+      } finally {
+        processingLock.current = false
+        setProcessing(false)
+        await refreshCounts()
+        if (autoPrint) {
+          const remaining = await countPendingLabels()
+          const failed = await countFailedLabels()
+          if (remaining > 0 || failed > 0) {
+            window.setTimeout(() => void processNextBatch(), 400)
+          }
         }
       }
-      setError(msg)
-      setStatusLine('Print failed — see error below.')
-    } finally {
-      processingLock.current = false
-      setProcessing(false)
-      await refreshCounts()
-      if (autoPrint) {
-        const remaining = await countPendingLabels()
-        if (remaining > 0) {
-          window.setTimeout(() => void processNextBatch(), 300)
-        }
-      }
-    }
-  }, [autoPrint, refreshCounts, refreshDymo])
-
-  const handleProcessNow = () => {
-    void processNextBatch({ force: true })
-  }
+    },
+    [autoPrint, dymoReady, printerNames, refreshCounts, refreshDymo]
+  )
 
   useEffect(() => {
     void refreshDymo()
@@ -167,16 +173,14 @@ export function LabelPrintStation() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'label_print_queue' },
-        () => {
-          void refreshCounts()
-        }
+        () => void refreshCounts()
       )
       .subscribe()
 
     const poll = window.setInterval(() => {
       void refreshCounts()
       void processNextBatch()
-    }, 8000)
+    }, 6000)
 
     return () => {
       void supabase.removeChannel(channel)
@@ -185,8 +189,8 @@ export function LabelPrintStation() {
   }, [refreshCounts, processNextBatch])
 
   useEffect(() => {
-    void processNextBatch()
-  }, [processNextBatch, autoPrint, dymoReady])
+    if (dymoReady) void processNextBatch()
+  }, [dymoReady, processNextBatch])
 
   if (!isSupabaseConfigured()) {
     return (
@@ -197,12 +201,11 @@ export function LabelPrintStation() {
         </header>
         <div className="print-station-setup">
           <p>
-            Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to your{' '}
-            <code>.env</code>, then run <code>supabase/add-label-print-queue.sql</code> in the Supabase SQL
-            Editor.
+            Run <code>supabase/add-label-print-queue.sql</code> in the Supabase SQL Editor and set{' '}
+            <code>VITE_SUPABASE_URL</code> / <code>VITE_SUPABASE_ANON_KEY</code> on the deployed app.
           </p>
           <Link to="/" className="print-station-link">
-            ← Back to Order Tracker
+            ← Order Tracker
           </Link>
         </div>
       </div>
@@ -214,18 +217,40 @@ export function LabelPrintStation() {
       <header className="print-station-header">
         <h1>Label Print Station</h1>
         <p className="print-station-subtitle">
-          Keep this page open on the laptop with DYMO Connect, or run <code>npm run print-agent</code> in a
-          terminal (recommended when using the live website URL).
+          Open this page on the <strong>laptop with the DYMO printer</strong>. Queue labels from your tablet in{' '}
+          <strong>PO Info</strong> — they print here automatically. No terminal commands needed.
         </p>
       </header>
 
-      {dymoDiag?.isRemoteOrigin && !dymoReady && (
-        <div className="print-station-banner">
-          <strong>Using the live website?</strong> Browsers often block it from talking to DYMO on your PC. Run{' '}
-          <code>npm run print-agent</code> in the project folder on this laptop instead — it prints queued labels
-          without browser restrictions.
+      <section className="print-station-setup-card">
+        <h2>One-time setup (laptop with printer)</h2>
+        <ol className="print-station-steps">
+          <li>Install <strong>DYMO Connect</strong> and connect the LabelWriter by USB.</li>
+          <li>
+            Bookmark this page:{' '}
+            <a href={printStationUrl} className="print-station-link">
+              {printStationUrl}
+            </a>
+          </li>
+          <li>
+            If the browser asks to access devices on your local network, choose <strong>Allow</strong>.
+          </li>
+        </ol>
+        <div className="print-station-setup-actions">
+          <button
+            type="button"
+            className="print-station-btn print-station-btn-primary"
+            disabled={dymoChecking}
+            onClick={() => void refreshDymo()}
+          >
+            {dymoChecking ? 'Connecting…' : 'Connect printer'}
+          </button>
+          <button type="button" className="print-station-btn" onClick={openDymoCertificateCheckPage}>
+            Trust DYMO certificate
+          </button>
         </div>
-      )}
+        {connectError && !dymoReady && <p className="print-station-connect-error">{connectError}</p>}
+      </section>
 
       <div className="print-station-grid">
         <section className="print-station-card" aria-live="polite">
@@ -233,36 +258,7 @@ export function LabelPrintStation() {
           {dymoReady && printerNames.length > 0 ? (
             <p className="print-station-ok">Ready — {printerNames.join(', ')}</p>
           ) : (
-            <p className="print-station-warn">{dymoDiag?.summary ?? 'Checking DYMO…'}</p>
-          )}
-          {dymoDiag && (
-            <p className="print-station-hint">{dymoDiag.recommendedAction}</p>
-          )}
-          <button
-            type="button"
-            className="print-station-btn"
-            disabled={dymoChecking}
-            onClick={() => void refreshDymo()}
-          >
-            {dymoChecking ? 'Checking…' : 'Check DYMO again'}
-          </button>
-          {dymoDiag && dymoDiag.printers.length > 0 && (
-            <ul className="print-station-printer-list">
-              {dymoDiag.printers.map((p) => (
-                <li key={p.name}>
-                  {p.name} — {p.isConnected ? 'connected' : 'not connected'}
-                </li>
-              ))}
-            </ul>
-          )}
-          {dymoDiag?.environment && (
-            <details className="print-station-details">
-              <summary>Technical details</summary>
-              <pre>{JSON.stringify(dymoDiag.environment, null, 2)}</pre>
-              {dymoDiag.localServiceProbe && (
-                <pre>{JSON.stringify(dymoDiag.localServiceProbe, null, 2)}</pre>
-              )}
-            </details>
+            <p className="print-station-warn">Not connected — click Connect printer above.</p>
           )}
         </section>
 
@@ -273,35 +269,31 @@ export function LabelPrintStation() {
             {failedCount > 0 && (
               <span className="print-station-failed-count">
                 {' '}
-                · <strong>{failedCount}</strong> failed (auto-retry)
+                · <strong>{failedCount}</strong> failed
               </span>
             )}
           </p>
           <p className="print-station-status">{processing ? 'Printing…' : statusLine}</p>
           <label className="print-station-auto">
-            <input
-              type="checkbox"
-              checked={autoPrint}
-              onChange={(e) => setAutoPrint(e.target.checked)}
-            />
+            <input type="checkbox" checked={autoPrint} onChange={(e) => setAutoPrint(e.target.checked)} />
             Auto-print new queue items
           </label>
           <button
             type="button"
             className="print-station-btn print-station-btn-primary"
-            disabled={processing || pendingCount === 0}
-            onClick={handleProcessNow}
+            disabled={processing || !dymoReady || (pendingCount === 0 && failedCount === 0)}
+            onClick={() => void processNextBatch({ force: true })}
           >
             Print next batch now
           </button>
           <button
             type="button"
             className="print-station-btn"
-            disabled={processing}
+            disabled={processing || failedCount === 0}
             onClick={() => {
               void retryFailedQueueItems()
                 .then((n) => {
-                  setStatusLine(n > 0 ? `Re-queued ${n} failed label(s).` : 'No failed labels to retry.')
+                  setStatusLine(n > 0 ? `Re-queued ${n} failed label(s).` : 'No failed labels.')
                   void refreshCounts()
                   void processNextBatch({ force: true })
                 })
@@ -342,7 +334,10 @@ export function LabelPrintStation() {
         <Link to="/" className="print-station-link">
           ← Order Tracker
         </Link>
-        <span className="print-station-muted"> · Queue labels from the PO Info tab on your tablet.</span>
+        <span className="print-station-muted">
+          {' '}
+          · Tablet: PO Info → Print selected labels · Laptop: keep this page open
+        </span>
       </p>
     </div>
   )

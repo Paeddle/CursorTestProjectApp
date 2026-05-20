@@ -47,7 +47,7 @@ export async function printOrQueueLabels(rows: PoLabelPrintRow[]): Promise<Print
       method: 'queue',
       queued,
       batchId,
-      message: `Queued ${queued} label${queued !== 1 ? 's' : ''} for the warehouse printer. Open Print Station on the laptop with DYMO Connect.`,
+      message: `Queued ${queued} label${queued !== 1 ? 's' : ''}. On the laptop with the DYMO printer, open Print Station in this app and leave it open.`,
     }
   }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react'
+import { Link } from 'react-router-dom'
 import Barcode from 'react-barcode'
 import { supabase } from '../lib/supabase'
 import {
@@ -819,8 +820,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       <header className="po-info-header">
         <h1>PO Info</h1>
         <p className="po-info-subtitle">
-          Barcode scans, iPoint file imports, room locations, and Dymo labels per PO. On a tablet, labels queue
-          to the warehouse printer — keep <strong>Print Station</strong> open on the laptop with DYMO Connect.
+          Barcode scans, iPoint file imports, room locations, and Dymo labels per PO. On a tablet, tap{' '}
+          <strong>Print selected labels</strong> to queue jobs. On the laptop with the printer, open{' '}
+          <Link to="/print-station" className="po-info-inline-link">
+            Print Station
+          </Link>{' '}
+          in this app (same website) and click <strong>Connect printer</strong> once.
         </p>
       </header>
 

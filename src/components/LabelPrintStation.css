@@ -56,14 +56,37 @@
   line-height: 1.4;
 }
 
-.print-station-banner {
-  background: #1e3a5f;
-  color: #e0f2fe;
-  border-radius: 10px;
-  padding: 0.85rem 1rem;
+.print-station-setup-card {
+  background: #e8e8e8;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
   margin-bottom: 1rem;
+}
+
+.print-station-setup-card h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+}
+
+.print-station-steps {
+  margin: 0 0 0.85rem;
+  padding-left: 1.25rem;
   line-height: 1.45;
   font-size: 0.9rem;
+}
+
+.print-station-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.print-station-connect-error {
+  margin: 0.65rem 0 0;
+  color: #b91c1c;
+  font-size: 0.875rem;
+  line-height: 1.4;
 }
 
 .print-station-hint {
