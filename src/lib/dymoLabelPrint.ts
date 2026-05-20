@@ -307,11 +307,11 @@ export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
 
   const doc = `<!DOCTYPE html><html><head><title>Labels</title>
 <style>
-@page { size: 59mm 102mm; margin: 0; }
+@page { size: 102mm 59mm; margin: 0; }
 body { margin: 0; }
 .label {
-  width: 59mm;
-  height: 102mm;
+  width: 102mm;
+  height: 59mm;
   box-sizing: border-box;
   display: flex;
   align-items: center;

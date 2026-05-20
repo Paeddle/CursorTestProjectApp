@@ -1,26 +1,21 @@
-/** DYMO 30323 Shipping — portrait 638×2382, printable 608×2218 @ (128,18). */
-const LABEL_PAGE_WIDTH = 638
-const LABEL_PAGE_HEIGHT = 2382
+/** DYMO 30323 Shipping — Landscape; printable box 2218×608 @ (128,18). */
+const LABEL_DRAW_WIDTH = 2382
+const LABEL_DRAW_HEIGHT = 638
 const LABEL_PRINTABLE_X = 128
 const LABEL_PRINTABLE_Y = 18
-const LABEL_PRINTABLE_WIDTH = 608
-const LABEL_PRINTABLE_HEIGHT = 2218
-
-const LABEL_FONT_STEPS = [
-  { size: 40, charsPerLine: 12, maxLines: 4 },
-  { size: 36, charsPerLine: 14, maxLines: 5 },
-  { size: 32, charsPerLine: 16, maxLines: 6 },
-  { size: 28, charsPerLine: 18, maxLines: 7 },
-  { size: 24, charsPerLine: 20, maxLines: 8 },
-]
+const LABEL_PRINTABLE_WIDTH = 2218
+const LABEL_PRINTABLE_HEIGHT = 608
+const LABEL_MAX_FONT_SIZE = 96
+const MAX_CHARS_PER_LINE = 28
+const MAX_LINES = 6
 
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
-  <PaperOrientation>Portrait</PaperOrientation>
+  <PaperOrientation>Landscape</PaperOrientation>
   <Id>Shipping</Id>
   <PaperName>30323 Shipping</PaperName>
   <DrawCommands>
-    <RoundRectangle X="0" Y="0" Width="${LABEL_PAGE_WIDTH}" Height="${LABEL_PAGE_HEIGHT}" Rx="180" Ry="180"/>
+    <RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>
   </DrawCommands>
   <ObjectInfo>
     <TextObject>
@@ -33,8 +28,8 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <IsVariable>False</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>None</TextFitMode>
-      <UseFullFontHeight>False</UseFullFontHeight>
+      <TextFitMode>AlwaysFit</TextFitMode>
+      <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
         <!--DYMO_STYLED_TEXT-->
@@ -93,25 +88,19 @@ export function wrapText(text, maxChars) {
   return lines
 }
 
-function linesForJobAndLocation(row, charsPerLine) {
+function labelLinesForPrint(row) {
   const job = String(row.job_name || row.item_name || '').trim()
-  const loc = String(row.location_name || '—').trim() || '—'
-  const lines = [...wrapText(job, charsPerLine), ...wrapText(loc, charsPerLine)]
-  return lines.length > 0 ? lines : ['—']
+  const loc = String(row.location_name || '').trim()
+  const parts = []
+  if (job) parts.push(...wrapText(job, MAX_CHARS_PER_LINE))
+  if (loc) parts.push(...wrapText(loc, MAX_CHARS_PER_LINE))
+  if (parts.length === 0) return ['—']
+  return parts.slice(0, MAX_LINES)
 }
 
 export function labelLayoutForRow(row) {
-  for (const step of LABEL_FONT_STEPS) {
-    const lines = linesForJobAndLocation(row, step.charsPerLine)
-    if (lines.length <= step.maxLines) {
-      return { fontSize: step.size, lines }
-    }
-  }
-  const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
-  return {
-    fontSize: fallback.size,
-    lines: linesForJobAndLocation(row, fallback.charsPerLine),
-  }
+  const lines = labelLinesForPrint(row)
+  return { fontSize: LABEL_MAX_FONT_SIZE, lines }
 }
 
 function buildStyledTextXml(lines, fontSize) {
@@ -121,8 +110,11 @@ function buildStyledTextXml(lines, fontSize) {
 }
 
 export function buildLabelXmlForRow(row) {
-  const { fontSize, lines } = labelLayoutForRow(row)
-  return LABEL_XML_TEMPLATE.replace(STYLED_TEXT_PLACEHOLDER, buildStyledTextXml(lines, fontSize))
+  const lines = labelLinesForPrint(row)
+  return LABEL_XML_TEMPLATE.replace(
+    STYLED_TEXT_PLACEHOLDER,
+    buildStyledTextXml(lines, LABEL_MAX_FONT_SIZE)
+  )
 }
 
 export function assertDymoPrintSucceeded(result, endpoint) {
