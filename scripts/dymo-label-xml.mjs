@@ -1,4 +1,9 @@
-const DYMO_MAX_CHARS = 21
+const LABEL_FONT_STEPS = [
+  { size: 36, charsPerLine: 14, maxLines: 3 },
+  { size: 32, charsPerLine: 17, maxLines: 4 },
+  { size: 28, charsPerLine: 19, maxLines: 5 },
+  { size: 24, charsPerLine: 21, maxLines: 6 },
+]
 
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -23,12 +28,14 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
-        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="24" Bold="True"/></Attributes></Element>
+        <!--DYMO_STYLED_TEXT-->
       </StyledText>
     </TextObject>
     <Bounds X="128" Y="18" Width="2218" Height="608"/>
   </ObjectInfo>
 </DieCutLabel>`
+
+const STYLED_TEXT_PLACEHOLDER = '        <!--DYMO_STYLED_TEXT-->'
 
 export function escapeXmlText(text) {
   return String(text)
@@ -77,13 +84,40 @@ export function wrapText(text, maxChars) {
   return lines
 }
 
+function linesForJobAndLocation(row, charsPerLine) {
+  const job = String(row.job_name || row.item_name || '').trim()
+  const loc = String(row.location_name || '—').trim() || '—'
+  const lines = [...wrapText(job, charsPerLine), ...wrapText(loc, charsPerLine)]
+  return lines.length > 0 ? lines : ['—']
+}
+
+export function labelLayoutForRow(row) {
+  for (const step of LABEL_FONT_STEPS) {
+    const lines = linesForJobAndLocation(row, step.charsPerLine)
+    if (lines.length <= step.maxLines) {
+      return { fontSize: step.size, lines }
+    }
+  }
+  const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
+  return {
+    fontSize: fallback.size,
+    lines: linesForJobAndLocation(row, fallback.charsPerLine),
+  }
+}
+
+function buildStyledTextXml(lines, fontSize) {
+  const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
+  return lines
+    .map(
+      (line) =>
+        `        <Element><String>${escapeXmlText(line)}</String><Attributes>${font}</Attributes></Element>`
+    )
+    .join('\n')
+}
+
 export function buildLabelXmlForRow(row) {
-  const text = [
-    ...wrapText(row.job_name || row.item_name || '', DYMO_MAX_CHARS),
-    ...wrapText(row.location_name || '—', DYMO_MAX_CHARS),
-  ].join('\n')
-  const escaped = escapeXmlText(text)
-  return LABEL_XML_TEMPLATE.replace('<String>LINE1</String>', `<String>${escaped}</String>`)
+  const { fontSize, lines } = labelLayoutForRow(row)
+  return LABEL_XML_TEMPLATE.replace(STYLED_TEXT_PLACEHOLDER, buildStyledTextXml(lines, fontSize))
 }
 
 export function assertDymoPrintSucceeded(result, endpoint) {

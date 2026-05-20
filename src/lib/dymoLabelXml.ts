@@ -1,10 +1,16 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 
-const DYMO_MAX_CHARS_PER_LINE = 21
+/** Largest font that fits wrapped job + location within the 30323 text bounds. */
+const LABEL_FONT_STEPS = [
+  { size: 36, charsPerLine: 14, maxLines: 3 },
+  { size: 32, charsPerLine: 17, maxLines: 4 },
+  { size: 28, charsPerLine: 19, maxLines: 5 },
+  { size: 24, charsPerLine: 21, maxLines: 6 },
+] as const
 
 /**
- * DYMO 30323 Shipping (54mm × 101mm). Matches original direct-print layout:
- * 24pt Arial bold, centered, TextFitMode None (no shrink-to-fit).
+ * DYMO 30323 Shipping (54mm × 101mm). Large fixed font per label (no shrink-to-fit),
+ * centered horizontally and vertically; long text wraps to multiple lines.
  */
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -29,12 +35,14 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <UseFullFontHeight>True</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
-        <Element><String>LINE1</String><Attributes><Font Family="Arial" Size="24" Bold="True"/></Attributes></Element>
+        <!--DYMO_STYLED_TEXT-->
       </StyledText>
     </TextObject>
     <Bounds X="128" Y="18" Width="2218" Height="608"/>
   </ObjectInfo>
 </DieCutLabel>`
+
+const STYLED_TEXT_PLACEHOLDER = '        <!--DYMO_STYLED_TEXT-->'
 
 /** Break text onto new lines at word boundaries; long tokens split to fit. */
 export function wrapTextToLines(text: string, maxChars: number): string[] {
@@ -82,7 +90,7 @@ export function wrapTextToLines(text: string, maxChars: number): string[] {
   return lines
 }
 
-/** Escape text embedded in DYMO label XML (newlines preserved for multi-line labels). */
+/** Escape text embedded in DYMO label XML. */
 export function escapeXmlText(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -93,26 +101,78 @@ export function escapeXmlText(text: string): string {
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
 }
 
+function linesForJobAndLocation(
+  row: { job_name?: string | null; item_name?: string | null; location_name?: string | null },
+  charsPerLine: number
+): string[] {
+  const job = String(row.job_name || row.item_name || '').trim()
+  const loc = String(row.location_name || '—').trim() || '—'
+  const lines = [...wrapTextToLines(job, charsPerLine), ...wrapTextToLines(loc, charsPerLine)]
+  return lines.length > 0 ? lines : ['—']
+}
+
+/** Pick the largest font size that keeps all wrapped lines on the label. */
+export function labelLayoutForRow(row: {
+  job_name?: string | null
+  item_name?: string | null
+  location_name?: string | null
+}): { fontSize: number; lines: string[] } {
+  for (const step of LABEL_FONT_STEPS) {
+    const lines = linesForJobAndLocation(row, step.charsPerLine)
+    if (lines.length <= step.maxLines) {
+      return { fontSize: step.size, lines }
+    }
+  }
+
+  const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
+  return {
+    fontSize: fallback.size,
+    lines: linesForJobAndLocation(row, fallback.charsPerLine),
+  }
+}
+
 export function labelTextLinesForRow(row: {
   job_name?: string | null
   item_name?: string | null
   location_name?: string | null
 }): string[] {
-  const jobLines = wrapTextToLines(row.job_name || row.item_name || '', DYMO_MAX_CHARS_PER_LINE)
-  const locLines = wrapTextToLines(row.location_name || '—', DYMO_MAX_CHARS_PER_LINE)
-  return [...jobLines, ...locLines]
+  return labelLayoutForRow(row).lines
 }
 
-/** Build full label XML with job + room lines (same output as setObjectText on LABEL_XML). */
+function buildStyledTextXml(lines: string[], fontSize: number): string {
+  const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
+  return lines
+    .map(
+      (line) =>
+        `        <Element><String>${escapeXmlText(line)}</String><Attributes>${font}</Attributes></Element>`
+    )
+    .join('\n')
+}
+
+export function buildLabelXml(lines: string[], fontSize: number): string {
+  return LABEL_XML_TEMPLATE.replace(STYLED_TEXT_PLACEHOLDER, buildStyledTextXml(lines, fontSize))
+}
+
+/** Build full label XML with job + room lines. */
 export function buildLabelXmlForText(text: string): string {
-  const escaped = escapeXmlText(text)
-  return LABEL_XML_TEMPLATE.replace('<String>LINE1</String>', `<String>${escaped}</String>`)
+  const lines = text
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (lines.length === 0) {
+    return buildLabelXml(['—'], LABEL_FONT_STEPS[0].size)
+  }
+  const fontSize =
+    LABEL_FONT_STEPS.find((s) => lines.length <= s.maxLines)?.size ??
+    LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1].size
+  return buildLabelXml(lines, fontSize)
 }
 
 export function buildLabelXmlForRow(
   row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>
 ): string {
-  return buildLabelXmlForText(labelTextLinesForRow(row).join('\n'))
+  const { fontSize, lines } = labelLayoutForRow(row)
+  return buildLabelXml(lines, fontSize)
 }
 
 /** Interpret DYMO PrintLabel / PrintLabel2 HTTP response bodies. */

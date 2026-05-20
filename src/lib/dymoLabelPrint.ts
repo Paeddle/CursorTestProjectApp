@@ -1,10 +1,20 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
-import { LABEL_XML_TEMPLATE, labelTextLinesForRow, wrapTextToLines } from './dymoLabelXml'
+import {
+  buildLabelXmlForRow,
+  labelLayoutForRow,
+  labelTextLinesForRow,
+  LABEL_XML_TEMPLATE,
+} from './dymoLabelXml'
 import { printRowsViaWebService } from './dymoWebService'
 
-export { wrapTextToLines } from './dymoLabelXml'
+export {
+  labelLayoutForRow,
+  labelTextLinesForRow,
+  LABEL_XML_TEMPLATE,
+  wrapTextToLines,
+} from './dymoLabelXml'
 
-/** @deprecated Use LABEL_XML_TEMPLATE — kept for SDK openLabelXml. */
+/** @deprecated Use LABEL_XML_TEMPLATE — empty template; prefer buildLabelXmlForRow(). */
 export const LABEL_XML = LABEL_XML_TEMPLATE
 
 export type DymoPrinterInfo = {
@@ -235,20 +245,13 @@ export async function getDymoDiagnostics(): Promise<DymoDiagnostics> {
   }
 }
 
-const BROWSER_JOB_MAX_CHARS_PER_LINE = 22
-const BROWSER_LOC_MAX_CHARS_PER_LINE = 26
-
 export function labelLinesForRow(row: PoLabelPrintRow): string {
   return labelTextLinesForRow(row).join('\n')
 }
 
-function browserLabelParts(row: PoLabelPrintRow): { job: string; loc: string } {
-  return {
-    job: wrapTextToLines(row.job_name || row.item_name || '', BROWSER_JOB_MAX_CHARS_PER_LINE).join(
-      '\n'
-    ),
-    loc: wrapTextToLines(row.location_name || '—', BROWSER_LOC_MAX_CHARS_PER_LINE).join('\n'),
-  }
+function browserLabelParts(row: PoLabelPrintRow): { lines: string[]; fontSize: number } {
+  const { fontSize, lines } = labelLayoutForRow(row)
+  return { lines, fontSize }
 }
 
 export async function printLabelsWithDymo(
@@ -276,8 +279,7 @@ export async function printLabelsWithDymo(
         : printers.find((n) => /labelwriter|dymo/i.test(n)) ?? printers[0]
     if (target) {
       for (const row of rows) {
-        const label = fw.openLabelXml(LABEL_XML)
-        label.setObjectText('LABEL_TEXT', labelLinesForRow(row))
+        const label = fw.openLabelXml(buildLabelXmlForRow(row))
         label.print(target)
       }
       return { printed: rows.length, method: 'dymo' }
@@ -292,12 +294,12 @@ export async function printLabelsWithDymo(
 export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
   const html = rows
     .map((r) => {
-      const { job, loc } = browserLabelParts(r)
+      const { lines, fontSize } = browserLabelParts(r)
+      const text = lines.map((line) => escapeHtml(line)).join('<br/>')
       return `
     <div class="label">
-      <div class="label-inner">
-        <div class="label-job">${escapeHtml(job)}</div>
-        <div class="label-loc">${escapeHtml(loc)}</div>
+      <div class="label-inner" style="font-size:${fontSize}pt">
+        <div class="label-text">${text}</div>
       </div>
     </div>`
     })
@@ -324,18 +326,10 @@ body { margin: 0; }
   padding: 0.08in;
   box-sizing: border-box;
 }
-.label-job,
-.label-loc {
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-  line-height: 1.2;
-}
-.label-job {
+.label-text {
   font-weight: bold;
-  font-size: 22pt;
-}
-.label-loc {
-  font-size: 18pt;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 </style></head><body>${html}</body></html>`
 
