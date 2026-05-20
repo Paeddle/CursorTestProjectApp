@@ -1,7 +1,8 @@
 .purchase-list-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.5rem 1.25rem 3rem;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 1.5rem;
+  width: 100%;
 }
 
 .purchase-list-header h1 {

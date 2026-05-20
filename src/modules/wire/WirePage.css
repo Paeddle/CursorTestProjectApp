@@ -1,7 +1,7 @@
 .wire-page {
-  padding: 1.5rem 2rem;
-  max-width: 900px;
-  margin: 0 auto;
+  padding: 0;
+  max-width: none;
+  margin: 0;
   box-sizing: border-box;
   width: 100%;
 }

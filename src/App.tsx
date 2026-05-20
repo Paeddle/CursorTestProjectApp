@@ -7,6 +7,7 @@ import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
 import { WirePage, WIRE_ROUTE_PATH } from './modules/wire'
 import PurchaseList from './components/PurchaseList'
+import NonInventoryOrders from './components/NonInventoryOrders'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
 import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
 type SortDirection = 'asc' | 'desc' | null
@@ -36,6 +37,7 @@ function App() {
   const [poPdfMessage, setPoPdfMessage] = useState<string | null>(null)
   const [poPdfError, setPoPdfError] = useState<string | null>(null)
   const poPdfInputRef = useRef<HTMLInputElement>(null)
+  const [navOpen, setNavOpen] = useState(false)
 
   useEffect(() => {
     loadTrackings()
@@ -568,8 +570,13 @@ function App() {
   const sortedOrders = sortOrders(groupedOrders, orderSortColumn, orderSortDirection)
 
   return (
-    <div className="app">
-      <Sidebar activePage={activePage} onNavigate={setActivePage} />
+    <div className={`app${navOpen ? ' nav-open' : ''}`}>
+      <Sidebar
+        activePage={activePage}
+        onNavigate={setActivePage}
+        open={navOpen}
+        onOpenChange={setNavOpen}
+      />
       <div className="main-content">
         {isWireRoute ? (
           <WirePage />
@@ -577,6 +584,8 @@ function App() {
           <Analytics poItemsMap={poItemsMap} trackings={trackings} />
         ) : activePage === 'po-info' ? (
           <POInfo />
+        ) : activePage === 'non-inventory-orders' ? (
+          <NonInventoryOrders />
         ) : activePage === 'purchase-list' ? (
           <PurchaseList />
         ) : (
