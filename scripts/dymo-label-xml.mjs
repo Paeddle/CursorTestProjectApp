@@ -1,13 +1,16 @@
-/** DYMO 30323 Shipping — Landscape; printable box 2218×608 @ (128,18). */
 const LABEL_DRAW_WIDTH = 2382
 const LABEL_DRAW_HEIGHT = 638
 const LABEL_PRINTABLE_X = 128
 const LABEL_PRINTABLE_Y = 18
 const LABEL_PRINTABLE_WIDTH = 2218
 const LABEL_PRINTABLE_HEIGHT = 608
-const LABEL_MAX_FONT_SIZE = 96
-const MAX_CHARS_PER_LINE = 28
-const MAX_LINES = 6
+
+const LABEL_FONT_STEPS = [
+  { size: 48, charsPerLine: 22, maxLines: 3 },
+  { size: 42, charsPerLine: 24, maxLines: 4 },
+  { size: 36, charsPerLine: 28, maxLines: 5 },
+  { size: 30, charsPerLine: 32, maxLines: 6 },
+]
 
 export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -25,11 +28,11 @@ export const LABEL_XML_TEMPLATE = `<?xml version="1.0" encoding="utf-8"?>
       <LinkedObjectName></LinkedObjectName>
       <Rotation>Rotation0</Rotation>
       <IsMirrored>False</IsMirrored>
-      <IsVariable>False</IsVariable>
+      <IsVariable>True</IsVariable>
       <HorizontalAlignment>Center</HorizontalAlignment>
       <VerticalAlignment>Middle</VerticalAlignment>
-      <TextFitMode>AlwaysFit</TextFitMode>
-      <UseFullFontHeight>True</UseFullFontHeight>
+      <TextFitMode>None</TextFitMode>
+      <UseFullFontHeight>False</UseFullFontHeight>
       <Verticalized>False</Verticalized>
       <StyledText>
         <!--DYMO_STYLED_TEXT-->
@@ -88,32 +91,38 @@ export function wrapText(text, maxChars) {
   return lines
 }
 
-function labelLinesForPrint(row) {
+function linesForJobAndLocation(row, charsPerLine) {
   const job = String(row.job_name || row.item_name || '').trim()
   const loc = String(row.location_name || '').trim()
-  const parts = []
-  if (job) parts.push(...wrapText(job, MAX_CHARS_PER_LINE))
-  if (loc) parts.push(...wrapText(loc, MAX_CHARS_PER_LINE))
-  if (parts.length === 0) return ['—']
-  return parts.slice(0, MAX_LINES)
+  const block = []
+  if (job) block.push(...wrapText(job, charsPerLine))
+  if (loc) block.push(...wrapText(loc, charsPerLine))
+  return block.length > 0 ? block : ['(no text)']
 }
 
 export function labelLayoutForRow(row) {
-  const lines = labelLinesForPrint(row)
-  return { fontSize: LABEL_MAX_FONT_SIZE, lines }
+  for (const step of LABEL_FONT_STEPS) {
+    const lines = linesForJobAndLocation(row, step.charsPerLine)
+    if (lines.length <= step.maxLines) {
+      return { fontSize: step.size, lines }
+    }
+  }
+  const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
+  const lines = linesForJobAndLocation(row, fallback.charsPerLine)
+  return { fontSize: fallback.size, lines: lines.slice(0, fallback.maxLines) }
 }
 
 function buildStyledTextXml(lines, fontSize) {
   const font = `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/>`
   const body = lines.map((line) => escapeXmlText(line)).join('&#10;')
-  return `        <Element><String>${body}</String><Attributes>${font}</Attributes></Element>`
+  return `        <Element><String>${body || '(no text)'}</String><Attributes>${font}</Attributes></Element>`
 }
 
 export function buildLabelXmlForRow(row) {
-  const lines = labelLinesForPrint(row)
+  const { fontSize, lines } = labelLayoutForRow(row)
   return LABEL_XML_TEMPLATE.replace(
     STYLED_TEXT_PLACEHOLDER,
-    buildStyledTextXml(lines, LABEL_MAX_FONT_SIZE)
+    buildStyledTextXml(lines, fontSize)
   )
 }
 
