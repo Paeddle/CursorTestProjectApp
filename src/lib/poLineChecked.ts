@@ -1,11 +1,12 @@
 import { poLineItemKey } from './poLineCustomerOverride'
 
-const STORAGE_KEY = 'po_line_checked_v1'
+const LEGACY_STORAGE_KEY = 'po_line_checked_v1'
 
-export function readPoLineChecked(): Record<string, boolean> {
+/** Read checks stored only in this browser (pre-Supabase). */
+export function readLegacyLocalPoLineChecked(): Record<string, boolean> {
   if (typeof localStorage === 'undefined') return {}
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, boolean>
     if (!parsed || typeof parsed !== 'object') return {}
@@ -16,6 +17,12 @@ export function readPoLineChecked(): Record<string, boolean> {
     return out
   } catch {
     return {}
+  }
+}
+
+export function clearLegacyLocalPoLineChecked(): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
   }
 }
 
@@ -36,14 +43,7 @@ export function togglePoLineChecked(
   const next = { ...checked }
   if (next[key]) delete next[key]
   else next[key] = true
-  persistChecked(next)
   return next
-}
-
-function persistChecked(checked: Record<string, boolean>): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(checked))
-  }
 }
 
 export type PoLineCheckSummary = {
@@ -74,7 +74,7 @@ export function poLineCheckSummary(
   }
 }
 
-/** Check or uncheck every iPoint line on a PO (linked to row Check column). */
+/** Check or uncheck every iPoint line on a PO (in-memory; persist via poLineCheckedService). */
 export function setAllPoLinesChecked(
   checked: Record<string, boolean>,
   poNumber: string,
@@ -87,6 +87,5 @@ export function setAllPoLinesChecked(
     if (value) next[key] = true
     else delete next[key]
   }
-  persistChecked(next)
   return next
 }

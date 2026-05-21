@@ -11,6 +11,17 @@ export function poLineItemKey(poNumber: string, itemName: string): string {
   return `${normalizePoKey(poNumber)}|${normItem(itemName)}`
 }
 
+/** DB columns for shared iPoint line checked state. */
+export function poLineItemDbKeys(
+  poNumber: string,
+  itemName: string
+): { po_key: string; item_key: string } {
+  return {
+    po_key: normalizePoKey(poNumber),
+    item_key: normItem(itemName),
+  }
+}
+
 export function readPoLineCustomerOverrides(): Record<string, string> {
   if (typeof localStorage === 'undefined') return {}
   try {

@@ -24,12 +24,19 @@ import {
   writePoLineCustomerOverride,
 } from '../lib/poLineCustomerOverride'
 import {
+  clearLegacyLocalPoLineChecked,
   isPoLineChecked,
   poLineCheckSummary,
-  readPoLineChecked,
+  readLegacyLocalPoLineChecked,
   setAllPoLinesChecked,
   togglePoLineChecked,
 } from '../lib/poLineChecked'
+import {
+  fetchPoLineCheckedMap,
+  migrateLocalPoLineCheckedToSupabase,
+  setAllPoLinesCheckedForPo,
+  setPoLineChecked,
+} from '../services/poLineCheckedService'
 import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
@@ -363,7 +370,7 @@ function POInfo() {
   const [customerOverrides, setCustomerOverrides] = useState<Record<string, string>>(() =>
     readPoLineCustomerOverrides()
   )
-  const [lineChecked, setLineChecked] = useState<Record<string, boolean>>(() => readPoLineChecked())
+  const [lineChecked, setLineChecked] = useState<Record<string, boolean>>({})
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [locationModal, setLocationModal] = useState<{
@@ -412,7 +419,7 @@ function POInfo() {
     setIpointLoading(true)
     setError(null)
     try {
-      const [list, catRes, chkRes, refs] = await Promise.all([
+      const [list, catRes, chkRes, refs, lineCheckedMap] = await Promise.all([
         loadSummaries(),
         supabase
           .from('barcode_catalog')
@@ -420,6 +427,7 @@ function POInfo() {
           .order('item_name', { ascending: true }),
         supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
         fetchPoJobRefs().catch(() => [] as PoJobRef[]),
+        fetchPoLineCheckedMap(),
       ])
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
@@ -434,6 +442,19 @@ function POInfo() {
         }
       }
       setCheckedInMap(nextChecked)
+
+      let mergedLineChecked = lineCheckedMap
+      const legacyLineChecked = readLegacyLocalPoLineChecked()
+      if (Object.keys(legacyLineChecked).length > 0) {
+        try {
+          await migrateLocalPoLineCheckedToSupabase(legacyLineChecked)
+          clearLegacyLocalPoLineChecked()
+          mergedLineChecked = await fetchPoLineCheckedMap()
+        } catch {
+          mergedLineChecked = { ...lineCheckedMap, ...legacyLineChecked }
+        }
+      }
+      setLineChecked(mergedLineChecked)
       setLoading(false)
 
       if (options?.force) invalidatePoIpointCache()
@@ -614,16 +635,32 @@ function POInfo() {
     setCustomerOverrides(writePoLineCustomerOverride(poNumber, itemName, jobOrCustomer))
   }
 
-  const handleToggleLineChecked = (poNumber: string, itemName: string) => {
-    setLineChecked((prev) => togglePoLineChecked(prev, poNumber, itemName))
+  const handleToggleLineChecked = async (poNumber: string, itemName: string) => {
+    const nextChecked = !isPoLineChecked(lineChecked, poNumber, itemName)
+    const prev = lineChecked
+    setLineChecked(togglePoLineChecked(prev, poNumber, itemName))
+    try {
+      await setPoLineChecked(poNumber, itemName, nextChecked)
+    } catch (err) {
+      setLineChecked(prev)
+      setError(err instanceof Error ? err.message : 'Failed to save line check')
+    }
   }
 
-  const handleToggleAllLinesChecked = (
+  const handleToggleAllLinesChecked = async (
     poNumber: string,
     lines: AggregatedPoLineItem[]
   ) => {
     const { allChecked } = poLineCheckSummary(lineChecked, poNumber, lines)
-    setLineChecked((prev) => setAllPoLinesChecked(prev, poNumber, lines, !allChecked))
+    const nextValue = !allChecked
+    const prev = lineChecked
+    setLineChecked(setAllPoLinesChecked(prev, poNumber, lines, nextValue))
+    try {
+      await setAllPoLinesCheckedForPo(poNumber, lines, nextValue)
+    } catch (err) {
+      setLineChecked(prev)
+      setError(err instanceof Error ? err.message : 'Failed to save line checks')
+    }
   }
 
   const printLabelRows = async (poNumber: string, rows: PoLabelPrintRow[]) => {
@@ -1169,7 +1206,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                         indeterminate={poCheck.someChecked}
                         ariaLabel={`Check all iPoint lines on ${formatPoDisplay(summary.po_number)}`}
                         onChange={() =>
-                          handleToggleAllLinesChecked(summary.po_number, poIpointLines)
+                          void handleToggleAllLinesChecked(summary.po_number, poIpointLines)
                         }
                       />
                     </div>
@@ -1344,7 +1381,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         checked={isChecked}
                                         aria-label={`Mark ${line.item_name} checked`}
                                         onChange={() =>
-                                          handleToggleLineChecked(
+                                          void handleToggleLineChecked(
                                             summary.po_number,
                                             line.item_name
                                           )
