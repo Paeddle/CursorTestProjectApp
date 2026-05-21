@@ -1145,6 +1145,33 @@ tr.po-info-location-file-needs-ref td {
   white-space: nowrap;
 }
 
+.po-info-ipoint-th-check {
+  width: 3.25rem;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #94a3b8;
+}
+
+.po-info-ipoint-check-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+tr.po-info-ipoint-row-checked td:not(.po-info-ipoint-check-cell):not(.po-info-scan-checkin-cell) {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: #94a3b8;
+  color: #94a3b8;
+}
+
+tr.po-info-ipoint-row-checked .po-info-ipoint-loc-more-btn {
+  text-decoration: none;
+}
+
 .po-info-ipoint-th-scanned {
   width: 7.5rem;
   text-align: center;

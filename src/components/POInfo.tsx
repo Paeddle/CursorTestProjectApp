@@ -23,6 +23,7 @@ import {
   readPoLineCustomerOverrides,
   writePoLineCustomerOverride,
 } from '../lib/poLineCustomerOverride'
+import { isPoLineChecked, readPoLineChecked, togglePoLineChecked } from '../lib/poLineChecked'
 import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
@@ -356,6 +357,7 @@ function POInfo() {
   const [customerOverrides, setCustomerOverrides] = useState<Record<string, string>>(() =>
     readPoLineCustomerOverrides()
   )
+  const [lineChecked, setLineChecked] = useState<Record<string, boolean>>(() => readPoLineChecked())
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [locationModal, setLocationModal] = useState<{
@@ -604,6 +606,10 @@ function POInfo() {
 
   const handleCustomerSelect = (poNumber: string, itemName: string, jobOrCustomer: string) => {
     setCustomerOverrides(writePoLineCustomerOverride(poNumber, itemName, jobOrCustomer))
+  }
+
+  const handleToggleLineChecked = (poNumber: string, itemName: string) => {
+    setLineChecked((prev) => togglePoLineChecked(prev, poNumber, itemName))
   }
 
   const printLabelRows = async (poNumber: string, rows: PoLabelPrintRow[]) => {
@@ -1196,6 +1202,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           <table className="po-info-scan-table po-info-ipoint-table">
                             <thead>
                               <tr>
+                                <th scope="col" className="po-info-ipoint-th-check">
+                                  Check
+                                </th>
                                 <th scope="col" className="po-info-scan-th-checkin">
                                   <button
                                     type="button"
@@ -1282,13 +1291,36 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const someLineLabelsSelected =
                                   selectedCount > 0 && !allLineLabelsSelected
                                 const isScanned = ipointScanned.has(line.id)
+                                const isChecked = isPoLineChecked(
+                                  lineChecked,
+                                  summary.po_number,
+                                  line.item_name
+                                )
                                 return (
                                   <tr
                                     key={line.id}
                                     className={
-                                      isScanned ? undefined : 'po-info-ipoint-row-not-scanned'
+                                      isChecked
+                                        ? 'po-info-ipoint-row-checked'
+                                        : isScanned
+                                          ? undefined
+                                          : 'po-info-ipoint-row-not-scanned'
                                     }
                                   >
+                                    <td className="po-info-ipoint-check-cell">
+                                      <input
+                                        type="checkbox"
+                                        className="po-info-scan-checkin-input"
+                                        checked={isChecked}
+                                        aria-label={`Mark ${line.item_name} checked`}
+                                        onChange={() =>
+                                          handleToggleLineChecked(
+                                            summary.po_number,
+                                            line.item_name
+                                          )
+                                        }
+                                      />
+                                    </td>
                                     <td className="po-info-scan-checkin-cell">
                                       <IpointPrintCheckbox
                                         checked={allLineLabelsSelected}
