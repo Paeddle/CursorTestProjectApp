@@ -225,6 +225,29 @@ function makeCheckinMapKey(poNumber: string, barcodeValue: string): string {
   return `${poNumber.trim().toLowerCase()}\u0000${normalizeBarcodeValue(barcodeValue)}`
 }
 
+/** Match scans for a PO + barcode regardless of PO- prefix formatting in the DB. */
+function barcodesMatchingPoAndValue(
+  barcodes: POBarcode[],
+  poNumber: string,
+  barcodeValue: string
+): POBarcode[] {
+  const poKey = normalizePoKey(poNumber)
+  const v = normalizeBarcodeValue(barcodeValue)
+  return barcodes.filter(
+    (b) =>
+      normalizePoKey(b.po_number || '') === poKey &&
+      normalizeBarcodeValue(b.barcode_value || '') === v
+  )
+}
+
+function poNumberForBarcodeWrites(
+  poNumber: string,
+  existing: POBarcode[]
+): string {
+  const hit = existing.find((b) => normalizePoKey(b.po_number || '') === normalizePoKey(poNumber))
+  return (hit?.po_number || poNumber).trim()
+}
+
 type PoScanSortColumn = 'item' | 'partNumber' | 'qty' | 'lastScan'
 type PoScanSortState = { column: PoScanSortColumn; asc: boolean }
 type CatalogSortColumn = 'item' | 'partNumber' | 'manufacturer'
@@ -745,8 +768,8 @@ function POInfo() {
   const handleQtyCommit = async (
     poNumber: string,
     barcodeValue: string,
+    scanIds: string[],
     allBarcodes: POBarcode[],
-    currentQty: number,
     draftStr: string
   ) => {
     const n = Math.floor(Number(draftStr))
@@ -755,39 +778,71 @@ function POInfo() {
       setQtyEditKey(null)
       return
     }
-    if (n === currentQty) {
-      setQtyEditKey(null)
-      return
-    }
     setQtySaving(true)
     setError(null)
     try {
-      const po = poNumber.trim()
-      const v = barcodeValue.trim()
-      const rows = allBarcodes
-        .filter((b) => (b.po_number || '').trim() === po && (b.barcode_value || '').trim() === v)
-        .sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime())
-      if (rows.length !== currentQty) {
-        throw new Error('Scan list changed; refresh and try again.')
+      const poKey = normalizePoKey(poNumber)
+      const v = normalizeBarcodeValue(barcodeValue)
+      let matched = barcodesMatchingPoAndValue(allBarcodes, poNumber, barcodeValue).sort(
+        (a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime()
+      )
+
+      if (matched.length === 0 && scanIds.length > 0) {
+        const { data, error: fetchErr } = await supabase
+          .from('po_barcodes')
+          .select(BARCODE_SUMMARY_COLUMNS)
+          .in('id', scanIds)
+        if (fetchErr) throw new Error(fetchErr.message)
+        matched = ((data ?? []) as POBarcode[])
+          .filter(
+            (b) =>
+              normalizePoKey(b.po_number || '') === poKey &&
+              normalizeBarcodeValue(b.barcode_value || '') === v
+          )
+          .sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime())
       }
-      if (n < currentQty) {
-        const remove = currentQty - n
-        const ids = rows.slice(0, remove).map((b) => b.id)
-        const { error: e } = await supabase.from('po_barcodes').delete().in('id', ids)
+
+      const actualQty = matched.length > 0 ? matched.length : scanIds.length
+      if (n === actualQty) {
+        setQtyEditKey(null)
+        return
+      }
+
+      const poStored = poNumberForBarcodeWrites(poNumber, matched)
+      const barcodeStored = matched[0]?.barcode_value?.trim() || barcodeValue.trim()
+      const idsToDelete: string[] = []
+      let inserted: POBarcode[] = []
+
+      if (n < actualQty) {
+        const remove = actualQty - n
+        idsToDelete.push(...matched.slice(0, remove).map((b) => b.id))
+        const { error: e } = await supabase.from('po_barcodes').delete().in('id', idsToDelete)
         if (e) throw new Error(e.message)
       } else {
-        const add = n - currentQty
+        const add = n - actualQty
         const scanned_at = new Date().toISOString()
         const inserts = Array.from({ length: add }, () => ({
-          po_number: po,
-          barcode_value: v,
+          po_number: poStored,
+          barcode_value: barcodeStored,
           scanned_at,
         }))
-        const { error: e } = await supabase.from('po_barcodes').insert(inserts)
+        const { data, error: e } = await supabase
+          .from('po_barcodes')
+          .insert(inserts)
+          .select(BARCODE_SUMMARY_COLUMNS)
         if (e) throw new Error(e.message)
+        inserted = (data ?? []) as POBarcode[]
       }
+
+      const deletedSet = new Set(idsToDelete)
+      setSummaries((prev) =>
+        prev.map((s) => {
+          if (normalizePoKey(s.po_number) !== poKey) return s
+          const nextBarcodes = s.barcodes.filter((b) => !deletedSet.has(b.id))
+          return { ...s, barcodes: [...inserted, ...nextBarcodes] }
+        })
+      )
       setQtyEditKey(null)
-      await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update quantity')
     } finally {
@@ -1518,8 +1573,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                             void handleQtyCommit(
                                               summary.po_number,
                                               row.barcode_value,
+                                              row.scan_ids,
                                               summary.barcodes,
-                                              row.quantity,
                                               e.currentTarget.value
                                             )
                                           }
