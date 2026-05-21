@@ -250,8 +250,8 @@ function fontAttributesXml(fontSize: number, bold = true): string {
   )
 }
 
-function buildStyledTextXml(lines: string[], fontSize: number): string {
-  const attrs = fontAttributesXml(fontSize)
+function buildStyledTextXml(lines: string[], fontSize: number, bold = true): string {
+  const attrs = fontAttributesXml(fontSize, bold)
   const textLines = lines.length > 0 ? lines : ['']
   return textLines
     .map(
