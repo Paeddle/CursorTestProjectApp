@@ -35,16 +35,18 @@ export const DYMO_PAPER_TEMPLATES = [
   },
 ]
 
+const LINE_HEIGHT_TWIPS_PER_PT = 30
+
 const LABEL_FONT_STEPS = [
-  { size: 32, maxJobLines: 6, maxLocLines: 2 },
-  { size: 28, maxJobLines: 7, maxLocLines: 3 },
-  { size: 24, maxJobLines: 8, maxLocLines: 3 },
-  { size: 20, maxJobLines: 9, maxLocLines: 4 },
-  { size: 18, maxJobLines: 10, maxLocLines: 4 },
+  { size: 22, maxJobLines: 6, maxLocLines: 2 },
+  { size: 20, maxJobLines: 7, maxLocLines: 3 },
+  { size: 18, maxJobLines: 8, maxLocLines: 3 },
+  { size: 16, maxJobLines: 9, maxLocLines: 4 },
+  { size: 14, maxJobLines: 10, maxLocLines: 4 },
 ]
 
-export const LABEL_JOB_LOC_FONT_GAP = 10
-export const LABEL_LOCATION_MIN_FONT_SIZE = 12
+export const LABEL_JOB_LOC_FONT_GAP = 6
+export const LABEL_LOCATION_MIN_FONT_SIZE = 10
 
 function locationFontSizeForJob(jobFontSize, hasJob, hasLocation) {
   if (!hasLocation) return jobFontSize
@@ -53,11 +55,10 @@ function locationFontSizeForJob(jobFontSize, hasJob, hasLocation) {
 }
 
 function jobCharsPerLineForFont(fontSize) {
-  if (fontSize >= 30) return 12
-  if (fontSize >= 26) return 14
-  if (fontSize >= 22) return 16
-  if (fontSize >= 19) return 18
-  return 20
+  if (fontSize >= 20) return 16
+  if (fontSize >= 17) return 18
+  if (fontSize >= 15) return 20
+  return 22
 }
 
 function locationCharsPerLineForFont(locationFontSize) {
@@ -70,6 +71,25 @@ function prepareJobTextForWrap(job) {
     .replace(/(\s*[-–—]\s*)/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function textBlockHeightTwips(lineCount, fontSize) {
+  if (lineCount <= 0) return 0
+  return lineCount * fontSize * LINE_HEIGHT_TWIPS_PER_PT
+}
+
+function layoutFitsOnSticker(jobLines, locationLines, jobFontSize, locationFontSize, template) {
+  const margin = Math.round(template.boundsHeight * 0.12)
+  const available = template.boundsHeight - margin
+  const gap =
+    jobLines.length > 0 && locationLines.length > 0
+      ? Math.max(28, Math.round(template.boundsHeight * 0.05))
+      : 0
+  const total =
+    textBlockHeightTwips(jobLines.length, jobFontSize) +
+    gap +
+    textBlockHeightTwips(locationLines.length, locationFontSize)
+  return total <= available
 }
 
 export function escapeXmlText(text) {
@@ -131,6 +151,8 @@ export function labelLayoutForRow(row) {
   const hasJob = Boolean(job)
   const hasLocation = Boolean(location)
   const jobSource = job ? prepareJobTextForWrap(job) : ''
+  const sizeTemplate =
+    DYMO_PAPER_TEMPLATES.find((t) => t.paperName === '30323 Shipping') ?? DYMO_PAPER_TEMPLATES[0]
 
   for (const step of LABEL_FONT_STEPS) {
     const jobFontSize = step.size
@@ -139,7 +161,11 @@ export function labelLayoutForRow(row) {
     const locChars = locationCharsPerLineForFont(locationFontSize)
     const jobLines = jobSource ? wrapText(jobSource, jobChars) : []
     const locationLines = location ? wrapText(location, locChars) : []
-    if (jobLines.length <= step.maxJobLines && locationLines.length <= step.maxLocLines) {
+    if (
+      jobLines.length <= step.maxJobLines &&
+      locationLines.length <= step.maxLocLines &&
+      layoutFitsOnSticker(jobLines, locationLines, jobFontSize, locationFontSize, sizeTemplate)
+    ) {
       return { jobFontSize, locationFontSize, jobLines, locationLines }
     }
   }
@@ -187,7 +213,7 @@ function buildTextObjectXml(objectName, lines, fontSize, bounds, textFitMode) {
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
     `<VerticalAlignment>Middle</VerticalAlignment>` +
     `<TextFitMode>${textFitMode}</TextFitMode>` +
-    `<UseFullFontHeight>True</UseFullFontHeight>` +
+    `<UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +
     `</TextObject>` +
@@ -197,22 +223,24 @@ function buildTextObjectXml(objectName, lines, fontSize, bounds, textFitMode) {
 }
 
 function splitBoundsForLayout(template, jobLines, locationLines) {
+  const padX = Math.round(template.boundsWidth * 0.04)
+  const padY = Math.round(template.boundsHeight * 0.06)
   const base = {
-    x: template.boundsX,
-    y: template.boundsY,
-    width: template.boundsWidth,
-    height: template.boundsHeight,
+    x: template.boundsX + padX,
+    y: template.boundsY + padY,
+    width: template.boundsWidth - padX * 2,
+    height: template.boundsHeight - padY * 2,
   }
   const hasJob = jobLines.length > 0 && jobLines[0] !== '(no text)'
   const hasLoc = locationLines.length > 0
   if (hasJob && hasLoc) {
-    const gap = Math.max(48, Math.round(template.boundsHeight * 0.08))
-    const inner = template.boundsHeight - gap
+    const gap = Math.max(28, Math.round(base.height * 0.06))
+    const inner = base.height - gap
     const jobLineCount = Math.max(1, jobLines.length)
     const locLineCount = Math.max(1, locationLines.length)
     const jobShare = jobLineCount / (jobLineCount + locLineCount)
-    const jobHeight = Math.round(inner * Math.min(0.78, 0.48 + jobShare * 0.38))
-    const locHeight = inner - jobHeight
+    const jobHeight = Math.round(inner * Math.min(0.72, 0.42 + jobShare * 0.34))
+    const locHeight = Math.max(Math.round(inner * 0.22), inner - jobHeight)
     return {
       job: { x: base.x, y: base.y, width: base.width, height: jobHeight },
       location: {
