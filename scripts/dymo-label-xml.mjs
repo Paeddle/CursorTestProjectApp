@@ -35,18 +35,18 @@ export const DYMO_PAPER_TEMPLATES = [
   },
 ]
 
-const LINE_HEIGHT_TWIPS_PER_PT = 30
+const LINE_HEIGHT_TWIPS_PER_PT = 28
 
 const LABEL_FONT_STEPS = [
-  { size: 22, maxJobLines: 6, maxLocLines: 2 },
+  { size: 26, maxJobLines: 5, maxLocLines: 2 },
+  { size: 24, maxJobLines: 6, maxLocLines: 2 },
+  { size: 22, maxJobLines: 6, maxLocLines: 3 },
   { size: 20, maxJobLines: 7, maxLocLines: 3 },
-  { size: 18, maxJobLines: 8, maxLocLines: 3 },
-  { size: 16, maxJobLines: 9, maxLocLines: 4 },
-  { size: 14, maxJobLines: 10, maxLocLines: 4 },
+  { size: 18, maxJobLines: 8, maxLocLines: 4 },
 ]
 
-export const LABEL_JOB_LOC_FONT_GAP = 6
-export const LABEL_LOCATION_MIN_FONT_SIZE = 10
+export const LABEL_JOB_LOC_FONT_GAP = 8
+export const LABEL_LOCATION_MIN_FONT_SIZE = 12
 
 function locationFontSizeForJob(jobFontSize, hasJob, hasLocation) {
   if (!hasLocation) return jobFontSize
@@ -55,10 +55,11 @@ function locationFontSizeForJob(jobFontSize, hasJob, hasLocation) {
 }
 
 function jobCharsPerLineForFont(fontSize) {
-  if (fontSize >= 20) return 16
-  if (fontSize >= 17) return 18
-  if (fontSize >= 15) return 20
-  return 22
+  if (fontSize >= 24) return 14
+  if (fontSize >= 21) return 15
+  if (fontSize >= 18) return 17
+  if (fontSize >= 16) return 18
+  return 20
 }
 
 function locationCharsPerLineForFont(locationFontSize) {
@@ -79,7 +80,7 @@ function textBlockHeightTwips(lineCount, fontSize) {
 }
 
 function layoutFitsOnSticker(jobLines, locationLines, jobFontSize, locationFontSize, template) {
-  const margin = Math.round(template.boundsHeight * 0.12)
+  const margin = Math.round(template.boundsHeight * 0.1)
   const available = template.boundsHeight - margin
   const gap =
     jobLines.length > 0 && locationLines.length > 0
