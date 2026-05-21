@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react'
-import { Link } from 'react-router-dom'
 import Barcode from 'react-barcode'
 import { supabase } from '../lib/supabase'
 import {
@@ -1013,7 +1012,6 @@ function POInfo() {
       <div className="po-info-page">
         <header className="po-info-header">
           <h1>PO Info</h1>
-          <p className="po-info-subtitle">Check-in data from the scanning web app (Supabase)</p>
         </header>
         <div className="po-info-setup">
           <p>Configure Supabase in your <code>.env</code>:</p>
@@ -1029,14 +1027,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
     <div className="po-info-page">
       <header className="po-info-header">
         <h1>PO Info</h1>
-        <p className="po-info-subtitle">
-          Barcode scans, iPoint file imports, room locations, and Dymo labels per PO. On a tablet, tap{' '}
-          <strong>Print selected labels</strong> to queue jobs. On the laptop with the printer, open{' '}
-          <Link to="/print-station" className="po-info-inline-link">
-            Print Station
-          </Link>{' '}
-          in this app (same website) and click <strong>Connect printer</strong> once.
-        </p>
       </header>
 
       <PoIpointImportPanel
@@ -1202,17 +1192,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                               : 'Print selected labels'}
                           </button>
                         </div>
-                        <p className="po-info-section-desc">
-                          From PO Line Report. Req. is the requested quantity for the selected customer (per
-                          PDF Req. column). When an item has multiple customers, use the dropdown to pick
-                          one. Job/customer shows the PO Line Report name; blank customer means stock.
-                          Locations come from the ref
-                          spreadsheets (e.g. 4152.xlsx) matched by JobRef + item name. Long location lists show a “+N more” link to
-                          open all rooms and pick which labels to print. Printing uses the Req. count (e.g.
-                          Req. 3 prints three labels, cycling room names when several locations are selected).
-                          On this device with DYMO Connect, labels print here; otherwise they are queued for the
-                          Print Station on your laptop.
-                        </p>
                         <div className="po-info-scan-table-wrap">
                           <table className="po-info-scan-table po-info-ipoint-table">
                             <thead>
@@ -1390,10 +1369,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     {agg.length > 0 && (
                       <section className="po-info-section">
                         <h4>Barcode scans</h4>
-                        <p className="po-info-section-desc">
-                          Quantities are stored as separate scans. Click a quantity to add or remove rows for
-                          that barcode on this PO.
-                        </p>
                         <div className="po-info-scan-table-wrap">
                           <table className="po-info-scan-table">
                             <thead>
@@ -1653,10 +1628,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     {summary.documents.length > 0 && (
                       <section className="po-info-section">
                         <h4>Documents</h4>
-                        <p className="po-info-section-desc">
-                          Files from the scanner app. Delete removes the database row and the file from
-                          storage when the link points at this project&apos;s bucket.
-                        </p>
                         <ul className="po-info-doc-list">
                           {summary.documents.map((d) => (
                             <li key={d.id} className="po-info-doc-item">
@@ -1700,13 +1671,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       {!loading && (
         <section className="po-info-catalog-section">
           <h2 className="po-info-catalog-section-title">Barcode catalog</h2>
-          <p className="po-info-section-desc po-info-catalog-section-desc">
-            Items you have saved for lookups. Edit opens the same catalog form as from a PO scan.
-          </p>
           {catalog.length === 0 ? (
-            <p className="po-info-catalog-empty">No catalog entries yet. Look up a barcode from a PO and use &quot;Add to your Catalog&quot;.</p>
+            <p className="po-info-catalog-empty">No catalog entries yet.</p>
           ) : (
-            <div className="po-info-catalog-table-wrap">
+            <div className="po-info-catalog-table-wrap po-info-scroll-panel po-info-catalog-scroll">
               <table className="po-info-catalog-table">
                 <thead>
                   <tr>

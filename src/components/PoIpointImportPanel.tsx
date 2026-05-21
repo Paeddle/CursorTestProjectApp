@@ -317,16 +317,15 @@ function PoIpointImportPanel({
   return (
     <section className="po-info-ipoint-section">
       <h2 className="po-info-ipoint-title">iPoint data import</h2>
-      <p className="po-info-section-desc">
-        Upload the PO Line Report and location spreadsheets below. Manage job names and ref numbers
-        in the job reference list — no JobRef file upload needed. Copy job names from the PO Line
-        Report so they match exactly.
-      </p>
 
       <div className="po-info-ipoint-stats">
         <span>{lineItemCount} PO line{lineItemCount !== 1 ? 's' : ''}</span>
         <span>{jobRefs.length} job ref{jobRefs.length !== 1 ? 's' : ''}</span>
-        <span>{locationCount} location row{locationCount !== 1 ? 's' : ''}</span>
+        <span>
+          {ipointLoading
+            ? 'Loading locations…'
+            : `${locationCount} location row${locationCount !== 1 ? 's' : ''}`}
+        </span>
         <span>{locationFiles.length} location file{locationFiles.length !== 1 ? 's' : ''}</span>
       </div>
 
@@ -383,26 +382,12 @@ function PoIpointImportPanel({
 
       <div className="po-info-location-files-block">
         <h3 className="po-info-ipoint-subtitle">Uploaded location files</h3>
-        <p className="po-info-section-desc po-info-jobref-hint">
-          Each ref number you have uploaded appears here (row counts loaded from Supabase, not
-          limited to the first 1,000 rows). Refs marked{' '}
-          <strong className="po-info-needs-ref-label">Needs job ref</strong> are not in the job
-          reference list yet — add a row below with the job name from the PO Line Report and this
-          ref number.
-        </p>
         {refsNeedingJob.length > 0 && (
           <p className="po-info-ipoint-needs-ref-banner">
             {refsNeedingJob.length} ref{refsNeedingJob.length !== 1 ? 's' : ''} still need a job
             name: {refsNeedingJob.map((f) => f.ref_number).join(', ')}
           </p>
         )}
-        <p className="po-info-section-desc">
-          {ipointLoading
-            ? 'Loading room locations from Supabase…'
-            : locationCount > 0
-              ? `${locationCount.toLocaleString()} location row${locationCount !== 1 ? 's' : ''} loaded for PO matching.`
-              : 'No location rows loaded yet.'}
-        </p>
         {locationFiles.length === 0 ? (
           <p className="po-info-ipoint-empty">No location files uploaded yet.</p>
         ) : (
@@ -515,9 +500,6 @@ function PoIpointImportPanel({
 
       <div className="po-info-jobref-block">
         <h3 className="po-info-ipoint-subtitle">Job reference list</h3>
-        <p className="po-info-section-desc po-info-jobref-hint">
-          Link each ref number to the job name from the PO Line Report (must match iPoint text).
-        </p>
         <div className="po-info-jobref-add">
           <input
             type="text"

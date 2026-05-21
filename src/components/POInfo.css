@@ -677,7 +677,7 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
 }
 
 .po-info-catalog-section-title {
-  margin: 0 0 0.35rem 0;
+  margin: 0 0 0.75rem 0;
   font-size: 1.15rem;
   font-weight: 600;
   color: #f1f5f9;
@@ -705,6 +705,11 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
   border: 1px solid #334155;
   border-radius: 8px;
   background: #0f172a;
+}
+
+.po-info-catalog-scroll {
+  max-height: min(420px, 55vh);
+  overflow-y: auto;
 }
 
 .po-info-catalog-table {
