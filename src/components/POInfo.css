@@ -1191,6 +1191,12 @@ tr.po-info-ipoint-row-not-scanned .po-info-scan-item-name {
   max-width: 14rem;
 }
 
+.po-info-ipoint-loc-ref-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
 .po-info-ipoint-loc-preview {
   display: block;
   word-break: break-word;

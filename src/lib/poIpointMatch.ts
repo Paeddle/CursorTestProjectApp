@@ -1,6 +1,15 @@
 import { lookupCatalogItem } from './barcodeCatalogLookup'
 import type { BarcodeCatalogItem, POBarcode } from '../types/poCheckin'
 import type { PoItemLocation, PoJobRef, PoLineItem } from '../types/poIpoint'
+import type { AggregatedPoLineItem } from './poLineAggregate'
+
+function parseLineRequestedQuantity(qty: string | number | null | undefined): number {
+  if (qty == null || qty === '') return 0
+  const s = String(qty).replace(/,/g, '').trim()
+  const n = Number(s)
+  if (!Number.isFinite(n) || n < 0) return 0
+  return Math.round(n)
+}
 
 function norm(s: string): string {
   return s
@@ -33,6 +42,44 @@ function significantTokens(s: string): string[] {
 
 function slugWordTokens(slug: string): string[] {
   return slug.split(/[^a-z0-9]+/).filter((t) => t.length >= 3)
+}
+
+/** Shared site words — must not be the only basis for linking a PO line to a job ref. */
+const GENERIC_SLUG_TOKENS = new Set([
+  'big',
+  'sky',
+  'lot',
+  'yc',
+  'unit',
+  'bozeman',
+  'sales',
+  'order',
+  'work',
+  'ridge',
+  'road',
+  'hitching',
+  'post',
+  'chalet',
+  'simmons',
+  'spruce',
+  'white',
+  'cowboy',
+  'heaven',
+])
+
+function distinctiveSlugTokens(slug: string): string[] {
+  return slugWordTokens(slug).filter((t) => !GENERIC_SLUG_TOKENS.has(t) && t.length >= 4)
+}
+
+/** Trailing site / installer id after the last hyphen (e.g. Scher, DA, Thornton). */
+function jobSlugSuffix(jobOrCustomer: string): string | null {
+  const t = jobOrCustomer.trim()
+  const i = t.lastIndexOf('-')
+  if (i < 0) return null
+  const tail = norm(t.slice(i + 1))
+  const token = tail.split(/[^a-z0-9]+/).filter(Boolean).pop()
+  if (!token || /^\d+$/.test(token)) return null
+  return token
 }
 
 /** PO line items that look like model / part numbers (e.g. VX80R, HRST-8ANS). */
@@ -114,12 +161,32 @@ export function resolveJobRef(
     )
     if (sharedWords.length >= 2) score = Math.max(score, 92)
 
+    if (score > 0 && score < 98) {
+      const jSuffix = jobSlugSuffix(j)
+      const rSuffix = jobSlugSuffix(r.job_name)
+      if (jSuffix && rSuffix && jSuffix !== rSuffix) continue
+
+      const sharedDistinct = distinctiveSlugTokens(jSlug).filter((t) =>
+        distinctiveSlugTokens(rSlug).includes(t)
+      )
+      if (sharedDistinct.length === 0) continue
+    }
+
     if (score > 0 && (!best || score > best.score)) {
       best = { ref: r, score }
     }
   }
 
   return best && best.score >= 88 ? best.ref : null
+}
+
+/** Job location file ref # for a PO line (null when job ref is not linked). */
+export function refNumberForLine(
+  line: PoLineItem,
+  jobRefs: PoJobRef[]
+): string | null {
+  const ref = resolveJobRef(line.job_or_customer, jobRefs)
+  return ref ? normalizeRefNumber(ref.ref_number) : null
 }
 
 function productNamesMatchPartNumber(a: string, b: string): boolean {
@@ -230,6 +297,35 @@ export function jobNameForLine(line: PoLineItem, jobRefs: PoJobRef[]): string | 
   return ref?.job_name ?? null
 }
 
+/**
+ * When the job file lists per-room quantities, pick the rooms that cover the PO
+ * requested qty (e.g. two rows of qty 1 for Req. 2 → two locations).
+ */
+export function narrowLocationsByRequestedQty(
+  matches: PoItemLocation[],
+  requestedQty: number
+): PoItemLocation[] {
+  if (requestedQty <= 0 || matches.length <= requestedQty) return matches
+
+  const withQty = matches.filter((m) => m.quantity != null && m.quantity > 0)
+  if (withQty.length === 0) return matches
+
+  const covering = withQty.find((m) => (m.quantity ?? 0) >= requestedQty)
+  if (covering && withQty.length === 1) return [covering]
+
+  let sum = 0
+  const picked: PoItemLocation[] = []
+  const ordered = [...withQty].sort((a, b) => (a.quantity ?? 0) - (b.quantity ?? 0))
+  for (const row of ordered) {
+    if (sum >= requestedQty) break
+    picked.push(row)
+    sum += row.quantity ?? 0
+  }
+  if (sum >= requestedQty) return dedupeLocationsByName(picked)
+
+  return matches
+}
+
 export function dedupeLocationsByName(matches: PoItemLocation[]): PoItemLocation[] {
   const seen = new Set<string>()
   const out: PoItemLocation[] = []
@@ -258,7 +354,8 @@ function locationNamesFromRows(matches: PoItemLocation[]): string[] {
 export function locationsForLine(
   line: PoLineItem,
   jobRefs: PoJobRef[],
-  locations: PoItemLocation[]
+  locations: PoItemLocation[],
+  requestedQty?: number | null
 ): PoItemLocation[] {
   const item = (line.item_name || '').trim()
   if (!item || locations.length === 0) return []
@@ -267,16 +364,70 @@ export function locationsForLine(
   if (!ref) return []
 
   const inRef = findItemLocations(item, ref.ref_number, locations)
-  return dedupeLocationsByName(inRef)
+  const deduped = dedupeLocationsByName(inRef)
+  const qty =
+    requestedQty != null && requestedQty > 0
+      ? requestedQty
+      : parseLineRequestedQuantity(line.quantity)
+  return narrowLocationsByRequestedQty(deduped, qty)
 }
 
 /** Unique location names for a PO line item. */
 export function locationNamesForLine(
   line: PoLineItem,
   jobRefs: PoJobRef[],
-  locations: PoItemLocation[]
+  locations: PoItemLocation[],
+  requestedQty?: number | null
 ): string[] {
-  return locationNamesFromRows(locationsForLine(line, jobRefs, locations))
+  return locationNamesFromRows(locationsForLine(line, jobRefs, locations, requestedQty))
+}
+
+/**
+ * Rooms for an aggregated PO row — only from the job ref file tied to each
+ * active source line's job/customer, aligned to requested quantity when the
+ * location file lists per-room qty.
+ */
+export function locationsForAggregatedLine(
+  line: AggregatedPoLineItem,
+  sourceLines: PoLineItem[],
+  jobRefs: PoJobRef[],
+  locations: PoItemLocation[],
+  activeSourceLineIds: string[],
+  requestedQty?: number | null
+): PoItemLocation[] {
+  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
+  const qty =
+    requestedQty != null && requestedQty > 0
+      ? requestedQty
+      : parseLineRequestedQuantity(line.quantity)
+  const matches: PoItemLocation[] = []
+  for (const id of activeSourceLineIds) {
+    const src = sourceById.get(id)
+    if (!src) continue
+    matches.push(...locationsForLine(src, jobRefs, locations, null))
+  }
+  const deduped = dedupeLocationsByName(matches)
+  return narrowLocationsByRequestedQty(deduped, qty)
+}
+
+export function locationNamesForAggregatedLine(
+  line: AggregatedPoLineItem,
+  sourceLines: PoLineItem[],
+  jobRefs: PoJobRef[],
+  locations: PoItemLocation[],
+  activeSourceLineIds: string[],
+  requestedQty?: number | null
+): string[] {
+  return locationNamesFromRows(
+    locationsForAggregatedLine(
+      line,
+      sourceLines,
+      jobRefs,
+      locations,
+      activeSourceLineIds,
+      requestedQty
+    )
+  )
 }
 
 /**

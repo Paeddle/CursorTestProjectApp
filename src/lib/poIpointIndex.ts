@@ -1,11 +1,10 @@
 import type { AggregatedPoLineItem } from './poLineAggregate'
-import { resolveAggregatedLine } from './poLineAggregate'
+import { effectiveRequestedQuantity, resolveAggregatedLine } from './poLineAggregate'
 import {
-  dedupeLocationsByName,
   findItemLocations,
   ipointScannedLineIds,
+  locationNamesForAggregatedLine,
   locationNamesForLine,
-  locationsForLine,
   normalizeRefNumber,
 } from './poIpointMatch'
 import type { BarcodeCatalogItem, POBarcode } from '../types/poCheckin'
@@ -78,22 +77,6 @@ export function ipointScannedLineIdsForPo(
   return ipointScannedLineIds(lines, barcodes, catalogMap, index.all, jobRefs)
 }
 
-function locationNamesForAggregatedLine(
-  _line: AggregatedPoLineItem,
-  sourceById: Map<string, PoLineItem>,
-  jobRefs: PoJobRef[],
-  index: IpointLocationIndex,
-  activeSourceLineIds: string[]
-): string[] {
-  const matches: PoItemLocation[] = []
-  for (const id of activeSourceLineIds) {
-    const src = sourceById.get(id)
-    if (!src) continue
-    matches.push(...locationsForLine(src, jobRefs, index.all))
-  }
-  return dedupeLocationsByName(matches).map((m) => m.location_name.trim()).filter(Boolean)
-}
-
 /** Display cache for aggregated PO line rows (one per item, total Req. qty). */
 export function buildAggregatedIpointLineDisplayCache(
   poNumber: string,
@@ -104,7 +87,6 @@ export function buildAggregatedIpointLineDisplayCache(
   makeLabelKey: (po: string, lineId: string, locationName?: string) => string,
   customerOverrides: Record<string, string> = {}
 ): IpointLineDisplayCache {
-  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
   const cache: IpointLineDisplayCache = new Map()
 
   for (const line of aggregatedLines) {
@@ -113,12 +95,14 @@ export function buildAggregatedIpointLineDisplayCache(
       resolved.isMultiCustomer && !resolved.selectedCustomer
         ? []
         : resolved.activeSourceLineIds
+    const reqQty = effectiveRequestedQuantity(line, resolved)
     const locationNames = locationNamesForAggregatedLine(
       line,
-      sourceById,
+      sourceLines,
       jobRefs,
-      index,
-      activeIds
+      index.all,
+      activeIds,
+      reqQty
     )
     const labelKeys =
       locationNames.length === 0

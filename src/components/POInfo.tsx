@@ -38,7 +38,8 @@ import {
 import {
   jobNameForLine,
   lineItemsForPo,
-  locationNamesForLine,
+  locationNamesForAggregatedLine,
+  refNumberForLine,
   formatPoDisplay,
   normalizePoKey,
 } from '../lib/poIpointMatch'
@@ -55,26 +56,6 @@ import PoIpointImportPanel from './PoIpointImportPanel'
 import './POInfo.css'
 
 const LOCATION_PREVIEW_COUNT = 2
-
-function locationNamesForAggregatedLine(
-  line: AggregatedPoLineItem,
-  sourceLines: PoLineItem[],
-  jobRefs: PoJobRef[],
-  itemLocations: PoItemLocation[],
-  activeSourceLineIds?: string[]
-): string[] {
-  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
-  const ids = activeSourceLineIds ?? line.sourceLineIds
-  const names = new Set<string>()
-  for (const id of ids) {
-    const src = sourceById.get(id)
-    if (!src) continue
-    for (const name of locationNamesForLine(src, jobRefs, itemLocations)) {
-      names.add(name)
-    }
-  }
-  return [...names].sort((a, b) => a.localeCompare(b))
-}
 
 function allLabelKeysForPo(
   poNumber: string,
@@ -98,14 +79,27 @@ function allLabelKeysForPo(
 
 type IpointLocationCellProps = {
   locationNames: string[]
+  jobFileRef?: string | null
   onViewAll: () => void
 }
 
-function IpointLocationCell({ locationNames, onViewAll }: IpointLocationCellProps) {
+function IpointLocationCell({ locationNames, jobFileRef, onViewAll }: IpointLocationCellProps) {
   if (locationNames.length === 0) return <>—</>
 
+  const refHint = jobFileRef ? (
+    <span className="po-info-ipoint-loc-ref" title="Job location file (ref #)">
+      {' '}
+      <span className="po-info-ipoint-loc-ref-label">Ref {jobFileRef}</span>
+    </span>
+  ) : null
+
   if (locationNames.length <= LOCATION_PREVIEW_COUNT) {
-    return <span className="po-info-ipoint-loc-preview">{locationNames.join(' · ')}</span>
+    return (
+      <span className="po-info-ipoint-loc-preview">
+        {locationNames.join(' · ')}
+        {refHint}
+      </span>
+    )
   }
 
   const preview = locationNames.slice(0, LOCATION_PREVIEW_COUNT).join(' · ')
@@ -118,6 +112,7 @@ function IpointLocationCell({ locationNames, onViewAll }: IpointLocationCellProp
       <button type="button" className="po-info-ipoint-loc-more-btn" onClick={onViewAll}>
         +{moreCount} more ({locationNames.length} total)
       </button>
+      {refHint}
     </span>
   )
 }
@@ -1218,6 +1213,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const jobRef = primarySource
                                   ? jobNameForLine(primarySource, jobRefs)
                                   : jobNameForLine(line, jobRefs)
+                                const reqQty = effectiveRequestedQuantity(line, resolved)
                                 const lineLocationNames =
                                   resolved.isMultiCustomer && !resolved.selectedCustomer
                                     ? []
@@ -1226,8 +1222,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         sourceLinesForPo,
                                         jobRefs,
                                         itemLocations,
-                                        resolved.activeSourceLineIds
+                                        resolved.activeSourceLineIds,
+                                        reqQty
                                       )
+                                const lineJobFileRef = primarySource
+                                  ? refNumberForLine(primarySource, jobRefs)
+                                  : null
                                 const lineLabelKeys =
                                   resolved.isMultiCustomer && !resolved.selectedCustomer
                                     ? []
@@ -1310,6 +1310,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     <td className="po-info-meta po-info-ipoint-loc-cell">
                                       <IpointLocationCell
                                         locationNames={lineLocationNames}
+                                        jobFileRef={lineJobFileRef}
                                         onViewAll={() =>
                                           openLocationModal(
                                             summary.po_number,
@@ -1321,9 +1322,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       />
                                     </td>
                                     <td className="po-info-meta po-info-ipoint-qty-cell">
-                                      {formatRequestedQuantityDisplay(
-                                        effectiveRequestedQuantity(line, resolved)
-                                      )}
+                                      {formatRequestedQuantityDisplay(reqQty)}
                                     </td>
                                   </tr>
                                 )
