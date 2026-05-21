@@ -689,11 +689,32 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
   border-top: 1px solid #334155;
 }
 
+.po-info-catalog-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
 .po-info-catalog-section-title {
-  margin: 0 0 0.75rem 0;
+  margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
   color: #f1f5f9;
+}
+
+.po-info-catalog-search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 420px;
+  margin-left: auto;
+}
+
+.po-info-catalog-match-count {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: #94a3b8;
 }
 
 .po-info-catalog-section-desc {

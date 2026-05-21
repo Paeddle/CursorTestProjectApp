@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import {
   aggregatePOBarcodeScans,
   buildCatalogLookupMap,
+  filterCatalogBySearch,
   lookupCatalogItem,
   normalizeBarcodeValue,
   type AggregatedPOBarcodeRow,
@@ -396,6 +397,7 @@ function POInfo() {
     column: 'item',
     asc: true,
   })
+  const [catalogSearch, setCatalogSearch] = useState('')
   const [checkedInMap, setCheckedInMap] = useState<Record<string, boolean>>({})
   const [checkinSavingKey, setCheckinSavingKey] = useState<string | null>(null)
   const [bulkCheckinPoKey, setBulkCheckinPoKey] = useState<string | null>(null)
@@ -428,10 +430,10 @@ function POInfo() {
     [itemLocations]
   )
 
-  const sortedCatalog = useMemo(
-    () => sortCatalogRows(catalog, catalogSort.column, catalogSort.asc),
-    [catalog, catalogSort]
-  )
+  const sortedCatalog = useMemo(() => {
+    const filtered = filterCatalogBySearch(catalog, catalogSearch)
+    return sortCatalogRows(filtered, catalogSort.column, catalogSort.asc)
+  }, [catalog, catalogSearch, catalogSort])
 
   const togglePoScanSort = useCallback((poKey: string, column: PoScanSortColumn) => {
     setPoScanSortByKey((prev) => {
@@ -2055,10 +2057,32 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
 
       {!loading && (
         <section className="po-info-catalog-section">
-          <h2 className="po-info-catalog-section-title">Barcode catalog</h2>
+          <div className="po-info-catalog-section-header">
+            <h2 className="po-info-catalog-section-title">Barcode catalog</h2>
+            {catalog.length > 0 ? (
+              <input
+                type="search"
+                className="po-info-search po-info-catalog-search"
+                placeholder="Search barcode, item, part #, manufacturer…"
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                aria-label="Search barcode catalog"
+              />
+            ) : null}
+          </div>
           {catalog.length === 0 ? (
             <p className="po-info-catalog-empty">No catalog entries yet.</p>
+          ) : sortedCatalog.length === 0 ? (
+            <p className="po-info-catalog-empty">
+              No catalog entries match &ldquo;{catalogSearch.trim()}&rdquo;.
+            </p>
           ) : (
+            <>
+              {catalogSearch.trim() ? (
+                <p className="po-info-catalog-match-count">
+                  Showing {sortedCatalog.length} of {catalog.length} entries
+                </p>
+              ) : null}
             <div className="po-info-catalog-table-wrap po-info-catalog-scroll">
               <table className="po-info-catalog-table">
                 <thead>
@@ -2161,6 +2185,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </section>
       )}

@@ -47,6 +47,34 @@ export function barcodeLookupKeys(raw: string): string[] {
 }
 
 /** Map keys (raw, lower, digits) → catalog row for fast lookup. */
+/** Filter catalog rows by barcode, item name, part number, or manufacturer. */
+export function filterCatalogBySearch(
+  items: BarcodeCatalogItem[],
+  query: string
+): BarcodeCatalogItem[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return items
+
+  const digits = q.replace(/[^\d]/g, '')
+  return items.filter((row) => {
+    const fields = [
+      row.barcode_value,
+      row.item_name,
+      row.part_number,
+      row.manufacturer,
+    ]
+      .map((f) => (f || '').trim().toLowerCase())
+      .filter(Boolean)
+
+    if (fields.some((f) => f.includes(q))) return true
+    if (digits.length >= 3) {
+      const barDigits = (row.barcode_value || '').replace(/\D/g, '')
+      if (barDigits.includes(digits)) return true
+    }
+    return false
+  })
+}
+
 export function buildCatalogLookupMap(items: BarcodeCatalogItem[]): Map<string, BarcodeCatalogItem> {
   const m = new Map<string, BarcodeCatalogItem>()
   for (const c of items) {
