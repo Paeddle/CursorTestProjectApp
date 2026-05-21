@@ -52,9 +52,13 @@ async function main() {
   }
   console.log(`Printer: ${printerName}\n`)
 
-  const lines = ['PROBE', '30323 test']
+  const layout = {
+    fontSize: 24,
+    jobLines: ['PROBE job name'],
+    locationLines: ['Room A · Shelf 3'],
+  }
   for (const template of DYMO_PAPER_TEMPLATES) {
-    const labelXml = buildLabelXml(lines, 24, template)
+    const labelXml = buildLabelXml(layout, template)
     const render = await dymoRequest(41951, 'RenderLabel', {
       printerName,
       labelXml,

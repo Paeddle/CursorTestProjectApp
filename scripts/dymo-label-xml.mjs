@@ -1,4 +1,6 @@
 export const LABEL_TEXT_OBJECT_NAME = 'TEXT'
+export const LABEL_JOB_OBJECT_NAME = 'JOB'
+export const LABEL_LOC_OBJECT_NAME = 'LOC'
 
 export const DYMO_PAPER_TEMPLATES = [
   {
@@ -34,10 +36,11 @@ export const DYMO_PAPER_TEMPLATES = [
 ]
 
 const LABEL_FONT_STEPS = [
-  { size: 36, charsPerLine: 22, maxLines: 3 },
-  { size: 32, charsPerLine: 24, maxLines: 4 },
-  { size: 28, charsPerLine: 28, maxLines: 5 },
-  { size: 24, charsPerLine: 32, maxLines: 6 },
+  { size: 32, charsPerLine: 22, maxJobLines: 3, maxLocLines: 2 },
+  { size: 28, charsPerLine: 26, maxJobLines: 4, maxLocLines: 3 },
+  { size: 24, charsPerLine: 30, maxJobLines: 5, maxLocLines: 3 },
+  { size: 20, charsPerLine: 34, maxJobLines: 6, maxLocLines: 4 },
+  { size: 18, charsPerLine: 38, maxJobLines: 7, maxLocLines: 4 },
 ]
 
 export function escapeXmlText(text) {
@@ -87,25 +90,42 @@ export function wrapText(text, maxChars) {
   return lines
 }
 
-function linesForJobAndLocation(row, charsPerLine) {
-  const job = String(row.job_name || row.item_name || '').trim()
-  const loc = String(row.location_name || '').trim()
-  const block = []
-  if (job) block.push(...wrapText(job, charsPerLine))
-  if (loc) block.push(...wrapText(loc, charsPerLine))
-  return block.length > 0 ? block : ['(no text)']
+function jobAndLocationText(row) {
+  return {
+    job: String(row.job_name || row.item_name || '').trim(),
+    location: String(row.location_name || '').trim(),
+  }
+}
+
+function wrapSections(job, location, charsPerLine, maxJobLines, maxLocLines) {
+  const jobLines = job ? wrapText(job, charsPerLine).slice(0, maxJobLines) : []
+  const locationLines = location ? wrapText(location, charsPerLine).slice(0, maxLocLines) : []
+  if (jobLines.length === 0 && locationLines.length === 0) {
+    return { jobLines: ['(no text)'], locationLines: [] }
+  }
+  return { jobLines, locationLines }
 }
 
 export function labelLayoutForRow(row) {
+  const { job, location } = jobAndLocationText(row)
   for (const step of LABEL_FONT_STEPS) {
-    const lines = linesForJobAndLocation(row, step.charsPerLine)
-    if (lines.length <= step.maxLines) {
-      return { fontSize: step.size, lines }
+    const jobLines = job ? wrapText(job, step.charsPerLine) : []
+    const locationLines = location ? wrapText(location, step.charsPerLine) : []
+    if (jobLines.length <= step.maxJobLines && locationLines.length <= step.maxLocLines) {
+      return { fontSize: step.size, jobLines, locationLines }
     }
   }
   const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
-  const lines = linesForJobAndLocation(row, fallback.charsPerLine)
-  return { fontSize: fallback.size, lines: lines.slice(0, fallback.maxLines) }
+  return {
+    fontSize: fallback.size,
+    ...wrapSections(
+      job,
+      location,
+      fallback.charsPerLine,
+      fallback.maxJobLines,
+      fallback.maxLocLines
+    ),
+  }
 }
 
 function fontAttributesXml(fontSize) {
@@ -117,7 +137,7 @@ function fontAttributesXml(fontSize) {
 
 function buildStyledTextXml(lines, fontSize) {
   const attrs = fontAttributesXml(fontSize)
-  const textLines = lines.length > 0 ? lines : ['(no text)']
+  const textLines = lines.length > 0 ? lines : ['']
   return textLines
     .map(
       (line) =>
@@ -126,21 +146,12 @@ function buildStyledTextXml(lines, fontSize) {
     .join('')
 }
 
-export function buildLabelXml(lines, fontSize, template = DYMO_PAPER_TEMPLATES[0]) {
+function buildTextObjectXml(objectName, lines, fontSize, bounds) {
   const styled = buildStyledTextXml(lines, fontSize)
-  const t = template
   return (
-    '<?xml version="1.0" encoding="utf-8"?>' +
-    `<DieCutLabel Version="8.0" Units="twips">` +
-    `<PaperOrientation>Landscape</PaperOrientation>` +
-    `<Id>${t.id}</Id>` +
-    `<PaperName>${t.paperName}</PaperName>` +
-    `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
-    `</DrawCommands>` +
     `<ObjectInfo>` +
     `<TextObject>` +
-    `<Name>${LABEL_TEXT_OBJECT_NAME}</Name>` +
+    `<Name>${objectName}</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
     `<LinkedObjectName></LinkedObjectName>` +
@@ -154,24 +165,77 @@ export function buildLabelXml(lines, fontSize, template = DYMO_PAPER_TEMPLATES[0
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +
     `</TextObject>` +
-    `<Bounds X="${t.boundsX}" Y="${t.boundsY}" Width="${t.boundsWidth}" Height="${t.boundsHeight}"/>` +
-    `</ObjectInfo>` +
+    `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
+    `</ObjectInfo>`
+  )
+}
+
+function splitBoundsForLayout(template, jobLines, locationLines) {
+  const base = {
+    x: template.boundsX,
+    y: template.boundsY,
+    width: template.boundsWidth,
+    height: template.boundsHeight,
+  }
+  const hasJob = jobLines.length > 0 && jobLines[0] !== '(no text)'
+  const hasLoc = locationLines.length > 0
+  if (hasJob && hasLoc) {
+    const gap = Math.max(56, Math.round(template.boundsHeight * 0.1))
+    const inner = template.boundsHeight - gap
+    const jobHeight = Math.round(inner * 0.52)
+    const locHeight = inner - jobHeight
+    return {
+      job: { x: base.x, y: base.y, width: base.width, height: jobHeight },
+      location: {
+        x: base.x,
+        y: base.y + jobHeight + gap,
+        width: base.width,
+        height: locHeight,
+      },
+    }
+  }
+  if (hasJob) return { job: base }
+  if (hasLoc) return { location: base }
+  return { job: base }
+}
+
+export function buildLabelXml(layout, template = DYMO_PAPER_TEMPLATES[0]) {
+  const { fontSize, jobLines, locationLines } = layout
+  const regions = splitBoundsForLayout(template, jobLines, locationLines)
+  const objects = []
+  if (regions.job) {
+    objects.push(buildTextObjectXml(LABEL_JOB_OBJECT_NAME, jobLines, fontSize, regions.job))
+  }
+  if (regions.location) {
+    objects.push(
+      buildTextObjectXml(LABEL_LOC_OBJECT_NAME, locationLines, fontSize, regions.location)
+    )
+  }
+  const t = template
+  return (
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    `<DieCutLabel Version="8.0" Units="twips">` +
+    `<PaperOrientation>Landscape</PaperOrientation>` +
+    `<Id>${t.id}</Id>` +
+    `<PaperName>${t.paperName}</PaperName>` +
+    `<DrawCommands>` +
+    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
+    `</DrawCommands>` +
+    objects.join('') +
     `</DieCutLabel>`
   )
 }
 
-export function buildLabelXmlCandidates(lines, fontSize) {
-  return DYMO_PAPER_TEMPLATES.map((template) => buildLabelXml(lines, fontSize, template))
+export function buildLabelXmlCandidates(layout) {
+  return DYMO_PAPER_TEMPLATES.map((template) => buildLabelXml(layout, template))
 }
 
 export function buildLabelXmlForRow(row) {
-  const { fontSize, lines } = labelLayoutForRow(row)
-  return buildLabelXml(lines, fontSize)
+  return buildLabelXml(labelLayoutForRow(row))
 }
 
 export function buildLabelXmlCandidatesForRow(row) {
-  const { fontSize, lines } = labelLayoutForRow(row)
-  return buildLabelXmlCandidates(lines, fontSize)
+  return buildLabelXmlCandidates(labelLayoutForRow(row))
 }
 
 export function assertDymoPrintSucceeded(result, endpoint) {

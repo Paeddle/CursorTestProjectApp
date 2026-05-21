@@ -256,9 +256,13 @@ export function labelLinesForRow(row: PoLabelPrintRow): string {
   return labelTextLinesForRow(row).join('\n')
 }
 
-function browserLabelParts(row: PoLabelPrintRow): { lines: string[]; fontSize: number } {
-  const { fontSize, lines } = labelLayoutForRow(row)
-  return { lines, fontSize }
+function browserLabelParts(row: PoLabelPrintRow): {
+  fontSize: number
+  jobLines: string[]
+  locationLines: string[]
+} {
+  const { fontSize, jobLines, locationLines } = labelLayoutForRow(row)
+  return { fontSize, jobLines, locationLines }
 }
 
 async function printRowsViaFramework(
@@ -370,12 +374,15 @@ export async function printLabelsWithDymo(
 export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
   const html = rows
     .map((r) => {
-      const { lines, fontSize } = browserLabelParts(r)
-      const text = lines.map((line) => escapeHtml(line)).join('<br/>')
+      const { fontSize, jobLines, locationLines } = browserLabelParts(r)
+      const jobHtml = jobLines.map((line) => escapeHtml(line)).join('<br/>')
+      const locHtml = locationLines.map((line) => escapeHtml(line)).join('<br/>')
       return `
     <div class="label">
       <div class="label-inner" style="font-size:${fontSize}pt">
-        <div class="label-text">${text}</div>
+        ${jobHtml ? `<div class="label-job">${jobHtml}</div>` : ''}
+        ${jobHtml && locHtml ? '<div class="label-gap"></div>' : ''}
+        ${locHtml ? `<div class="label-loc">${locHtml}</div>` : ''}
       </div>
     </div>`
     })
@@ -399,12 +406,34 @@ body { margin: 0; }
 .label-inner {
   text-align: center;
   width: 100%;
-  padding: 2mm;
+  height: 100%;
+  padding: 2mm 3mm;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
-.label-text {
+.label-job {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   font-weight: bold;
-  line-height: 1.15;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+.label-gap {
+  flex: 0 0 3mm;
+}
+.label-loc {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  font-weight: bold;
+  line-height: 1.12;
   overflow-wrap: anywhere;
 }
 </style></head><body>${html}</body></html>`
