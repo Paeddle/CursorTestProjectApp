@@ -1,5 +1,7 @@
 .app {
   --nav-width: 200px;
+  --page-gutter: clamp(1.5rem, 4.5vw, 3rem);
+  --page-max-width: 1720px;
   min-height: 100vh;
   min-height: 100dvh;
   background: #ABB0B3;
@@ -10,12 +12,14 @@
   flex: 1;
   width: 100%;
   min-width: 0;
-  margin-left: 0;
-  padding: 1.25rem 1.5rem 1.5rem;
+  max-width: min(100%, calc(var(--page-max-width) + 2 * var(--page-gutter)));
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
   padding-top: max(4.25rem, calc(1.25rem + env(safe-area-inset-top, 0px)));
-  padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
-  padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
   padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--page-gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--page-gutter), env(safe-area-inset-right, 0px));
   color: #1f2937;
   min-height: 100vh;
   min-height: 100dvh;
@@ -1022,12 +1026,15 @@
     --nav-width: min(78vw, 260px);
   }
 
+  .app {
+    --page-gutter: clamp(1rem, 4vw, 1.5rem);
+  }
+
   .main-content {
-    padding: 1rem;
     padding-top: max(3.75rem, calc(1rem + env(safe-area-inset-top, 0px)));
-    padding-left: max(1rem, env(safe-area-inset-left, 0px));
-    padding-right: max(1rem, env(safe-area-inset-right, 0px));
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(var(--page-gutter), env(safe-area-inset-left, 0px));
+    padding-right: max(var(--page-gutter), env(safe-area-inset-right, 0px));
   }
 
   .input-section {
