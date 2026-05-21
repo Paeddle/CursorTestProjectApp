@@ -36,8 +36,57 @@ export function togglePoLineChecked(
   const next = { ...checked }
   if (next[key]) delete next[key]
   else next[key] = true
+  persistChecked(next)
+  return next
+}
+
+function persistChecked(checked: Record<string, boolean>): void {
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(checked))
   }
+}
+
+export type PoLineCheckSummary = {
+  checkedCount: number
+  total: number
+  allChecked: boolean
+  someChecked: boolean
+}
+
+export function poLineCheckSummary(
+  checked: Record<string, boolean>,
+  poNumber: string,
+  lines: { item_name: string }[]
+): PoLineCheckSummary {
+  const total = lines.length
+  if (total === 0) {
+    return { checkedCount: 0, total: 0, allChecked: false, someChecked: false }
+  }
+  let checkedCount = 0
+  for (const line of lines) {
+    if (isPoLineChecked(checked, poNumber, line.item_name)) checkedCount++
+  }
+  return {
+    checkedCount,
+    total,
+    allChecked: checkedCount === total,
+    someChecked: checkedCount > 0 && checkedCount < total,
+  }
+}
+
+/** Check or uncheck every iPoint line on a PO (linked to row Check column). */
+export function setAllPoLinesChecked(
+  checked: Record<string, boolean>,
+  poNumber: string,
+  lines: { item_name: string }[],
+  value: boolean
+): Record<string, boolean> {
+  const next = { ...checked }
+  for (const line of lines) {
+    const key = poLineItemKey(poNumber, line.item_name)
+    if (value) next[key] = true
+    else delete next[key]
+  }
+  persistChecked(next)
   return next
 }

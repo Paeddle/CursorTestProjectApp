@@ -23,7 +23,13 @@ import {
   readPoLineCustomerOverrides,
   writePoLineCustomerOverride,
 } from '../lib/poLineCustomerOverride'
-import { isPoLineChecked, readPoLineChecked, togglePoLineChecked } from '../lib/poLineChecked'
+import {
+  isPoLineChecked,
+  poLineCheckSummary,
+  readPoLineChecked,
+  setAllPoLinesChecked,
+  togglePoLineChecked,
+} from '../lib/poLineChecked'
 import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
@@ -612,6 +618,14 @@ function POInfo() {
     setLineChecked((prev) => togglePoLineChecked(prev, poNumber, itemName))
   }
 
+  const handleToggleAllLinesChecked = (
+    poNumber: string,
+    lines: AggregatedPoLineItem[]
+  ) => {
+    const { allChecked } = poLineCheckSummary(lineChecked, poNumber, lines)
+    setLineChecked((prev) => setAllPoLinesChecked(prev, poNumber, lines, !allChecked))
+  }
+
   const printLabelRows = async (poNumber: string, rows: PoLabelPrintRow[]) => {
     if (rows.length === 0) {
       setError('Select at least one location to print.')
@@ -1140,10 +1154,26 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const scanTableBusy =
               bulkCheckinPoKey === key ||
               aggSorted.some((r) => r.scan_ids.some((id) => id === deletingId))
+            const poCheck = poLineCheckSummary(lineChecked, summary.po_number, poIpointLines)
 
             return (
               <div key={key} className="po-info-card">
                 <div className="po-info-card-header-row">
+                  {poIpointLines.length > 0 ? (
+                    <div
+                      className="po-info-card-check-cell"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <IpointPrintCheckbox
+                        checked={poCheck.allChecked}
+                        indeterminate={poCheck.someChecked}
+                        ariaLabel={`Check all iPoint lines on ${formatPoDisplay(summary.po_number)}`}
+                        onChange={() =>
+                          handleToggleAllLinesChecked(summary.po_number, poIpointLines)
+                        }
+                      />
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     className="po-info-card-header"
