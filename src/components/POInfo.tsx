@@ -1674,7 +1674,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           {catalog.length === 0 ? (
             <p className="po-info-catalog-empty">No catalog entries yet.</p>
           ) : (
-            <div className="po-info-catalog-table-wrap po-info-scroll-panel po-info-catalog-scroll">
+            <div className="po-info-catalog-table-wrap po-info-catalog-scroll">
               <table className="po-info-catalog-table">
                 <thead>
                   <tr>

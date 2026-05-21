@@ -708,7 +708,7 @@ tr.po-info-scan-row-checked-in .po-info-barcode-wrap svg {
 }
 
 .po-info-catalog-scroll {
-  max-height: min(420px, 55vh);
+  max-height: min(640px, 72vh);
   overflow-y: auto;
 }
 
