@@ -1,6 +1,7 @@
 // CSV Service - single source: PO Line Report (po_line_report.csv)
 import Papa from 'papaparse'
 import { aggregatePoLineReportRows, stockJobLabel } from '../lib/poLineAggregate'
+import { formatPoDisplay } from '../lib/poIpointMatch'
 
 export interface TrackingInfo {
   id: string
@@ -120,7 +121,7 @@ class CSVService {
           tracking_number: '',
           slug: '',
           tag: 'in_transit',
-          title: `PO ${poNumber}`,
+          title: formatPoDisplay(poNumber),
           order_id: poNumber,
           po_number: poNumber,
           job_or_customer: (row.job_or_customer || '').toString().trim(),

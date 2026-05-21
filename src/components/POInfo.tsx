@@ -39,6 +39,7 @@ import {
   jobNameForLine,
   lineItemsForPo,
   locationNamesForLine,
+  formatPoDisplay,
   normalizePoKey,
 } from '../lib/poIpointMatch'
 import { makeLabelKey, parseLabelKey } from '../lib/labelKey'
@@ -211,14 +212,14 @@ async function loadSummaries(): Promise<POCheckinSummary[]> {
     const po = (b.po_number || '').trim()
     if (!po) continue
     const key = normalizePoKey(po)
-    if (!byPo.has(key)) byPo.set(key, { po_number: po, barcodes: [], documents: [] })
+    if (!byPo.has(key)) byPo.set(key, { po_number: formatPoDisplay(po), barcodes: [], documents: [] })
     byPo.get(key)!.barcodes.push(b)
   }
   for (const d of documents) {
     const po = (d.po_number || '').trim()
     if (!po) continue
     const key = normalizePoKey(po)
-    if (!byPo.has(key)) byPo.set(key, { po_number: po, barcodes: [], documents: [] })
+    if (!byPo.has(key)) byPo.set(key, { po_number: formatPoDisplay(po), barcodes: [], documents: [] })
     byPo.get(key)!.documents.push(d)
   }
   return Array.from(byPo.values()).sort((a, b) =>
@@ -449,12 +450,13 @@ function POInfo() {
   const displaySummaries = useMemo(() => {
     const byKey = new Map<string, POCheckinSummary>()
     for (const s of summaries) {
-      byKey.set(normalizePoKey(s.po_number), s)
+      const k = normalizePoKey(s.po_number)
+      byKey.set(k, { ...s, po_number: formatPoDisplay(s.po_number) })
     }
     for (const item of lineItems) {
       const k = normalizePoKey(item.po_number)
       if (!byKey.has(k)) {
-        byKey.set(k, { po_number: item.po_number, barcodes: [], documents: [] })
+        byKey.set(k, { po_number: formatPoDisplay(item.po_number), barcodes: [], documents: [] })
       }
     }
     return Array.from(byKey.values()).sort((a, b) =>
@@ -872,7 +874,13 @@ function POInfo() {
   }
 
   const handleDeleteEntirePo = async (poNumber: string) => {
-    if (deletingId || !window.confirm(`Delete all barcodes and documents for PO ${poNumber}? This cannot be undone.`)) return
+    if (
+      deletingId ||
+      !window.confirm(
+        `Delete all barcodes and documents for ${formatPoDisplay(poNumber)}? This cannot be undone.`
+      )
+    )
+      return
     const key = poNumber.toLowerCase()
     setDeletingId(key)
     try {
@@ -1032,7 +1040,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     onClick={() => toggleExpanded(summary.po_number)}
                     aria-expanded={isExpanded}
                   >
-                    <span className="po-info-card-title">PO {summary.po_number}</span>
+                    <span className="po-info-card-title">{formatPoDisplay(summary.po_number)}</span>
                     <span className="po-info-card-badge">
                       {[
                         poIpointLines.length > 0 &&

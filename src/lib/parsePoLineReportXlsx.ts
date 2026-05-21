@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { parseRequestedQuantity } from './poLineAggregate'
+import { formatPoDisplay } from './poIpointMatch'
 import { parsePoLineReportText, type PoLineReportCsvRow } from './parsePoLineReport'
 
 function cellStr(v: unknown): string {
@@ -23,15 +24,6 @@ function parseExcelDate(v: unknown): string | null {
   const d = new Date(s)
   if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10)
   return null
-}
-
-function normalizePoNumber(raw: string): string {
-  const t = raw.trim()
-  if (!t) return ''
-  if (/^PO-/i.test(t)) return t.replace(/^po-/i, 'PO-')
-  const digits = t.replace(/\D/g, '')
-  if (digits) return `PO-${digits}`
-  return t
 }
 
 function normalizeHeader(h: string): string {
@@ -114,7 +106,7 @@ function parseStructuredSheet(sheet: XLSX.WorkSheet): ParsedPoLineItem[] {
       continue
     }
 
-    const po = normalizePoNumber(poRaw)
+    const po = formatPoDisplay(poRaw)
     if (!po || !item) continue
 
     out.push({

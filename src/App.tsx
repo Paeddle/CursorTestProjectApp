@@ -11,6 +11,7 @@ import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
 import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
+import { formatPoDisplay } from './lib/poIpointMatch'
 type SortDirection = 'asc' | 'desc' | null
 type ItemSortColumn = 'po_number' | 'job_or_customer' | 'item_name' | 'quantity'
 type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
@@ -835,7 +836,7 @@ function App() {
                           style={{ cursor: order ? 'pointer' : 'default' }}
                           title={order ? 'Click to view order details' : 'No order found for this PO number'}
                         >
-                          <td>{item.po_number}</td>
+                          <td>{formatPoDisplay(item.po_number)}</td>
                           <td>{item.job_or_customer || 'N/A'}</td>
                           <td>{item.item_name || 'N/A'}</td>
                           <td>{item.quantity || 'N/A'}</td>

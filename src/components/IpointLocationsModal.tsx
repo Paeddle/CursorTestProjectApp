@@ -1,4 +1,5 @@
 import type { PoLineItem } from '../types/poIpoint'
+import { formatPoDisplay } from '../lib/poIpointMatch'
 
 type IpointLocationsModalProps = {
   poNumber: string
@@ -50,7 +51,7 @@ function IpointLocationsModal({
           <div>
             <h3 id="po-info-loc-modal-title">Room locations</h3>
             <p className="po-info-loc-modal-sub">
-              PO {poNumber} · {line.item_name}
+              {formatPoDisplay(poNumber)} · {line.item_name}
               {jobName ? ` · ${jobName}` : ''}
             </p>
           </div>

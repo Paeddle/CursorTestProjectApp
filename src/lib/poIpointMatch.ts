@@ -272,6 +272,17 @@ export function normalizePoKey(po: string): string {
   return t.toLowerCase()
 }
 
+/** Single display form: PO-12345 (never PO PO-12345). */
+export function formatPoDisplay(po: string): string {
+  const t = (po || '').trim()
+  if (!t) return ''
+  const m = t.match(/^PO-?(\d+)/i)
+  if (m) return `PO-${m[1]}`
+  const digits = t.replace(/\D/g, '')
+  if (digits) return `PO-${digits}`
+  return /^PO/i.test(t) ? t : `PO-${t}`
+}
+
 export function lineItemsForPo(poNumber: string, items: PoLineItem[]): PoLineItem[] {
   const key = normalizePoKey(poNumber)
   return items.filter((i) => normalizePoKey(i.po_number) === key)

@@ -12,6 +12,7 @@ import {
   loadDymoSdk,
   printLabelsDirect,
 } from '../lib/dymoLabelPrint'
+import { formatPoDisplay } from '../lib/poIpointMatch'
 import {
   countPendingLabels,
   countFailedLabels,
@@ -361,7 +362,7 @@ export function LabelPrintStation() {
           <ul className="print-station-recent-list">
             {recent.map((row) => (
               <li key={row.id} className={`print-station-recent-item print-station-recent--${row.status}`}>
-                <span className="print-station-recent-po">{row.po_number}</span>
+                <span className="print-station-recent-po">{formatPoDisplay(row.po_number)}</span>
                 <span className="print-station-recent-loc">
                   {row.job_name || row.item_name}
                   {row.location_name ? ` · ${row.location_name}` : ''}
