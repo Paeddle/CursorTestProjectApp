@@ -469,22 +469,67 @@ export function lineItemsForPo(poNumber: string, items: PoLineItem[]): PoLineIte
   return items.filter((i) => normalizePoKey(i.po_number) === key)
 }
 
-/** Names that identify an iPoint line (report item name + matched location products). */
-export function ipointLineMatchNames(
-  line: PoLineItem,
-  locations: PoItemLocation[],
-  jobRefs: PoJobRef[]
-): string[] {
-  const item = (line.item_name || '').trim()
-  if (!item) return []
+/**
+ * Strict match: scanned barcode/catalog text vs PO Line Report item name only.
+ * (Location spreadsheet aliases are intentionally excluded — they caused false
+ * "Scanned" hits when another item on the PO shared a similar location product.)
+ */
+export function ipointScanFieldMatchesItemName(itemName: string, scanField: string): boolean {
+  const item = (itemName || '').trim()
+  const scan = (scanField || '').trim()
+  if (!item || !scan) return false
 
-  const names = new Set<string>([item])
-  const ref = resolveJobRef(line.job_or_customer, jobRefs)
-  for (const loc of findItemLocations(item, ref?.ref_number ?? null, locations)) {
-    const product = (loc.product_name || '').trim()
-    if (product) names.add(product)
+  if (isHyphenatedPartNumber(item) || isHyphenatedPartNumber(scan)) {
+    return productNamesMatchPartNumber(item, scan)
   }
-  return [...names]
+
+  const na = norm(item)
+  const nb = norm(scan)
+  if (na === nb) return true
+
+  const ka = alphaKey(item)
+  const kb = alphaKey(scan)
+  if (ka && kb && ka === kb) return true
+
+  if (isCompactModelCode(item) && kb.includes(ka)) {
+    return (
+      significantTokens(scan).includes(ka) ||
+      productNamesMatchPartNumber(item, scan)
+    )
+  }
+  if (isCompactModelCode(scan) && ka.includes(kb)) {
+    return (
+      significantTokens(item).includes(kb) ||
+      productNamesMatchPartNumber(item, scan)
+    )
+  }
+
+  if (ka.length >= 6 && kb.length >= 6) {
+    const shorter = Math.min(ka.length, kb.length)
+    const longer = Math.max(ka.length, kb.length)
+    if ((ka.includes(kb) || kb.includes(ka)) && shorter / longer >= 0.82) {
+      return true
+    }
+  }
+
+  if (na.length >= 8 && nb.length >= 8) {
+    const shorter = Math.min(na.length, nb.length)
+    const longer = Math.max(na.length, nb.length)
+    if ((na.includes(nb) || nb.includes(na)) && shorter / longer >= 0.65) {
+      return true
+    }
+  }
+
+  const ta = significantTokens(item)
+  const tb = significantTokens(scan)
+  if (ta.length === 0 || tb.length === 0) return false
+
+  const shorterToks = ta.length <= tb.length ? ta : tb
+  const longerSet = new Set(ta.length <= tb.length ? tb : ta)
+  const hits = shorterToks.filter((t) => longerSet.has(t))
+  if (hits.length < shorterToks.length) return false
+  if (shorterToks.length >= 2) return true
+  return shorterToks.length === 1 && shorterToks[0]!.length >= 5
 }
 
 /** Catalog + raw barcode strings associated with a scanned barcode value. */
@@ -504,26 +549,22 @@ function scannedBarcodeMatchFields(
 
 /**
  * True when a barcode for this item was scanned on the PO (scanner app → po_barcodes).
- * Matches via barcode catalog item/part number and location spreadsheet product names.
+ * Compares catalog/barcode text to this line's PO item name only (strict similarity).
  */
 export function ipointLineIsScanned(
   line: PoLineItem,
   barcodes: POBarcode[],
   catalogMap: Map<string, BarcodeCatalogItem>,
-  locations: PoItemLocation[],
-  jobRefs: PoJobRef[]
+  _locations: PoItemLocation[],
+  _jobRefs: PoJobRef[]
 ): boolean {
-  if (!barcodes.length) return false
-
-  const lineNames = ipointLineMatchNames(line, locations, jobRefs)
-  if (lineNames.length === 0) return false
+  const itemName = (line.item_name || '').trim()
+  if (!itemName || !barcodes.length) return false
 
   for (const scan of barcodes) {
     const scanFields = scannedBarcodeMatchFields(scan.barcode_value, catalogMap)
     for (const scanField of scanFields) {
-      for (const lineName of lineNames) {
-        if (productNamesMatch(lineName, scanField)) return true
-      }
+      if (ipointScanFieldMatchesItemName(itemName, scanField)) return true
     }
   }
   return false
