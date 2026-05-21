@@ -257,12 +257,13 @@ export function labelLinesForRow(row: PoLabelPrintRow): string {
 }
 
 function browserLabelParts(row: PoLabelPrintRow): {
-  fontSize: number
+  jobFontSize: number
+  locationFontSize: number
   jobLines: string[]
   locationLines: string[]
 } {
-  const { fontSize, jobLines, locationLines } = labelLayoutForRow(row)
-  return { fontSize, jobLines, locationLines }
+  const { jobFontSize, locationFontSize, jobLines, locationLines } = labelLayoutForRow(row)
+  return { jobFontSize, locationFontSize, jobLines, locationLines }
 }
 
 async function printRowsViaFramework(
@@ -374,15 +375,15 @@ export async function printLabelsWithDymo(
 export function printLabelsInBrowser(rows: PoLabelPrintRow[]): void {
   const html = rows
     .map((r) => {
-      const { fontSize, jobLines, locationLines } = browserLabelParts(r)
+      const { jobFontSize, locationFontSize, jobLines, locationLines } = browserLabelParts(r)
       const jobHtml = jobLines.map((line) => escapeHtml(line)).join('<br/>')
       const locHtml = locationLines.map((line) => escapeHtml(line)).join('<br/>')
       return `
     <div class="label">
-      <div class="label-inner" style="font-size:${fontSize}pt">
-        ${jobHtml ? `<div class="label-job">${jobHtml}</div>` : ''}
+      <div class="label-inner">
+        ${jobHtml ? `<div class="label-job" style="font-size:${jobFontSize}pt">${jobHtml}</div>` : ''}
         ${jobHtml && locHtml ? '<div class="label-gap"></div>' : ''}
-        ${locHtml ? `<div class="label-loc">${locHtml}</div>` : ''}
+        ${locHtml ? `<div class="label-loc" style="font-size:${locationFontSize}pt">${locHtml}</div>` : ''}
       </div>
     </div>`
     })

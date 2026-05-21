@@ -53,7 +53,8 @@ async function main() {
   console.log(`Printer: ${printerName}\n`)
 
   const layout = {
-    fontSize: 24,
+    jobFontSize: 28,
+    locationFontSize: 22,
     jobLines: ['PROBE job name'],
     locationLines: ['Room A · Shelf 3'],
   }

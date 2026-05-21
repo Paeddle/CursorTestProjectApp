@@ -60,10 +60,15 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
 ] as const
 
 export type LabelRowLayout = {
-  fontSize: number
+  jobFontSize: number
+  locationFontSize: number
   jobLines: string[]
   locationLines: string[]
 }
+
+/** Location text is always at least this many pt smaller than the job title. */
+export const LABEL_JOB_LOC_FONT_GAP = 6
+export const LABEL_LOCATION_MIN_FONT_SIZE = 14
 
 type LabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -158,22 +163,52 @@ function wrapSections(
   return { jobLines, locationLines }
 }
 
+function locationFontSizeForJob(
+  jobFontSize: number,
+  hasJob: boolean,
+  hasLocation: boolean
+): number {
+  if (!hasLocation) return jobFontSize
+  if (!hasJob) return jobFontSize
+  return Math.max(LABEL_LOCATION_MIN_FONT_SIZE, jobFontSize - LABEL_JOB_LOC_FONT_GAP)
+}
+
+function locationCharsPerLine(
+  jobCharsPerLine: number,
+  jobFontSize: number,
+  locationFontSize: number
+): number {
+  return jobCharsPerLine + Math.round((jobFontSize - locationFontSize) * 0.75)
+}
+
 export function labelLayoutForRow(row: {
   job_name?: string | null
   item_name?: string | null
   location_name?: string | null
 }): LabelRowLayout {
   const { job, location } = jobAndLocationText(row)
+  const hasJob = Boolean(job)
+  const hasLocation = Boolean(location)
 
   for (const step of LABEL_FONT_STEPS) {
+    const jobFontSize = step.size
+    const locationFontSize = locationFontSizeForJob(jobFontSize, hasJob, hasLocation)
+    const locChars = locationCharsPerLine(step.charsPerLine, jobFontSize, locationFontSize)
     const jobLines = job ? wrapTextToLines(job, step.charsPerLine) : []
-    const locationLines = location ? wrapTextToLines(location, step.charsPerLine) : []
+    const locationLines = location ? wrapTextToLines(location, locChars) : []
     if (jobLines.length <= step.maxJobLines && locationLines.length <= step.maxLocLines) {
-      return { fontSize: step.size, jobLines, locationLines }
+      return { jobFontSize, locationFontSize, jobLines, locationLines }
     }
   }
 
   const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
+  const jobFontSize = fallback.size
+  const locationFontSize = locationFontSizeForJob(jobFontSize, hasJob, hasLocation)
+  const locChars = locationCharsPerLine(
+    fallback.charsPerLine,
+    jobFontSize,
+    locationFontSize
+  )
   const { jobLines, locationLines } = wrapSections(
     job,
     location,
@@ -181,7 +216,15 @@ export function labelLayoutForRow(row: {
     fallback.maxJobLines,
     fallback.maxLocLines
   )
-  return { fontSize: fallback.size, jobLines, locationLines }
+  if (location) {
+    return {
+      jobFontSize,
+      locationFontSize,
+      jobLines,
+      locationLines: wrapTextToLines(location, locChars).slice(0, fallback.maxLocLines),
+    }
+  }
+  return { jobFontSize, locationFontSize, jobLines, locationLines }
 }
 
 export function labelLinesForPrint(row: {
@@ -305,16 +348,21 @@ export function buildLabelXml(
   layout: LabelRowLayout,
   template: DymoPaperTemplate = DYMO_PAPER_TEMPLATES[0]
 ): string {
-  const { fontSize, jobLines, locationLines } = layout
+  const { jobFontSize, locationFontSize, jobLines, locationLines } = layout
   const regions = splitBoundsForLayout(template, jobLines, locationLines)
   const objects: string[] = []
 
   if (regions.job) {
-    objects.push(buildTextObjectXml(LABEL_JOB_OBJECT_NAME, jobLines, fontSize, regions.job))
+    objects.push(buildTextObjectXml(LABEL_JOB_OBJECT_NAME, jobLines, jobFontSize, regions.job))
   }
   if (regions.location) {
     objects.push(
-      buildTextObjectXml(LABEL_LOC_OBJECT_NAME, locationLines, fontSize, regions.location)
+      buildTextObjectXml(
+        LABEL_LOC_OBJECT_NAME,
+        locationLines,
+        locationFontSize,
+        regions.location
+      )
     )
   }
 
@@ -342,7 +390,7 @@ export function buildLabelXmlFromLines(
   const blank = lines.findIndex((l) => !l.trim())
   const jobLines = blank >= 0 ? lines.slice(0, blank) : lines
   const locationLines = blank >= 0 ? lines.slice(blank + 1).filter((l) => l.trim()) : []
-  return buildLabelXml({ fontSize, jobLines, locationLines }, template)
+  return buildLabelXml({ jobFontSize: fontSize, locationFontSize: fontSize, jobLines, locationLines }, template)
 }
 
 export function buildLabelXmlCandidates(layout: LabelRowLayout): string[] {
@@ -354,15 +402,22 @@ export function buildLabelXmlForText(text: string): string {
     .split(/\n+/)
     .map((s) => s.trim())
     .filter(Boolean)
-  const fontSize = LABEL_FONT_STEPS[0].size
+  const jobFontSize = LABEL_FONT_STEPS[0].size
+  const locationFontSize = locationFontSizeForJob(jobFontSize, raw.length >= 1, raw.length > 1)
   if (raw.length === 0) {
-    return buildLabelXml({ fontSize, jobLines: ['(no text)'], locationLines: [] })
+    return buildLabelXml({
+      jobFontSize,
+      locationFontSize,
+      jobLines: ['(no text)'],
+      locationLines: [],
+    })
   }
   if (raw.length === 1) {
-    return buildLabelXml({ fontSize, jobLines: raw, locationLines: [] })
+    return buildLabelXml({ jobFontSize, locationFontSize, jobLines: raw, locationLines: [] })
   }
   return buildLabelXml({
-    fontSize,
+    jobFontSize,
+    locationFontSize,
     jobLines: [raw[0]],
     locationLines: raw.slice(1),
   })
