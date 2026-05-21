@@ -36,15 +36,15 @@ export const DYMO_PAPER_TEMPLATES = [
 ]
 
 const LABEL_FONT_STEPS = [
-  { size: 32, charsPerLine: 22, maxJobLines: 3, maxLocLines: 2 },
-  { size: 28, charsPerLine: 26, maxJobLines: 4, maxLocLines: 3 },
-  { size: 24, charsPerLine: 30, maxJobLines: 5, maxLocLines: 3 },
-  { size: 20, charsPerLine: 34, maxJobLines: 6, maxLocLines: 4 },
-  { size: 18, charsPerLine: 38, maxJobLines: 7, maxLocLines: 4 },
+  { size: 32, charsPerLine: 22, jobWrapFactor: 0.5, maxJobLines: 5, maxLocLines: 2 },
+  { size: 28, charsPerLine: 26, jobWrapFactor: 0.52, maxJobLines: 5, maxLocLines: 3 },
+  { size: 24, charsPerLine: 30, jobWrapFactor: 0.55, maxJobLines: 6, maxLocLines: 3 },
+  { size: 20, charsPerLine: 34, jobWrapFactor: 0.58, maxJobLines: 7, maxLocLines: 4 },
+  { size: 18, charsPerLine: 38, jobWrapFactor: 0.62, maxJobLines: 8, maxLocLines: 4 },
 ]
 
-export const LABEL_JOB_LOC_FONT_GAP = 6
-export const LABEL_LOCATION_MIN_FONT_SIZE = 14
+export const LABEL_JOB_LOC_FONT_GAP = 10
+export const LABEL_LOCATION_MIN_FONT_SIZE = 12
 
 function locationFontSizeForJob(jobFontSize, hasJob, hasLocation) {
   if (!hasLocation) return jobFontSize
@@ -52,8 +52,12 @@ function locationFontSizeForJob(jobFontSize, hasJob, hasLocation) {
   return Math.max(LABEL_LOCATION_MIN_FONT_SIZE, jobFontSize - LABEL_JOB_LOC_FONT_GAP)
 }
 
+function jobCharsPerLine(stepChars, jobWrapFactor) {
+  return Math.max(10, Math.round(stepChars * jobWrapFactor))
+}
+
 function locationCharsPerLine(jobCharsPerLine, jobFontSize, locationFontSize) {
-  return jobCharsPerLine + Math.round((jobFontSize - locationFontSize) * 0.75)
+  return jobCharsPerLine + Math.round((jobFontSize - locationFontSize) * 0.85)
 }
 
 export function escapeXmlText(text) {
@@ -110,15 +114,6 @@ function jobAndLocationText(row) {
   }
 }
 
-function wrapSections(job, location, charsPerLine, maxJobLines, maxLocLines) {
-  const jobLines = job ? wrapText(job, charsPerLine).slice(0, maxJobLines) : []
-  const locationLines = location ? wrapText(location, charsPerLine).slice(0, maxLocLines) : []
-  if (jobLines.length === 0 && locationLines.length === 0) {
-    return { jobLines: ['(no text)'], locationLines: [] }
-  }
-  return { jobLines, locationLines }
-}
-
 export function labelLayoutForRow(row) {
   const { job, location } = jobAndLocationText(row)
   const hasJob = Boolean(job)
@@ -126,8 +121,9 @@ export function labelLayoutForRow(row) {
   for (const step of LABEL_FONT_STEPS) {
     const jobFontSize = step.size
     const locationFontSize = locationFontSizeForJob(jobFontSize, hasJob, hasLocation)
-    const locChars = locationCharsPerLine(step.charsPerLine, jobFontSize, locationFontSize)
-    const jobLines = job ? wrapText(job, step.charsPerLine) : []
+    const jobChars = jobCharsPerLine(step.charsPerLine, step.jobWrapFactor)
+    const locChars = locationCharsPerLine(jobChars, jobFontSize, locationFontSize)
+    const jobLines = job ? wrapText(job, jobChars) : []
     const locationLines = location ? wrapText(location, locChars) : []
     if (jobLines.length <= step.maxJobLines && locationLines.length <= step.maxLocLines) {
       return { jobFontSize, locationFontSize, jobLines, locationLines }
@@ -136,25 +132,14 @@ export function labelLayoutForRow(row) {
   const fallback = LABEL_FONT_STEPS[LABEL_FONT_STEPS.length - 1]
   const jobFontSize = fallback.size
   const locationFontSize = locationFontSizeForJob(jobFontSize, hasJob, hasLocation)
-  const locChars = locationCharsPerLine(
-    fallback.charsPerLine,
-    jobFontSize,
-    locationFontSize
-  )
-  const { jobLines, locationLines } = wrapSections(
-    job,
-    location,
-    fallback.charsPerLine,
-    fallback.maxJobLines,
-    fallback.maxLocLines
-  )
-  if (location) {
-    return {
-      jobFontSize,
-      locationFontSize,
-      jobLines,
-      locationLines: wrapText(location, locChars).slice(0, fallback.maxLocLines),
-    }
+  const jobChars = jobCharsPerLine(fallback.charsPerLine, fallback.jobWrapFactor)
+  const locChars = locationCharsPerLine(jobChars, jobFontSize, locationFontSize)
+  const jobLines = job ? wrapText(job, jobChars).slice(0, fallback.maxJobLines) : []
+  const locationLines = location
+    ? wrapText(location, locChars).slice(0, fallback.maxLocLines)
+    : []
+  if (jobLines.length === 0 && locationLines.length === 0) {
+    return { jobFontSize, locationFontSize, jobLines: ['(no text)'], locationLines: [] }
   }
   return { jobFontSize, locationFontSize, jobLines, locationLines }
 }
@@ -177,7 +162,7 @@ function buildStyledTextXml(lines, fontSize) {
     .join('')
 }
 
-function buildTextObjectXml(objectName, lines, fontSize, bounds) {
+function buildTextObjectXml(objectName, lines, fontSize, bounds, textFitMode) {
   const styled = buildStyledTextXml(lines, fontSize)
   return (
     `<ObjectInfo>` +
@@ -191,7 +176,7 @@ function buildTextObjectXml(objectName, lines, fontSize, bounds) {
     `<IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
     `<VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>ShrinkToFit</TextFitMode>` +
+    `<TextFitMode>${textFitMode}</TextFitMode>` +
     `<UseFullFontHeight>True</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +
@@ -211,9 +196,9 @@ function splitBoundsForLayout(template, jobLines, locationLines) {
   const hasJob = jobLines.length > 0 && jobLines[0] !== '(no text)'
   const hasLoc = locationLines.length > 0
   if (hasJob && hasLoc) {
-    const gap = Math.max(56, Math.round(template.boundsHeight * 0.1))
+    const gap = Math.max(48, Math.round(template.boundsHeight * 0.08))
     const inner = template.boundsHeight - gap
-    const jobHeight = Math.round(inner * 0.52)
+    const jobHeight = Math.round(inner * 0.62)
     const locHeight = inner - jobHeight
     return {
       job: { x: base.x, y: base.y, width: base.width, height: jobHeight },
@@ -235,7 +220,9 @@ export function buildLabelXml(layout, template = DYMO_PAPER_TEMPLATES[0]) {
   const regions = splitBoundsForLayout(template, jobLines, locationLines)
   const objects = []
   if (regions.job) {
-    objects.push(buildTextObjectXml(LABEL_JOB_OBJECT_NAME, jobLines, jobFontSize, regions.job))
+    objects.push(
+      buildTextObjectXml(LABEL_JOB_OBJECT_NAME, jobLines, jobFontSize, regions.job, 'None')
+    )
   }
   if (regions.location) {
     objects.push(
@@ -243,7 +230,8 @@ export function buildLabelXml(layout, template = DYMO_PAPER_TEMPLATES[0]) {
         LABEL_LOC_OBJECT_NAME,
         locationLines,
         locationFontSize,
-        regions.location
+        regions.location,
+        'None'
       )
     )
   }
