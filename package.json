@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "print-agent": "node scripts/dymo-print-agent.mjs",
     "print:agent": "node scripts/dymo-print-agent.mjs",
+    "dymo-probe": "node scripts/dymo-probe-paper.mjs",
     "deploy:do": "powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1"
   },
   "dependencies": {

@@ -1,8 +1,26 @@
 /**
  * Find which PaperName/Id DYMO Connect accepts on this PC (RenderLabel probe).
- * Run from repo root: node scripts/dymo-probe-paper.mjs
+ * From project root: npm run dymo-probe
  */
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { DYMO_PAPER_TEMPLATES, buildLabelXml } from './dymo-label-xml.mjs'
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+const projectRoot = path.resolve(scriptDir, '..')
+if (!fs.existsSync(path.join(projectRoot, 'package.json'))) {
+  console.error('')
+  console.error('Run this from the Order Tracker project folder (where package.json lives).')
+  console.error('')
+  console.error('  cd C:\\Users\\orrab\\Documents\\CursorTestProject-main\\CursorTestProject-main')
+  console.error('  npm run dymo-probe')
+  console.error('')
+  console.error('Or double-click: scripts\\run-dymo-probe.ps1')
+  console.error('')
+  process.exit(1)
+}
+process.chdir(projectRoot)
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
