@@ -87,16 +87,6 @@
   line-height: 1.25;
 }
 
-.nav-reveal-zone {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 14px;
-  height: 100vh;
-  height: 100dvh;
-  z-index: 1050;
-}
-
 .nav-toggle {
   position: fixed;
   top: max(0.75rem, env(safe-area-inset-top, 0px));

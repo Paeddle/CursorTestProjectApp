@@ -1,10 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { WIRE_ROUTE_PATH } from '../modules/wire'
 import { PRINT_STATION_ROUTE_PATH } from './LabelPrintStation'
 import './Sidebar.css'
-
-const NAV_HIDE_DELAY_MS = 2500
 
 interface SidebarProps {
   activePage: string
@@ -17,39 +14,6 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const isWireOnlyLayout = location.pathname === WIRE_ROUTE_PATH
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [canHover, setCanHover] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia('(hover: hover) and (pointer: fine)').matches
-  )
-
-  const clearHideTimer = useCallback(() => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current)
-      hideTimerRef.current = null
-    }
-  }, [])
-
-  const scheduleHide = useCallback(() => {
-    clearHideTimer()
-    hideTimerRef.current = setTimeout(() => onOpenChange(false), NAV_HIDE_DELAY_MS)
-  }, [clearHideTimer, onOpenChange])
-
-  const openNav = useCallback(() => {
-    clearHideTimer()
-    onOpenChange(true)
-  }, [clearHideTimer, onOpenChange])
-
-  useEffect(() => () => clearHideTimer(), [clearHideTimer])
-
-  useEffect(() => {
-    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
-    const onChange = () => setCanHover(mq.matches)
-    onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
 
   const menuItems = [
     { id: 'tracking', label: 'Order Tracking', icon: '📦' },
@@ -74,55 +38,22 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
     closeAfterNavigate()
   }
 
-  const handleSidebarPointerLeave = () => {
-    if (canHover) {
-      scheduleHide()
-    }
-  }
-
-  const handleSidebarPointerEnter = () => {
-    if (canHover) {
-      openNav()
-    }
-  }
-
-  const handleRevealPointerEnter = () => {
-    if (canHover) {
-      openNav()
-    }
-  }
-
-  const handleRevealPointerLeave = () => {
-    if (canHover && open) {
-      scheduleHide()
-    }
-  }
-
   return (
     <>
-      {!open && canHover && (
-        <div
-          className="nav-reveal-zone"
-          aria-hidden
-          onPointerEnter={handleRevealPointerEnter}
-          onPointerLeave={handleRevealPointerLeave}
-        />
-      )}
-
       <button
         type="button"
         className={`nav-toggle${open ? ' nav-toggle--open' : ''}`}
         aria-label={open ? 'Close navigation' : 'Open navigation'}
         aria-expanded={open}
         aria-controls="app-sidebar"
-        onClick={() => (open ? onOpenChange(false) : openNav())}
+        onClick={() => onOpenChange(!open)}
       >
         <span className="nav-toggle-icon" aria-hidden>
           {open ? '✕' : '☰'}
         </span>
       </button>
 
-      {open && !canHover && (
+      {open && (
         <button
           type="button"
           className="nav-backdrop"
@@ -135,8 +66,6 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
         id="app-sidebar"
         className={`sidebar${isWireOnlyLayout ? ' sidebar-wire-only' : ''}${open ? ' sidebar--open' : ''}`}
         aria-label="Main navigation"
-        onPointerEnter={handleSidebarPointerEnter}
-        onPointerLeave={handleSidebarPointerLeave}
       >
         <div className="sidebar-header">
           <h2 className="sidebar-logo">{isWireOnlyLayout ? 'Wire Tracker' : 'Order Tracker'}</h2>

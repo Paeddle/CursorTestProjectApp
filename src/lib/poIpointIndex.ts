@@ -1,4 +1,5 @@
 import type { AggregatedPoLineItem } from './poLineAggregate'
+import { resolveAggregatedLine } from './poLineAggregate'
 import {
   dedupeLocationsByName,
   findItemLocations,
@@ -78,13 +79,14 @@ export function ipointScannedLineIdsForPo(
 }
 
 function locationNamesForAggregatedLine(
-  line: AggregatedPoLineItem,
+  _line: AggregatedPoLineItem,
   sourceById: Map<string, PoLineItem>,
   jobRefs: PoJobRef[],
-  index: IpointLocationIndex
+  index: IpointLocationIndex,
+  activeSourceLineIds: string[]
 ): string[] {
   const matches: PoItemLocation[] = []
-  for (const id of line.sourceLineIds) {
+  for (const id of activeSourceLineIds) {
     const src = sourceById.get(id)
     if (!src) continue
     matches.push(...locationsForLine(src, jobRefs, index.all))
@@ -99,13 +101,25 @@ export function buildAggregatedIpointLineDisplayCache(
   sourceLines: PoLineItem[],
   jobRefs: PoJobRef[],
   index: IpointLocationIndex,
-  makeLabelKey: (po: string, lineId: string, locationName?: string) => string
+  makeLabelKey: (po: string, lineId: string, locationName?: string) => string,
+  customerOverrides: Record<string, string> = {}
 ): IpointLineDisplayCache {
   const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
   const cache: IpointLineDisplayCache = new Map()
 
   for (const line of aggregatedLines) {
-    const locationNames = locationNamesForAggregatedLine(line, sourceById, jobRefs, index)
+    const resolved = resolveAggregatedLine(line, customerOverrides, sourceLines)
+    const activeIds =
+      resolved.isMultiCustomer && !resolved.selectedCustomer
+        ? []
+        : resolved.activeSourceLineIds
+    const locationNames = locationNamesForAggregatedLine(
+      line,
+      sourceById,
+      jobRefs,
+      index,
+      activeIds
+    )
     const labelKeys =
       locationNames.length === 0
         ? [makeLabelKey(poNumber, line.id, '')]

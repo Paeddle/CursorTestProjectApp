@@ -42,6 +42,16 @@ function isCompactModelCode(s: string): boolean {
   return /\d/.test(k) && /[a-z]/.test(k)
 }
 
+/** Hyphenated SKUs (e.g. AC-AEX-DEARC-KIT) — match exactly, not via short alpha prefixes. */
+function isHyphenatedPartNumber(s: string): boolean {
+  const t = (s || '').trim()
+  if (!t.includes('-')) return false
+  const segments = t.split('-').filter(Boolean)
+  if (segments.length < 2) return false
+  if (!segments.every((seg) => /^[A-Za-z0-9]+$/.test(seg))) return false
+  return alphaKey(t).length >= 6
+}
+
 function locationProductLabels(row: PoItemLocation): string[] {
   const labels: string[] = []
   const product = (row.product_name || '').trim()
@@ -112,7 +122,23 @@ export function resolveJobRef(
   return best && best.score >= 88 ? best.ref : null
 }
 
+function productNamesMatchPartNumber(a: string, b: string): boolean {
+  const ka = alphaKey(a)
+  const kb = alphaKey(b)
+  if (!ka || !kb) return false
+  if (ka === kb) return true
+  const na = norm(a)
+  const nb = norm(b)
+  if (na.length >= 6 && nb.includes(na)) return true
+  if (nb.length >= 6 && na.includes(nb)) return true
+  return false
+}
+
 export function productNamesMatch(a: string, b: string): boolean {
+  if (isHyphenatedPartNumber(a) || isHyphenatedPartNumber(b)) {
+    return productNamesMatchPartNumber(a, b)
+  }
+
   const na = norm(a)
   const nb = norm(b)
   if (!na || !nb) return false
@@ -123,7 +149,11 @@ export function productNamesMatch(a: string, b: string): boolean {
   const kb = alphaKey(b)
   if (!ka || !kb) return false
   if (ka === kb) return true
-  if (ka.length >= 4 && kb.length >= 4 && (ka.includes(kb) || kb.includes(ka))) return true
+  if (ka.length >= 4 && kb.length >= 4 && (ka.includes(kb) || kb.includes(ka))) {
+    const shorter = Math.min(ka.length, kb.length)
+    const longer = Math.max(ka.length, kb.length)
+    if (shorter / longer >= 0.75) return true
+  }
 
   // Short model codes from PO lines (e.g. VX80R) inside longer catalog/location text.
   if (isCompactModelCode(a) && kb.includes(ka)) return true

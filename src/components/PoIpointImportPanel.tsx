@@ -21,6 +21,9 @@ import {
 } from '../services/poIpointService'
 import type { PoItemLocation, PoJobRef } from '../types/poIpoint'
 
+/** Product lookup UI — re-enable when needed. */
+const SHOW_PRODUCT_IN_IMPORTED_LOCATIONS = false
+
 type Props = {
   jobRefs: PoJobRef[]
   itemLocations: PoItemLocation[]
@@ -403,7 +406,7 @@ function PoIpointImportPanel({
         {locationFiles.length === 0 ? (
           <p className="po-info-ipoint-empty">No location files uploaded yet.</p>
         ) : (
-          <div className="po-info-jobref-table-wrap">
+          <div className="po-info-jobref-table-wrap po-info-scroll-panel">
             <table className="po-info-jobref-table po-info-location-files-table">
               <thead>
                 <tr>
@@ -443,6 +446,7 @@ function PoIpointImportPanel({
         )}
       </div>
 
+      {SHOW_PRODUCT_IN_IMPORTED_LOCATIONS && (
       <div className="po-info-product-lookup-block">
         <h3 className="po-info-ipoint-subtitle">Check product in imported locations</h3>
         <p className="po-info-section-desc">
@@ -507,6 +511,7 @@ function PoIpointImportPanel({
           </div>
         )}
       </div>
+      )}
 
       <div className="po-info-jobref-block">
         <h3 className="po-info-ipoint-subtitle">Job reference list</h3>
@@ -538,7 +543,7 @@ function PoIpointImportPanel({
             No job refs yet. Add rows above for each ref in the uploaded location files list.
           </p>
         ) : (
-          <div className="po-info-jobref-table-wrap">
+          <div className="po-info-jobref-table-wrap po-info-scroll-panel">
             <table className="po-info-jobref-table">
               <thead>
                 <tr>

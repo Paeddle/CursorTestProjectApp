@@ -25,13 +25,15 @@
 
 .po-info-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
 .po-info-search {
   flex: 1;
-  max-width: 320px;
+  min-width: 160px;
+  max-width: 280px;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   border: 1px solid #475569;
@@ -133,17 +135,74 @@
   font-size: 0.85rem;
 }
 
+.po-info-list-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: min(62vh, 720px);
+  min-height: 12rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  overflow: hidden;
+}
+
+.po-info-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #334155;
+  background: #1e293b;
+  flex-shrink: 0;
+}
+
+.po-info-list-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.po-info-list-sort-btn:hover {
+  background: #334155;
+}
+
+.po-info-list-sort-indicator {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.po-info-list-header-meta {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
 .po-info-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .po-info-card {
   background: #1e293b;
   border: 1px solid #334155;
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .po-info-card-header-row {
@@ -157,7 +216,7 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.85rem 1rem;
+  padding: 0.55rem 0.75rem;
   background: transparent;
   border: none;
   color: #e2e8f0;
@@ -996,6 +1055,11 @@ tr.po-info-location-file-needs-ref td {
   overflow-x: auto;
   border: 1px solid #334155;
   border-radius: 8px;
+}
+
+.po-info-scroll-panel {
+  max-height: min(200px, 32vh);
+  overflow-y: auto;
 }
 
 .po-info-jobref-table {

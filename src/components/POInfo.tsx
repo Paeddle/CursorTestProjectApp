@@ -44,7 +44,10 @@ import {
 } from '../lib/poIpointMatch'
 import { makeLabelKey, parseLabelKey } from '../lib/labelKey'
 import { expandLabelRowsByQuantity } from '../lib/labelPrintExpand'
-import { findAggregatedLineForLabelKey } from '../lib/labelPrintSelection'
+import {
+  findAggregatedLineForLabelKey,
+  labelKeysForAggregatedLine,
+} from '../lib/labelPrintSelection'
 import { printOrQueueLabels } from '../lib/printOrQueueLabels'
 import BarcodeLookupModal from './BarcodeLookupModal'
 import IpointLocationsModal from './IpointLocationsModal'
@@ -52,29 +55,6 @@ import PoIpointImportPanel from './PoIpointImportPanel'
 import './POInfo.css'
 
 const LOCATION_PREVIEW_COUNT = 2
-
-function labelKeysForLine(
-  poNumber: string,
-  line: AggregatedPoLineItem,
-  jobRefs: PoJobRef[],
-  itemLocations: PoItemLocation[],
-  sourceLines: PoLineItem[],
-  activeSourceLineIds?: string[]
-): string[] {
-  const names = new Set<string>()
-  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
-  const ids = activeSourceLineIds ?? line.sourceLineIds
-  for (const id of ids) {
-    const src = sourceById.get(id)
-    if (!src) continue
-    for (const name of locationNamesForLine(src, jobRefs, itemLocations)) {
-      names.add(name)
-    }
-  }
-  const list = [...names].sort((a, b) => a.localeCompare(b))
-  if (list.length === 0) return [makeLabelKey(poNumber, line.id, '')]
-  return list.map((name) => makeLabelKey(poNumber, line.id, name))
-}
 
 function locationNamesForAggregatedLine(
   line: AggregatedPoLineItem,
@@ -101,10 +81,18 @@ function allLabelKeysForPo(
   lines: AggregatedPoLineItem[],
   jobRefs: PoJobRef[],
   itemLocations: PoItemLocation[],
-  sourceLines: PoLineItem[]
+  sourceLines: PoLineItem[],
+  customerOverrides: Record<string, string>
 ): string[] {
   return lines.flatMap((line) =>
-    labelKeysForLine(poNumber, line, jobRefs, itemLocations, sourceLines)
+    labelKeysForAggregatedLine(
+      poNumber,
+      line,
+      jobRefs,
+      itemLocations,
+      sourceLines,
+      customerOverrides
+    )
   )
 }
 
@@ -322,6 +310,8 @@ function POInfo() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchPo, setSearchPo] = useState('')
+  const [searchItem, setSearchItem] = useState('')
+  const [poSortDir, setPoSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedPo, setExpandedPo] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [lookupOpen, setLookupOpen] = useState<{
@@ -459,16 +449,41 @@ function POInfo() {
         byKey.set(k, { po_number: formatPoDisplay(item.po_number), barcodes: [], documents: [] })
       }
     }
-    return Array.from(byKey.values()).sort((a, b) =>
-      a.po_number.localeCompare(b.po_number, undefined, { numeric: true })
-    )
+    return Array.from(byKey.values())
   }, [summaries, lineItems])
 
-  const filtered = searchPo.trim()
-    ? displaySummaries.filter((s) =>
-        s.po_number.toLowerCase().includes(searchPo.trim().toLowerCase())
+  const lineItemsByPoKey = useMemo(() => {
+    const map = new Map<string, PoLineItem[]>()
+    for (const item of lineItems) {
+      const k = normalizePoKey(item.po_number)
+      if (!map.has(k)) map.set(k, [])
+      map.get(k)!.push(item)
+    }
+    return map
+  }, [lineItems])
+
+  const filtered = useMemo(() => {
+    const poQ = searchPo.trim().toLowerCase()
+    const itemQ = searchItem.trim().toLowerCase()
+    let list = displaySummaries
+    if (poQ) {
+      list = list.filter(
+        (s) =>
+          s.po_number.toLowerCase().includes(poQ) ||
+          normalizePoKey(s.po_number).includes(poQ.replace(/^po-?/, 'po-'))
       )
-    : displaySummaries
+    }
+    if (itemQ) {
+      list = list.filter((s) => {
+        const items = lineItemsByPoKey.get(normalizePoKey(s.po_number)) ?? []
+        return items.some((li) => (li.item_name || '').toLowerCase().includes(itemQ))
+      })
+    }
+    return [...list].sort((a, b) => {
+      const cmp = a.po_number.localeCompare(b.po_number, undefined, { numeric: true })
+      return poSortDir === 'asc' ? cmp : -cmp
+    })
+  }, [displaySummaries, searchPo, searchItem, poSortDir, lineItemsByPoKey])
 
   const expandedIpointByPoKey = useMemo(() => {
     const map = new Map<
@@ -496,9 +511,19 @@ function POInfo() {
         sourceLines,
         jobRefs,
         ipointLocationIndex,
-        makeLabelKey
+        makeLabelKey,
+        customerOverrides
       )
-      const labelKeys = lines.flatMap((line) => lineDisplay.get(line.id)?.labelKeys ?? [])
+      const labelKeys = lines.flatMap((line) =>
+        labelKeysForAggregatedLine(
+          summary.po_number,
+          line,
+          jobRefs,
+          itemLocations,
+          sourceLines,
+          customerOverrides
+        )
+      )
       const scanned = ipointScannedIdsForAggregatedLines(
         lines,
         sourceLines,
@@ -511,7 +536,16 @@ function POInfo() {
       map.set(poKey, { lines, scanned, labelKeys, lineDisplay })
     }
     return map
-  }, [filtered, expandedPo, lineItems, jobRefs, ipointLocationIndex, catalogMap])
+  }, [
+    filtered,
+    expandedPo,
+    lineItems,
+    jobRefs,
+    ipointLocationIndex,
+    catalogMap,
+    customerOverrides,
+    itemLocations,
+  ])
 
   const buildLabelRowsForPo = useCallback(
     (poNumber: string): PoLabelPrintRow[] => {
@@ -609,14 +643,13 @@ function POInfo() {
 
   const toggleLabelSelect = (poNumber: string, line: AggregatedPoLineItem) => {
     const sourceLines = lineItemsForPo(poNumber, lineItems)
-    const resolved = resolveAggregatedLine(line, customerOverrides, sourceLines)
-    const keys = labelKeysForLine(
+    const keys = labelKeysForAggregatedLine(
       poNumber,
       line,
       jobRefs,
       itemLocations,
       sourceLines,
-      resolved.activeSourceLineIds
+      customerOverrides
     )
     const allOn = keys.every((k) => labelSelected.has(k))
     setLabelSelected((prev) => {
@@ -631,7 +664,14 @@ function POInfo() {
 
   const toggleAllLabelsForPo = (poNumber: string, lines: AggregatedPoLineItem[]) => {
     const sourceLines = lineItemsForPo(poNumber, lineItems)
-    const keys = allLabelKeysForPo(poNumber, lines, jobRefs, itemLocations, sourceLines)
+    const keys = allLabelKeysForPo(
+      poNumber,
+      lines,
+      jobRefs,
+      itemLocations,
+      sourceLines,
+      customerOverrides
+    )
     const allOn = keys.length > 0 && keys.every((k) => labelSelected.has(k))
     setLabelSelected((prev) => {
       const next = new Set(prev)
@@ -967,6 +1007,13 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           value={searchPo}
           onChange={(e) => setSearchPo(e.target.value)}
         />
+        <input
+          type="text"
+          className="po-info-search"
+          placeholder="Search item on any PO..."
+          value={searchItem}
+          onChange={(e) => setSearchItem(e.target.value)}
+        />
         <button
           type="button"
           className="po-info-refresh"
@@ -991,13 +1038,29 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       ) : filtered.length === 0 ? (
         <div className="po-info-empty">
           <p>
-            {searchPo.trim()
-              ? 'No POs match your filter.'
+            {searchPo.trim() || searchItem.trim()
+              ? 'No POs match your filters.'
               : 'No PO data yet. Import a PO Line Report above, or check in packages with the scanner app.'}
           </p>
         </div>
       ) : (
-        <div className="po-info-list">
+        <div className="po-info-list-shell">
+          <div className="po-info-list-header" role="row">
+            <button
+              type="button"
+              className="po-info-list-sort-btn"
+              onClick={() => setPoSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+            >
+              PO number
+              <span className="po-info-list-sort-indicator" aria-hidden>
+                {poSortDir === 'asc' ? ' ▲' : ' ▼'}
+              </span>
+            </button>
+            <span className="po-info-list-header-meta">
+              {filtered.length} PO{filtered.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="po-info-list">
           {filtered.map((summary) => {
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
@@ -1015,7 +1078,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                     poIpointLines,
                     jobRefs,
                     itemLocations,
-                    lineItemsForPo(summary.po_number, lineItems)
+                    lineItemsForPo(summary.po_number, lineItems),
+                    customerOverrides
                   )
                 : [])
             const allIpointLabelsSelected =
@@ -1154,32 +1218,26 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const jobRef = primarySource
                                   ? jobNameForLine(primarySource, jobRefs)
                                   : jobNameForLine(line, jobRefs)
-                                const lineCached = ipointBundle?.lineDisplay.get(line.id)
                                 const lineLocationNames =
                                   resolved.isMultiCustomer && !resolved.selectedCustomer
                                     ? []
-                                    : resolved.isMultiCustomer || resolved.selectedCustomer
-                                      ? locationNamesForAggregatedLine(
-                                          line,
-                                          sourceLinesForPo,
-                                          jobRefs,
-                                          itemLocations,
-                                          resolved.activeSourceLineIds
-                                        )
-                                      : (lineCached?.locationNames ??
-                                        (ipointLoading ? [] : []))
+                                    : locationNamesForAggregatedLine(
+                                        line,
+                                        sourceLinesForPo,
+                                        jobRefs,
+                                        itemLocations,
+                                        resolved.activeSourceLineIds
+                                      )
                                 const lineLabelKeys =
                                   resolved.isMultiCustomer && !resolved.selectedCustomer
                                     ? []
-                                    : labelKeysForLine(
+                                    : labelKeysForAggregatedLine(
                                         summary.po_number,
                                         line,
                                         jobRefs,
                                         itemLocations,
                                         sourceLinesForPo,
-                                        resolved.activeSourceLineIds.length > 0
-                                          ? resolved.activeSourceLineIds
-                                          : undefined
+                                        customerOverrides
                                       )
                                 const selectedCount = lineLabelKeys.filter((k: string) =>
                                   labelSelected.has(k)
@@ -1581,6 +1639,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
               </div>
             )
           })}
+          </div>
         </div>
       )}
 
