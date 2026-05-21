@@ -1,6 +1,6 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
 import {
-  buildLabelXmlForRow,
+  buildLabelXmlCandidatesForRow,
   labelLayoutForRow,
   labelTextLinesForRow,
   LABEL_XML_TEMPLATE,
@@ -46,9 +46,16 @@ type DymoFramework = {
   checkEnvironment: () => DymoEnvironmentInfo
   getPrinters: () => DymoPrinterInfo[]
   openLabelXml: (xml: string) => {
+    isValidLabel?: () => boolean
     setObjectText: (name: string, text: string) => void
     print: (printerName: string) => void
   }
+  printLabel?: (
+    printerName: string,
+    printParamsXml: string,
+    labelXml: string,
+    labelSetXml: string
+  ) => void
 }
 
 declare global {
@@ -215,7 +222,7 @@ export async function getDymoDiagnostics(): Promise<DymoDiagnostics> {
   } else if (isRemoteOrigin && localServiceProbe && !localServiceProbe.ok) {
     summary = 'Browser is blocking access to DYMO Connect on this PC.'
     recommendedAction =
-      'On this laptop: (1) Run `npm run print-agent` in the project folder (most reliable), OR (2) Open Print Station at http://localhost:5173/print-station after `npm run dev`, OR (3) In Chrome/Edge when prompted, allow this site to connect to devices on your local network, then click Check DYMO again.'
+      'On this laptop: (1) Run `npm run print-agent` (most reliable, especially in Firefox), OR (2) Click “Trust DYMO certificate” below and accept the warning, then Connect printer again. Chrome/Edge: also allow “local network” when prompted.'
   } else if (environment && environment.isFrameworkInstalled === false) {
     summary = 'DYMO Connect web service not reachable.'
     recommendedAction =
@@ -272,9 +279,33 @@ async function printRowsViaFramework(
       : printers.find((n) => /labelwriter|dymo/i.test(n)) ?? printers[0]
   if (!target) throw new Error('No DYMO LabelWriter printer found.')
 
+  const printParams =
+    '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
+
   for (const row of rows) {
-    const label = fw.openLabelXml(buildLabelXmlForRow(row))
-    label.print(target)
+    const candidates = buildLabelXmlCandidatesForRow(row)
+    let printed = false
+    let lastErr = 'DYMO rejected all label templates'
+
+    for (const labelXml of candidates) {
+      try {
+        const label = fw.openLabelXml(labelXml)
+        if (label.isValidLabel && !label.isValidLabel()) {
+          lastErr = 'Label XML failed isValidLabel() — wrong roll size in DYMO Connect?'
+          continue
+        }
+        if (fw.printLabel) {
+          fw.printLabel(target, printParams, labelXml, '')
+        } else {
+          label.print(target)
+        }
+        printed = true
+        break
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e)
+      }
+    }
+    if (!printed) throw new Error(lastErr)
   }
   return { printed: rows.length, printer: target }
 }
@@ -282,8 +313,9 @@ async function printRowsViaFramework(
 function formatDymoPrintErrors(errors: string[]): string {
   return (
     `Direct DYMO print failed.\n${errors.map((e) => `• ${e}`).join('\n')}\n\n` +
-    'On this laptop in Chrome or Edge: open site settings for this page, allow Local network access, ' +
-    'then click Connect printer again. Labels should feed automatically — no browser print dialog.'
+    'Firefox: click “Trust DYMO certificate”, accept the 127.0.0.1 warning, then Connect printer again. ' +
+    'Chrome/Edge: also allow local network access for this site. Or run `npm run print-agent` (no browser limits). ' +
+    'Labels should feed automatically — no print dialog.'
   )
 }
 
@@ -300,15 +332,15 @@ export async function printLabelsDirect(
   const errors: string[] = []
 
   try {
-    const result = await printRowsViaFramework(rows, printerName)
-    return { printed: result.printed, method: 'dymo-framework' }
+    await printRowsViaWebService(rows, printerName)
+    return { printed: rows.length, method: 'dymo-web' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
   try {
-    await printRowsViaWebService(rows, printerName)
-    return { printed: rows.length, method: 'dymo-web' }
+    const result = await printRowsViaFramework(rows, printerName)
+    return { printed: result.printed, method: 'dymo-framework' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }

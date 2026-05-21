@@ -1,10 +1,37 @@
-const LABEL_DRAW_WIDTH = 2382
-const LABEL_DRAW_HEIGHT = 638
-const LABEL_PRINTABLE_X = 128
-const LABEL_PRINTABLE_Y = 18
-const LABEL_PRINTABLE_WIDTH = 2218
-const LABEL_PRINTABLE_HEIGHT = 608
 export const LABEL_TEXT_OBJECT_NAME = 'TEXT'
+
+export const DYMO_PAPER_TEMPLATES = [
+  {
+    id: 'LargeShipping',
+    paperName: '30256 Shipping',
+    drawWidth: 3331,
+    drawHeight: 5715,
+    boundsX: 336,
+    boundsY: 58,
+    boundsWidth: 5338,
+    boundsHeight: 3192,
+  },
+  {
+    id: 'Shipping',
+    paperName: '30323 Shipping',
+    drawWidth: 5811,
+    drawHeight: 1581,
+    boundsX: 200,
+    boundsY: 50,
+    boundsWidth: 5411,
+    boundsHeight: 1481,
+  },
+  {
+    id: 'Address',
+    paperName: '30252 Address',
+    drawWidth: 1581,
+    drawHeight: 5040,
+    boundsX: 332,
+    boundsY: 150,
+    boundsWidth: 4455,
+    boundsHeight: 1260,
+  },
+]
 
 const LABEL_FONT_STEPS = [
   { size: 36, charsPerLine: 22, maxLines: 3 },
@@ -82,7 +109,10 @@ export function labelLayoutForRow(row) {
 }
 
 function fontAttributesXml(fontSize) {
-  return `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/><ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>`
+  return (
+    `<Font Family="Arial" Size="${fontSize}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>`
+  )
 }
 
 function buildStyledTextXml(lines, fontSize) {
@@ -96,16 +126,17 @@ function buildStyledTextXml(lines, fontSize) {
     .join('')
 }
 
-export function buildLabelXml(lines, fontSize) {
+export function buildLabelXml(lines, fontSize, template = DYMO_PAPER_TEMPLATES[0]) {
   const styled = buildStyledTextXml(lines, fontSize)
+  const t = template
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
     `<PaperOrientation>Landscape</PaperOrientation>` +
-    `<Id>Shipping</Id>` +
-    `<PaperName>30323 Shipping</PaperName>` +
+    `<Id>${t.id}</Id>` +
+    `<PaperName>${t.paperName}</PaperName>` +
     `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>` +
+    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
     `</DrawCommands>` +
     `<ObjectInfo>` +
     `<TextObject>` +
@@ -123,15 +154,24 @@ export function buildLabelXml(lines, fontSize) {
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +
     `</TextObject>` +
-    `<Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>` +
+    `<Bounds X="${t.boundsX}" Y="${t.boundsY}" Width="${t.boundsWidth}" Height="${t.boundsHeight}"/>` +
     `</ObjectInfo>` +
     `</DieCutLabel>`
   )
 }
 
+export function buildLabelXmlCandidates(lines, fontSize) {
+  return DYMO_PAPER_TEMPLATES.map((template) => buildLabelXml(lines, fontSize, template))
+}
+
 export function buildLabelXmlForRow(row) {
   const { fontSize, lines } = labelLayoutForRow(row)
   return buildLabelXml(lines, fontSize)
+}
+
+export function buildLabelXmlCandidatesForRow(row) {
+  const { fontSize, lines } = labelLayoutForRow(row)
+  return buildLabelXmlCandidates(lines, fontSize)
 }
 
 export function assertDymoPrintSucceeded(result, endpoint) {
@@ -140,7 +180,7 @@ export function assertDymoPrintSucceeded(result, endpoint) {
   if (!s || s.toLowerCase() === 'true') return
   if (s.toLowerCase() === 'false') {
     throw new Error(
-      `${endpoint}: DYMO rejected the label (add "30323 Shipping" in DYMO Connect or check roll size)`
+      `${endpoint}: DYMO rejected the label. In DYMO Connect, add the roll size (30323 / 30256 Shipping) and reload Print Station.`
     )
   }
   if (/error|exception|invalid|not found|failed/i.test(s)) {

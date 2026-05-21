@@ -1,5 +1,8 @@
 import type { PoLabelPrintRow } from '../types/poIpoint'
-import { assertDymoPrintSucceeded, buildLabelXmlForRow } from './dymoLabelXml'
+import {
+  assertDymoPrintSucceeded,
+  buildLabelXmlCandidatesForRow,
+} from './dymoLabelXml'
 
 export type DymoServiceEndpoint = { host: string; port: number }
 
@@ -15,12 +18,6 @@ const PORT_END = 41960
 let cachedService: DymoServiceEndpoint | null = null
 let cachedPrinter: string | null = null
 
-function encodeFormBody(fields: Record<string, string>): string {
-  return Object.entries(fields)
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join('&')
-}
-
 async function dymoRequest(
   host: string,
   port: number,
@@ -31,8 +28,8 @@ async function dymoRequest(
   const url = `https://${host}:${port}/${SERVICE_PATH}/${endpoint}`
   const init: RequestInit = { method }
   if (form) {
-    init.body = encodeFormBody(form)
-    init.headers = { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
+    init.body = new URLSearchParams(form)
+    init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
   }
   const res = await fetch(url, init)
   const ct = res.headers.get('content-type') ?? ''
@@ -112,19 +109,75 @@ export async function resolveDymoWebPrinter(
   return pick
 }
 
-async function printOneLabel(
+function isDymoLabelRejected(result: unknown): boolean {
+  const s = String(result ?? '').trim()
+  if (!s || s.toLowerCase() === 'true') return false
+  if (s.toLowerCase() === 'false') return true
+  return /error|exception|invalid|not declared|not found|failed/i.test(s)
+}
+
+async function renderLabelOk(
+  service: DymoServiceEndpoint,
+  printerName: string,
+  labelXml: string
+): Promise<boolean> {
+  try {
+    const result = await dymoRequest(service.host, service.port, 'RenderLabel', 'POST', {
+      printerName,
+      labelXml,
+      renderParamsXml: '',
+    })
+    if (isDymoLabelRejected(result)) return false
+    const s = String(result ?? '').trim()
+    return s.length > 100
+  } catch {
+    return false
+  }
+}
+
+async function printOneLabelXml(
   service: DymoServiceEndpoint,
   printerName: string,
   labelXml: string
 ): Promise<void> {
-  const form = {
+  const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', {
     printerName,
     labelXml,
     printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
     labelSetXml: '',
-  }
-  const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', form)
+  })
   assertDymoPrintSucceeded(result, 'PrintLabel2')
+}
+
+async function printOneLabel(
+  service: DymoServiceEndpoint,
+  printerName: string,
+  row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>
+): Promise<void> {
+  const candidates = buildLabelXmlCandidatesForRow(row)
+  const errors: string[] = []
+
+  for (const labelXml of candidates) {
+    if (!(await renderLabelOk(service, printerName, labelXml))) {
+      errors.push('RenderLabel rejected template')
+      continue
+    }
+    try {
+      await printOneLabelXml(service, printerName, labelXml)
+      return
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  try {
+    await printOneLabelXml(service, printerName, candidates[0])
+    return
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e))
+  }
+
+  throw new Error(errors[errors.length - 1] ?? 'PrintLabel2 failed')
 }
 
 /** Direct HTTP print (print agent). Works in browser when local network access is allowed. */
@@ -143,7 +196,7 @@ export async function printRowsViaWebService(
 
   const printer = await resolveDymoWebPrinter(service, printerName)
   for (const row of rows) {
-    await printOneLabel(service, printer, buildLabelXmlForRow(row))
+    await printOneLabel(service, printer, row)
   }
   return { printed: rows.length, printer, service }
 }

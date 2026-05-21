@@ -253,12 +253,16 @@ export function LabelPrintStation() {
             </a>
           </li>
           <li>
-            When Chrome or Edge asks to access devices on your <strong>local network</strong>, choose{' '}
-            <strong>Allow</strong> (required for automatic printing — no print dialog).
+            Click <strong>Trust DYMO certificate</strong> below and accept the security warning (required in{' '}
+            <strong>Firefox</strong> and most browsers).
           </li>
           <li>
-            If a separate browser print window appears, local network access was blocked — fix site
-            permissions and hard-refresh this page.
+            In <strong>Chrome/Edge</strong>, if prompted, allow this site to access your{' '}
+            <strong>local network</strong>. Firefox has no separate prompt — certificate trust is enough.
+          </li>
+          <li>
+            If a separate print window appears, DYMO was blocked — trust the certificate, hard-refresh (Ctrl+F5),
+            or use <code>npm run print-agent</code> on this PC.
           </li>
         </ol>
         <div className="print-station-setup-actions">

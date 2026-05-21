@@ -4,20 +4,58 @@ import type { PoLabelPrintRow } from '../types/poIpoint'
 export const LABEL_WIDTH_MM = 102
 export const LABEL_HEIGHT_MM = 59
 
-/** DYMO 30323 Shipping — landscape draw area (portrait page 638×2382 rotated). */
-export const LABEL_DRAW_WIDTH = 2382
-export const LABEL_DRAW_HEIGHT = 638
-export const LABEL_PRINTABLE_X = 128
-export const LABEL_PRINTABLE_Y = 18
-export const LABEL_PRINTABLE_WIDTH = 2218
-export const LABEL_PRINTABLE_HEIGHT = 608
-
 /** DYMO object name — must match &lt;Name&gt; in the label XML. */
 export const LABEL_TEXT_OBJECT_NAME = 'TEXT'
 
 /** @deprecated Use buildLabelXmlForRow — kept for imports. */
 export const LABEL_XML_SKELETON = ''
 export const LABEL_XML_TEMPLATE = ''
+
+/** Known-valid PaperName/Id pairs (invalid PaperName → "DieCutLabel is not declared"). */
+export type DymoPaperTemplate = {
+  id: string
+  paperName: string
+  drawWidth: number
+  drawHeight: number
+  boundsX: number
+  boundsY: number
+  boundsWidth: number
+  boundsHeight: number
+}
+
+/** Order: sizes closest to 30323 / 30256 shipping first, then generic fallbacks. */
+export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
+  {
+    id: 'LargeShipping',
+    paperName: '30256 Shipping',
+    drawWidth: 3331,
+    drawHeight: 5715,
+    boundsX: 336,
+    boundsY: 58,
+    boundsWidth: 5338,
+    boundsHeight: 3192,
+  },
+  {
+    id: 'Shipping',
+    paperName: '30323 Shipping',
+    drawWidth: 5811,
+    drawHeight: 1581,
+    boundsX: 200,
+    boundsY: 50,
+    boundsWidth: 5411,
+    boundsHeight: 1481,
+  },
+  {
+    id: 'Address',
+    paperName: '30252 Address',
+    drawWidth: 1581,
+    drawHeight: 5040,
+    boundsX: 332,
+    boundsY: 150,
+    boundsWidth: 4455,
+    boundsHeight: 1260,
+  },
+] as const
 
 const LABEL_FONT_STEPS = [
   { size: 36, charsPerLine: 22, maxLines: 3 },
@@ -141,11 +179,15 @@ export function labelPlainTextForRow(row: {
   return lines.join('\n')
 }
 
-function fontAttributesXml(fontSize: number): string {
-  return `<Font Family="Arial" Size="${fontSize}" Bold="True" IsUnderline="False" IsStrikeout="False" IsItalic="False"/><ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>`
+/** Font attrs must match DYMO SDK samples (IsUnderline etc. fail schema validation). */
+function fontAttributesXml(fontSize: number, bold = true): string {
+  const b = bold ? 'True' : 'False'
+  return (
+    `<Font Family="Arial" Size="${fontSize}" Bold="${b}" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>`
+  )
 }
 
-/** One &lt;Element&gt; per line — format DYMO Connect accepts for PrintLabel2 and the JS SDK. */
 function buildStyledTextXml(lines: string[], fontSize: number): string {
   const attrs = fontAttributesXml(fontSize)
   const textLines = lines.length > 0 ? lines : ['(no text)']
@@ -157,17 +199,22 @@ function buildStyledTextXml(lines: string[], fontSize: number): string {
     .join('')
 }
 
-/** Complete 30323 label file (no regex surgery — avoids invalid XML on PrintLabel2). */
-export function buildLabelXml(lines: string[], fontSize: number): string {
+/** Complete DieCutLabel using a schema-known PaperName/Id (see DYMO DCD-SDK samples). */
+export function buildLabelXml(
+  lines: string[],
+  fontSize: number,
+  template: DymoPaperTemplate = DYMO_PAPER_TEMPLATES[0]
+): string {
   const styled = buildStyledTextXml(lines, fontSize)
+  const t = template
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
     `<PaperOrientation>Landscape</PaperOrientation>` +
-    `<Id>Shipping</Id>` +
-    `<PaperName>30323 Shipping</PaperName>` +
+    `<Id>${t.id}</Id>` +
+    `<PaperName>${t.paperName}</PaperName>` +
     `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${LABEL_DRAW_WIDTH}" Height="${LABEL_DRAW_HEIGHT}" Rx="180" Ry="180"/>` +
+    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
     `</DrawCommands>` +
     `<ObjectInfo>` +
     `<TextObject>` +
@@ -185,10 +232,18 @@ export function buildLabelXml(lines: string[], fontSize: number): string {
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +
     `</TextObject>` +
-    `<Bounds X="${LABEL_PRINTABLE_X}" Y="${LABEL_PRINTABLE_Y}" Width="${LABEL_PRINTABLE_WIDTH}" Height="${LABEL_PRINTABLE_HEIGHT}"/>` +
+    `<Bounds X="${t.boundsX}" Y="${t.boundsY}" Width="${t.boundsWidth}" Height="${t.boundsHeight}"/>` +
     `</ObjectInfo>` +
     `</DieCutLabel>`
   )
+}
+
+/** XML candidates to try when the installed roll / DYMO build rejects a PaperName. */
+export function buildLabelXmlCandidates(
+  lines: string[],
+  fontSize: number
+): string[] {
+  return DYMO_PAPER_TEMPLATES.map((template) => buildLabelXml(lines, fontSize, template))
 }
 
 export function buildLabelXmlForText(text: string): string {
@@ -210,12 +265,21 @@ export function buildLabelXmlForRow(
   return buildLabelXml(lines, fontSize)
 }
 
+export function buildLabelXmlCandidatesForRow(
+  row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>
+): string[] {
+  const { fontSize, lines } = labelLayoutForRow(row)
+  return buildLabelXmlCandidates(lines, fontSize)
+}
+
 export function assertDymoPrintSucceeded(result: unknown, endpoint: string): void {
   if (result === true) return
   const s = String(result ?? '').trim()
   if (!s || s.toLowerCase() === 'true') return
   if (s.toLowerCase() === 'false') {
-    throw new Error(`${endpoint}: DYMO rejected the label (is 30323 Shipping loaded in DYMO Connect?)`)
+    throw new Error(
+      `${endpoint}: DYMO rejected the label. In DYMO Connect, add the roll size (30323 / 30256 Shipping) and reload Print Station.`
+    )
   }
   if (/error|exception|invalid|not found|failed/i.test(s)) {
     throw new Error(`${endpoint}: ${s.slice(0, 400)}`)

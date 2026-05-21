@@ -32,10 +32,10 @@ if (nodeMajor < 18) {
 
 let createClient
 let assertDymoPrintSucceeded
-let buildLabelXmlForRow
+let buildLabelXmlCandidatesForRow
 try {
   ;({ createClient } = await import('@supabase/supabase-js'))
-  ;({ assertDymoPrintSucceeded, buildLabelXmlForRow } = await import('./dymo-label-xml.mjs'))
+  ;({ assertDymoPrintSucceeded, buildLabelXmlCandidatesForRow } = await import('./dymo-label-xml.mjs'))
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e)
   if (/cannot find module|not found/i.test(msg)) {
@@ -134,15 +134,53 @@ async function getPrinterName(service) {
 const LABEL_WRITER_PRINT_PARAMS_XML =
   '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
 
-async function printLabel(service, printerName, labelXml) {
-  const form = {
+async function renderLabelOk(service, printerName, labelXml) {
+  try {
+    const result = await dymoRequest(service.host, service.port, 'RenderLabel', 'POST', {
+      printerName,
+      labelXml,
+      renderParamsXml: '',
+    })
+    const s = String(result ?? '').trim()
+    if (!s || s.toLowerCase() === 'true') return true
+    if (/error|exception|invalid|not declared|failed/i.test(s)) return false
+    return s.length > 100
+  } catch {
+    return false
+  }
+}
+
+async function printLabelXml(service, printerName, labelXml) {
+  const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', {
     printerName,
     labelXml,
     printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
     labelSetXml: '',
-  }
-  const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', form)
+  })
   assertDymoPrintSucceeded(result, 'PrintLabel2')
+}
+
+async function printLabelForRow(service, printerName, row) {
+  const candidates = buildLabelXmlCandidatesForRow(row)
+  const errors = []
+  for (const labelXml of candidates) {
+    if (!(await renderLabelOk(service, printerName, labelXml))) {
+      errors.push('RenderLabel rejected template')
+      continue
+    }
+    try {
+      await printLabelXml(service, printerName, labelXml)
+      return
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
+    }
+  }
+  try {
+    await printLabelXml(service, printerName, candidates[0])
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e))
+    throw new Error(errors[errors.length - 1] ?? 'PrintLabel2 failed')
+  }
 }
 
 function log(msg) {
@@ -234,7 +272,7 @@ async function main() {
 
     try {
       for (const row of rows) {
-        await printLabel(service, printerName, buildLabelXmlForRow(row))
+        await printLabelForRow(service, printerName, row)
       }
       await supabase
         .from('label_print_queue')
