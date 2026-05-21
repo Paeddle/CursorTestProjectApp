@@ -20,9 +20,11 @@ import {
   type AggregatedPoLineItem,
 } from '../lib/poLineAggregate'
 import {
+  clearLegacyLocalCustomerOverrides,
+  poLineItemKey,
   readPoLineCustomerOverrides,
-  writePoLineCustomerOverride,
 } from '../lib/poLineCustomerOverride'
+import { jobOptionsForPo } from '../lib/poInfoJobs'
 import {
   clearLegacyLocalPoLineChecked,
   isPoLineChecked,
@@ -32,11 +34,21 @@ import {
   togglePoLineChecked,
 } from '../lib/poLineChecked'
 import {
+  fetchPoLineCustomerPickMap,
+  setPoLineCustomerPick,
+} from '../services/poLineCustomerPickService'
+import {
   fetchPoLineCheckedMap,
   migrateLocalPoLineCheckedToSupabase,
   setAllPoLinesCheckedForPo,
   setPoLineChecked,
 } from '../services/poLineCheckedService'
+import {
+  fetchPoLineReceivedMap,
+  receivedKey,
+  setAllPoLinesReceivedForPo,
+  setPoLineReceivedQty,
+} from '../services/poLineReceivedService'
 import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
@@ -69,6 +81,31 @@ import PoIpointImportPanel from './PoIpointImportPanel'
 import './POInfo.css'
 
 const LOCATION_PREVIEW_COUNT = 2
+
+function lineRowIsComplete(
+  lineChecked: Record<string, boolean>,
+  lineReceived: Record<string, number>,
+  poNumber: string,
+  itemName: string,
+  reqQty: number
+): boolean {
+  if (isPoLineChecked(lineChecked, poNumber, itemName)) return true
+  const key = receivedKey(poNumber, itemName)
+  const rcv = lineReceived[key] ?? 0
+  return reqQty > 0 && rcv >= reqQty
+}
+
+function lineRowIsPartial(
+  lineChecked: Record<string, boolean>,
+  lineReceived: Record<string, number>,
+  poNumber: string,
+  itemName: string,
+  reqQty: number
+): boolean {
+  if (isPoLineChecked(lineChecked, poNumber, itemName)) return false
+  const rcv = lineReceived[receivedKey(poNumber, itemName)] ?? 0
+  return reqQty > 0 && rcv > 0 && rcv < reqQty
+}
 
 function allLabelKeysForPo(
   poNumber: string,
@@ -371,6 +408,10 @@ function POInfo() {
     readPoLineCustomerOverrides()
   )
   const [lineChecked, setLineChecked] = useState<Record<string, boolean>>({})
+  const [lineReceived, setLineReceived] = useState<Record<string, number>>({})
+  const [boxLabelDraft, setBoxLabelDraft] = useState<
+    Record<string, { count: string; job: string }>
+  >({})
   const [printingPoKey, setPrintingPoKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [locationModal, setLocationModal] = useState<{
@@ -419,16 +460,19 @@ function POInfo() {
     setIpointLoading(true)
     setError(null)
     try {
-      const [list, catRes, chkRes, refs, lineCheckedMap] = await Promise.all([
-        loadSummaries(),
-        supabase
-          .from('barcode_catalog')
-          .select(CATALOG_COLUMNS)
-          .order('item_name', { ascending: true }),
-        supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
-        fetchPoJobRefs().catch(() => [] as PoJobRef[]),
-        fetchPoLineCheckedMap(),
-      ])
+      const [list, catRes, chkRes, refs, lineCheckedMap, customerPickMap, lineReceivedMap] =
+        await Promise.all([
+          loadSummaries(),
+          supabase
+            .from('barcode_catalog')
+            .select(CATALOG_COLUMNS)
+            .order('item_name', { ascending: true }),
+          supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
+          fetchPoJobRefs().catch(() => [] as PoJobRef[]),
+          fetchPoLineCheckedMap().catch(() => ({})),
+          fetchPoLineCustomerPickMap().catch(() => ({})),
+          fetchPoLineReceivedMap().catch(() => ({})),
+        ])
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
@@ -455,12 +499,32 @@ function POInfo() {
         }
       }
       setLineChecked(mergedLineChecked)
+      setLineReceived(lineReceivedMap)
+      setCustomerOverrides(customerPickMap)
+
+      let mergedCustomerPicks = customerPickMap
+      const legacyCustomerPicks = readPoLineCustomerOverrides()
       setLoading(false)
 
       if (options?.force) invalidatePoIpointCache()
       const bundle = await fetchPoIpointData({ useCache: !options?.force })
       setLineItems(bundle.lineItems)
       setItemLocations(bundle.itemLocations)
+
+      if (Object.keys(legacyCustomerPicks).length > 0) {
+        try {
+          for (const item of bundle.lineItems) {
+            const key = poLineItemKey(item.po_number, item.item_name)
+            const job = legacyCustomerPicks[key]
+            if (job) await setPoLineCustomerPick(item.po_number, item.item_name, job)
+          }
+          clearLegacyLocalCustomerOverrides()
+          mergedCustomerPicks = await fetchPoLineCustomerPickMap()
+        } catch {
+          mergedCustomerPicks = { ...customerPickMap, ...legacyCustomerPicks }
+        }
+      }
+      setCustomerOverrides(mergedCustomerPicks)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
     } finally {
@@ -631,20 +695,107 @@ function POInfo() {
     [lineItems, jobRefs, itemLocations, labelSelected, customerOverrides]
   )
 
-  const handleCustomerSelect = (poNumber: string, itemName: string, jobOrCustomer: string) => {
-    setCustomerOverrides(writePoLineCustomerOverride(poNumber, itemName, jobOrCustomer))
+  const handleCustomerSelect = async (
+    poNumber: string,
+    itemName: string,
+    jobOrCustomer: string
+  ) => {
+    const key = poLineItemKey(poNumber, itemName)
+    const prev = customerOverrides
+    setCustomerOverrides({ ...prev, [key]: jobOrCustomer })
+    try {
+      await setPoLineCustomerPick(poNumber, itemName, jobOrCustomer)
+    } catch (err) {
+      setCustomerOverrides(prev)
+      setError(err instanceof Error ? err.message : 'Failed to save customer selection')
+    }
   }
 
-  const handleToggleLineChecked = async (poNumber: string, itemName: string) => {
+  const handleToggleLineChecked = async (poNumber: string, itemName: string, reqQty: number) => {
     const nextChecked = !isPoLineChecked(lineChecked, poNumber, itemName)
-    const prev = lineChecked
-    setLineChecked(togglePoLineChecked(prev, poNumber, itemName))
+    const prevChecked = lineChecked
+    const prevReceived = lineReceived
+    const rKey = receivedKey(poNumber, itemName)
+    setLineChecked(togglePoLineChecked(prevChecked, poNumber, itemName))
+    if (nextChecked && reqQty > 0) {
+      setLineReceived({ ...prevReceived, [rKey]: reqQty })
+    }
     try {
       await setPoLineChecked(poNumber, itemName, nextChecked)
+      if (nextChecked && reqQty > 0) {
+        await setPoLineReceivedQty(poNumber, itemName, reqQty)
+      }
     } catch (err) {
-      setLineChecked(prev)
+      setLineChecked(prevChecked)
+      setLineReceived(prevReceived)
       setError(err instanceof Error ? err.message : 'Failed to save line check')
     }
+  }
+
+  const handleReceivedQtyCommit = async (
+    poNumber: string,
+    itemName: string,
+    reqQty: number,
+    draftStr: string
+  ) => {
+    const n = Math.floor(Number(draftStr))
+    if (!Number.isFinite(n) || n < 0) {
+      setError('Received quantity must be 0 or more.')
+      return
+    }
+    const capped = reqQty > 0 ? Math.min(n, reqQty) : n
+    const rKey = receivedKey(poNumber, itemName)
+    const prevReceived = lineReceived
+    const prevChecked = lineChecked
+    const nextReceived = { ...prevReceived }
+    if (capped > 0) nextReceived[rKey] = capped
+    else delete nextReceived[rKey]
+    setLineReceived(nextReceived)
+
+    const shouldCheckAll = reqQty > 0 && capped >= reqQty
+    const wasChecked = isPoLineChecked(prevChecked, poNumber, itemName)
+    if (shouldCheckAll && !wasChecked) {
+      setLineChecked(togglePoLineChecked(prevChecked, poNumber, itemName))
+    } else if (!shouldCheckAll && wasChecked) {
+      setLineChecked(togglePoLineChecked(prevChecked, poNumber, itemName))
+    }
+
+    try {
+      await setPoLineReceivedQty(poNumber, itemName, capped)
+      if (shouldCheckAll && !wasChecked) {
+        await setPoLineChecked(poNumber, itemName, true)
+      } else if (!shouldCheckAll && wasChecked) {
+        await setPoLineChecked(poNumber, itemName, false)
+      }
+    } catch (err) {
+      setLineReceived(prevReceived)
+      setLineChecked(prevChecked)
+      setError(err instanceof Error ? err.message : 'Failed to save received quantity')
+    }
+  }
+
+  const handlePrintBoxLabels = async (poNumber: string, poIpointLines: AggregatedPoLineItem[]) => {
+    const poKey = normalizePoKey(poNumber)
+    const draft = boxLabelDraft[poKey] ?? { count: '1', job: '' }
+    const count = Math.floor(Number(draft.count))
+    if (!Number.isFinite(count) || count < 1) {
+      setError('Enter at least 1 box.')
+      return
+    }
+    const jobs = jobOptionsForPo(poIpointLines, customerOverrides)
+    const jobName = draft.job.trim() || jobs[0] || null
+    if (!jobName) {
+      setError('Select a job for box labels.')
+      return
+    }
+    const rows: PoLabelPrintRow[] = Array.from({ length: count }, (_, i) => ({
+      key: `box-${poKey}-${i}`,
+      po_number: poNumber,
+      item_name: 'BOX',
+      job_name: jobName,
+      location_name: null,
+    }))
+    await printLabelRows(poNumber, rows)
   }
 
   const handleToggleAllLinesChecked = async (
@@ -653,12 +804,36 @@ function POInfo() {
   ) => {
     const { allChecked } = poLineCheckSummary(lineChecked, poNumber, lines)
     const nextValue = !allChecked
-    const prev = lineChecked
-    setLineChecked(setAllPoLinesChecked(prev, poNumber, lines, nextValue))
+    const prevChecked = lineChecked
+    const prevReceived = lineReceived
+    const sourceLinesForPo = lineItemsForPo(poNumber, lineItems)
+
+    setLineChecked(setAllPoLinesChecked(prevChecked, poNumber, lines, nextValue))
+
+    const nextReceived = { ...prevReceived }
+    const receivedEntries: { itemName: string; receivedQty: number }[] = []
+    if (nextValue) {
+      for (const line of lines) {
+        const resolved = resolveAggregatedLine(line, customerOverrides, sourceLinesForPo)
+        const reqQty = effectiveRequestedQuantity(line, resolved)
+        if (reqQty > 0) {
+          nextReceived[receivedKey(poNumber, line.item_name)] = reqQty
+          receivedEntries.push({ itemName: line.item_name, receivedQty: reqQty })
+        }
+      }
+    } else {
+      for (const line of lines) {
+        delete nextReceived[receivedKey(poNumber, line.item_name)]
+      }
+    }
+    setLineReceived(nextReceived)
+
     try {
       await setAllPoLinesCheckedForPo(poNumber, lines, nextValue)
+      await setAllPoLinesReceivedForPo(poNumber, receivedEntries, !nextValue)
     } catch (err) {
-      setLineChecked(prev)
+      setLineChecked(prevChecked)
+      setLineReceived(prevReceived)
       setError(err instanceof Error ? err.message : 'Failed to save line checks')
     }
   }
@@ -1265,12 +1440,19 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                               : 'Print selected labels'}
                           </button>
                         </div>
-                        <div className="po-info-scan-table-wrap">
+                        <div className="po-info-scan-table-wrap po-info-ipoint-table-wrap">
                           <table className="po-info-scan-table po-info-ipoint-table">
                             <thead>
                               <tr>
                                 <th scope="col" className="po-info-ipoint-th-check">
                                   Check
+                                </th>
+                                <th
+                                  scope="col"
+                                  className="po-info-ipoint-th-here"
+                                  title="How many of this item are here now (partial receive)"
+                                >
+                                  Here
                                 </th>
                                 <th scope="col" className="po-info-scan-th-checkin">
                                   <button
@@ -1363,15 +1545,33 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                   summary.po_number,
                                   line.item_name
                                 )
+                                const rKey = receivedKey(summary.po_number, line.item_name)
+                                const receivedQty = lineReceived[rKey] ?? 0
+                                const isComplete = lineRowIsComplete(
+                                  lineChecked,
+                                  lineReceived,
+                                  summary.po_number,
+                                  line.item_name,
+                                  reqQty
+                                )
+                                const isPartial = lineRowIsPartial(
+                                  lineChecked,
+                                  lineReceived,
+                                  summary.po_number,
+                                  line.item_name,
+                                  reqQty
+                                )
                                 return (
                                   <tr
                                     key={line.id}
                                     className={
-                                      isChecked
+                                      isComplete
                                         ? 'po-info-ipoint-row-checked'
-                                        : isScanned
-                                          ? undefined
-                                          : 'po-info-ipoint-row-not-scanned'
+                                        : isPartial
+                                          ? 'po-info-ipoint-row-partial'
+                                          : isScanned
+                                            ? undefined
+                                            : 'po-info-ipoint-row-not-scanned'
                                     }
                                   >
                                     <td className="po-info-ipoint-check-cell">
@@ -1383,10 +1583,35 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                         onChange={() =>
                                           void handleToggleLineChecked(
                                             summary.po_number,
-                                            line.item_name
+                                            line.item_name,
+                                            reqQty
                                           )
                                         }
                                       />
+                                    </td>
+                                    <td className="po-info-ipoint-here-cell">
+                                      <input
+                                        key={`${rKey}-${receivedQty}`}
+                                        type="number"
+                                        className="po-info-ipoint-here-input"
+                                        min={0}
+                                        max={reqQty > 0 ? reqQty : undefined}
+                                        defaultValue={receivedQty > 0 ? receivedQty : ''}
+                                        placeholder="0"
+                                        disabled={reqQty <= 0}
+                                        aria-label={`Received quantity for ${line.item_name}`}
+                                        onBlur={(e) =>
+                                          void handleReceivedQtyCommit(
+                                            summary.po_number,
+                                            line.item_name,
+                                            reqQty,
+                                            e.target.value
+                                          )
+                                        }
+                                      />
+                                      {reqQty > 0 ? (
+                                        <span className="po-info-ipoint-here-of">/ {reqQty}</span>
+                                      ) : null}
                                     </td>
                                     <td className="po-info-scan-checkin-cell">
                                       <IpointPrintCheckbox
@@ -1463,6 +1688,67 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                             </tbody>
                           </table>
                         </div>
+                        {(() => {
+                          const poKey = normalizePoKey(summary.po_number)
+                          const boxJobs = jobOptionsForPo(poIpointLines, customerOverrides)
+                          const draft = boxLabelDraft[poKey] ?? {
+                            count: '1',
+                            job: boxJobs[0] ?? '',
+                          }
+                          return (
+                            <div className="po-info-box-labels">
+                              <span className="po-info-box-labels-title">Box labels</span>
+                              <label className="po-info-box-labels-field">
+                                <span className="po-info-box-labels-label">Boxes</span>
+                                <input
+                                  type="number"
+                                  className="po-info-box-labels-count"
+                                  min={1}
+                                  value={draft.count}
+                                  onChange={(e) =>
+                                    setBoxLabelDraft((prev) => ({
+                                      ...prev,
+                                      [poKey]: { ...draft, count: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </label>
+                              {boxJobs.length > 1 ? (
+                                <label className="po-info-box-labels-field">
+                                  <span className="po-info-box-labels-label">Job</span>
+                                  <select
+                                    className="po-info-box-labels-job"
+                                    value={draft.job || boxJobs[0] || ''}
+                                    onChange={(e) =>
+                                      setBoxLabelDraft((prev) => ({
+                                        ...prev,
+                                        [poKey]: { ...draft, job: e.target.value },
+                                      }))
+                                    }
+                                  >
+                                    {boxJobs.map((j) => (
+                                      <option key={j} value={j}>
+                                        {j}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : boxJobs.length === 1 ? (
+                                <span className="po-info-box-labels-job-hint">{boxJobs[0]}</span>
+                              ) : null}
+                              <button
+                                type="button"
+                                className="po-info-box-labels-print-btn"
+                                disabled={printingPoKey === poKey}
+                                onClick={() =>
+                                  void handlePrintBoxLabels(summary.po_number, poIpointLines)
+                                }
+                              >
+                                {printingPoKey === poKey ? 'Printing…' : 'Print box labels'}
+                              </button>
+                            </div>
+                          )
+                        })()}
                       </section>
                     )}
                     {agg.length > 0 && (

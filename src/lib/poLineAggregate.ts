@@ -47,7 +47,7 @@ function aggregateKey(poNumber: string, itemName: string): string {
   return `${normalizePoKey(poNumber)}\0${norm(itemName || '')}`
 }
 
-function normJob(job: string): string {
+export function normJob(job: string): string {
   return job.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
@@ -67,7 +67,7 @@ export function resolveSelectedCustomer(
   if (line.customerBreakdown.length === 1) {
     return line.customerBreakdown[0]!.job_or_customer
   }
-  return line.customerBreakdown[0]!.job_or_customer
+  return null
 }
 
 export type ResolvedAggregatedLine = {
@@ -95,9 +95,11 @@ export function resolveAggregatedLine(
   let activeSourceLineIds = line.sourceLineIds
   if (selectedCustomer && sourceLines.length > 0) {
     const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
+    const selNorm = normJob(selectedCustomer)
     activeSourceLineIds = line.sourceLineIds.filter((id) => {
       const src = sourceById.get(id)
-      return src && norm(stockJobLabel(src.job_or_customer)) === norm(selectedCustomer)
+      if (!src) return false
+      return normJob(stockJobLabel(src.job_or_customer)) === selNorm
     })
   }
 

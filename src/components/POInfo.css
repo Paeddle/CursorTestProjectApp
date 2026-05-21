@@ -201,7 +201,7 @@
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
 }
 
@@ -442,9 +442,14 @@
 
 .po-info-scan-table-wrap {
   overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid #334155;
   border-radius: 8px;
   background: #0f172a;
+}
+
+.po-info-ipoint-table-wrap {
+  overflow: visible;
 }
 
 .po-info-scan-table {
@@ -1283,6 +1288,127 @@ tr.po-info-ipoint-row-not-scanned .po-info-scan-item-name {
 .po-info-customer-picker-btn:hover {
   border-color: #64748b;
   background: #334155;
+}
+
+.po-info-customer-picker-btn--needs {
+  border-color: #b45309;
+  color: #fcd34d;
+}
+
+.po-info-customer-picker-menu--portal {
+  max-height: min(16rem, 50vh);
+  overflow-y: auto;
+}
+
+.po-info-ipoint-th-here,
+.po-info-ipoint-here-cell {
+  width: 5.5rem;
+  white-space: nowrap;
+}
+
+.po-info-ipoint-here-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.po-info-ipoint-here-input {
+  width: 2.75rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.po-info-ipoint-here-input:disabled {
+  opacity: 0.5;
+}
+
+.po-info-ipoint-here-of {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+tr.po-info-ipoint-row-partial .po-info-scan-item-name {
+  color: #fcd34d;
+}
+
+.po-info-box-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.po-info-box-labels-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #94a3b8;
+}
+
+.po-info-box-labels-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.po-info-box-labels-count {
+  width: 4rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.po-info-box-labels-job {
+  min-width: 10rem;
+  max-width: 18rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.po-info-box-labels-job-hint {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.po-info-box-labels-print-btn {
+  margin-left: auto;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #1d4ed8;
+  color: #eff6ff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.po-info-box-labels-print-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.po-info-box-labels-print-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .po-info-customer-picker-caret {

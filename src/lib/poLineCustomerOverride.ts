@@ -48,6 +48,12 @@ export function writePoLineCustomerOverride(
   return all
 }
 
+export function clearLegacyLocalCustomerOverrides(): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(STORAGE_KEY)
+  }
+}
+
 export function clearPoLineCustomerOverride(poNumber: string, itemName: string): Record<string, string> {
   const key = poLineItemKey(poNumber, itemName)
   const all = readPoLineCustomerOverrides()
