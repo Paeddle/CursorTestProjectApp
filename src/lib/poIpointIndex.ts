@@ -2,6 +2,7 @@ import type { AggregatedPoLineItem } from './poLineAggregate'
 import { effectiveRequestedQuantity, resolveAggregatedLine } from './poLineAggregate'
 import {
   findItemLocations,
+  ipointItemLastScannedAt,
   ipointScannedLineIds,
   locationNamesForAggregatedLine,
   locationNamesForLine,
@@ -111,6 +112,18 @@ export function buildAggregatedIpointLineDisplayCache(
     cache.set(line.id, { locationNames, labelKeys })
   }
   return cache
+}
+
+export function ipointLastScannedAtForAggregatedLines(
+  aggregatedLines: AggregatedPoLineItem[],
+  barcodes: POBarcode[],
+  catalogMap: Map<string, BarcodeCatalogItem>
+): Map<string, string | null> {
+  const out = new Map<string, string | null>()
+  for (const line of aggregatedLines) {
+    out.set(line.id, ipointItemLastScannedAt(line.item_name, barcodes, catalogMap))
+  }
+  return out
 }
 
 export function ipointScannedIdsForAggregatedLines(

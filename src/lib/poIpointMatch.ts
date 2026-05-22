@@ -570,6 +570,32 @@ export function ipointLineIsScanned(
   return false
 }
 
+/** Latest scanner timestamp for barcodes matching this PO line item name. */
+export function ipointItemLastScannedAt(
+  itemName: string,
+  barcodes: POBarcode[],
+  catalogMap: Map<string, BarcodeCatalogItem>
+): string | null {
+  const item = (itemName || '').trim()
+  if (!item || !barcodes.length) return null
+
+  let latest: string | null = null
+  let latestMs = -1
+
+  for (const scan of barcodes) {
+    const scanFields = scannedBarcodeMatchFields(scan.barcode_value, catalogMap)
+    const matches = scanFields.some((field) => ipointScanFieldMatchesItemName(item, field))
+    if (!matches) continue
+    const ms = new Date(scan.scanned_at).getTime()
+    if (Number.isFinite(ms) && ms > latestMs) {
+      latestMs = ms
+      latest = scan.scanned_at
+    }
+  }
+
+  return latest
+}
+
 /** Set of iPoint line ids that have at least one matching barcode scan on the PO. */
 export function ipointScannedLineIds(
   lines: PoLineItem[],

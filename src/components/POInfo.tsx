@@ -54,6 +54,7 @@ import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
   buildIpointLocationIndex,
+  ipointLastScannedAtForAggregatedLines,
   ipointScannedIdsForAggregatedLines,
 } from '../lib/poIpointIndex'
 import {
@@ -301,6 +302,38 @@ function poNumberForBarcodeWrites(
 
 type PoScanSortColumn = 'item' | 'partNumber' | 'qty' | 'lastScan'
 type PoScanSortState = { column: PoScanSortColumn; asc: boolean }
+
+type IpointSortColumn = 'item' | 'lastScan'
+type IpointSortState = { column: IpointSortColumn; asc: boolean }
+
+function sortIpointLines(
+  lines: AggregatedPoLineItem[],
+  column: IpointSortColumn,
+  asc: boolean,
+  lastScannedByLineId: Map<string, string | null>
+): AggregatedPoLineItem[] {
+  const mult = asc ? 1 : -1
+  const copy = [...lines]
+  copy.sort((a, b) => {
+    if (column === 'lastScan') {
+      const ta = lastScannedByLineId.get(a.id)
+      const tb = lastScannedByLineId.get(b.id)
+      const ma = ta ? new Date(ta).getTime() : 0
+      const mb = tb ? new Date(tb).getTime() : 0
+      if (!Number.isFinite(ma)) return mult
+      if (!Number.isFinite(mb)) return -mult
+      return mult * (ma - mb)
+    }
+    const ka = (a.item_name || '').trim().toLowerCase()
+    const kb = (b.item_name || '').trim().toLowerCase()
+    return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+  })
+  return copy
+}
+
+function defaultAscForIpointColumn(column: IpointSortColumn): boolean {
+  return column === 'item'
+}
 type CatalogSortColumn = 'item' | 'partNumber' | 'manufacturer'
 
 function sortKeyItemName(catalogMap: Map<string, BarcodeCatalogItem>, barcode: string): string {
@@ -393,6 +426,7 @@ function POInfo() {
   const [qtySaving, setQtySaving] = useState(false)
   const qtyInputRef = useRef<HTMLInputElement>(null)
   const [poScanSortByKey, setPoScanSortByKey] = useState<Record<string, PoScanSortState>>({})
+  const [ipointSortByPoKey, setIpointSortByPoKey] = useState<Record<string, IpointSortState>>({})
   const [catalogSort, setCatalogSort] = useState<{ column: CatalogSortColumn; asc: boolean }>({
     column: 'item',
     asc: true,
@@ -434,6 +468,16 @@ function POInfo() {
     const filtered = filterCatalogBySearch(catalog, catalogSearch)
     return sortCatalogRows(filtered, catalogSort.column, catalogSort.asc)
   }, [catalog, catalogSearch, catalogSort])
+
+  const toggleIpointSort = useCallback((poKey: string, column: IpointSortColumn) => {
+    setIpointSortByPoKey((prev) => {
+      const cur = prev[poKey]
+      if (cur?.column === column) {
+        return { ...prev, [poKey]: { column, asc: !cur.asc } }
+      }
+      return { ...prev, [poKey]: { column, asc: defaultAscForIpointColumn(column) } }
+    })
+  }, [])
 
   const togglePoScanSort = useCallback((poKey: string, column: PoScanSortColumn) => {
     setPoScanSortByKey((prev) => {
@@ -603,6 +647,7 @@ function POInfo() {
       {
         lines: AggregatedPoLineItem[]
         scanned: Set<string>
+        lastScannedAt: Map<string, string | null>
         labelKeys: string[]
         lineDisplay: ReturnType<typeof buildAggregatedIpointLineDisplayCache>
       }
@@ -644,8 +689,13 @@ function POInfo() {
         ipointLocationIndex,
         jobRefs
       )
+      const lastScannedAt = ipointLastScannedAtForAggregatedLines(
+        lines,
+        summary.barcodes,
+        catalogMap
+      )
 
-      map.set(poKey, { lines, scanned, labelKeys, lineDisplay })
+      map.set(poKey, { lines, scanned, lastScannedAt, labelKeys, lineDisplay })
     }
     return map
   }, [
@@ -718,14 +768,20 @@ function POInfo() {
     const prevChecked = lineChecked
     const prevReceived = lineReceived
     const rKey = receivedKey(poNumber, itemName)
+    const nextReceived = { ...prevReceived }
     setLineChecked(togglePoLineChecked(prevChecked, poNumber, itemName))
     if (nextChecked && reqQty > 0) {
-      setLineReceived({ ...prevReceived, [rKey]: reqQty })
+      nextReceived[rKey] = reqQty
+    } else {
+      delete nextReceived[rKey]
     }
+    setLineReceived(nextReceived)
     try {
       await setPoLineChecked(poNumber, itemName, nextChecked)
       if (nextChecked && reqQty > 0) {
         await setPoLineReceivedQty(poNumber, itemName, reqQty)
+      } else {
+        await setPoLineReceivedQty(poNumber, itemName, 0)
       }
     } catch (err) {
       setLineChecked(prevChecked)
@@ -1339,8 +1395,22 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
             const key = summary.po_number.toLowerCase()
             const isExpanded = expandedPo.has(key)
             const ipointBundle = expandedIpointByPoKey.get(key)
-            const poIpointLines =
+            const poIpointLinesRaw =
               ipointBundle?.lines ?? aggregateLineItemsForPo(summary.po_number, lineItems)
+            const ipointLastScanned =
+              ipointBundle?.lastScannedAt ??
+              ipointLastScannedAtForAggregatedLines(
+                poIpointLinesRaw,
+                summary.barcodes,
+                catalogMap
+              )
+            const ipointSort = ipointSortByPoKey[key] ?? { column: 'item' as const, asc: true }
+            const poIpointLines = sortIpointLines(
+              poIpointLinesRaw,
+              ipointSort.column,
+              ipointSort.asc,
+              ipointLastScanned
+            )
             const ipointScanned = ipointBundle?.scanned ?? new Set<string>()
             const total = summary.barcodes.length + summary.documents.length
             const agg = aggregatePOBarcodeScans(summary.barcodes)
@@ -1473,8 +1543,29 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                   </button>
                                 </th>
                                 <th scope="col">Item</th>
-                                <th scope="col" className="po-info-ipoint-th-scanned">
-                                  Scan status
+                                <th
+                                  scope="col"
+                                  className="po-info-ipoint-th-scanned"
+                                  aria-sort={
+                                    ipointSort.column === 'lastScan'
+                                      ? ipointSort.asc
+                                        ? 'ascending'
+                                        : 'descending'
+                                      : 'none'
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="po-info-sort-btn"
+                                    onClick={() => toggleIpointSort(key, 'lastScan')}
+                                  >
+                                    Last scanned
+                                    {ipointSort.column === 'lastScan' ? (
+                                      <span className="po-info-sort-indicator" aria-hidden>
+                                        {ipointSort.asc ? ' ▲' : ' ▼'}
+                                      </span>
+                                    ) : null}
+                                  </button>
                                 </th>
                                 <th scope="col">Job / customer</th>
                                 <th scope="col">Location</th>
@@ -1542,6 +1633,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const someLineLabelsSelected =
                                   selectedCount > 0 && !allLineLabelsSelected
                                 const isScanned = ipointScanned.has(line.id)
+                                const lastScannedAt = ipointLastScanned.get(line.id) ?? null
                                 const isChecked = isPoLineChecked(
                                   lineChecked,
                                   summary.po_number,
@@ -1592,28 +1684,30 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                       />
                                     </td>
                                     <td className="po-info-ipoint-here-cell">
-                                      <input
-                                        key={`${rKey}-${receivedQty}`}
-                                        type="number"
-                                        className="po-info-ipoint-here-input"
-                                        min={0}
-                                        max={reqQty > 0 ? reqQty : undefined}
-                                        defaultValue={receivedQty > 0 ? receivedQty : ''}
-                                        placeholder="0"
-                                        disabled={reqQty <= 0}
-                                        aria-label={`Received quantity for ${line.item_name}`}
-                                        onBlur={(e) =>
-                                          void handleReceivedQtyCommit(
-                                            summary.po_number,
-                                            line.item_name,
-                                            reqQty,
-                                            e.target.value
-                                          )
-                                        }
-                                      />
-                                      {reqQty > 0 ? (
-                                        <span className="po-info-ipoint-here-of">/ {reqQty}</span>
-                                      ) : null}
+                                      <div className="po-info-ipoint-here-inner">
+                                        <input
+                                          key={`${rKey}-${receivedQty}`}
+                                          type="number"
+                                          className="po-info-ipoint-here-input"
+                                          min={0}
+                                          max={reqQty > 0 ? reqQty : undefined}
+                                          defaultValue={receivedQty > 0 ? receivedQty : ''}
+                                          placeholder="0"
+                                          disabled={reqQty <= 0}
+                                          aria-label={`Received quantity for ${line.item_name}`}
+                                          onBlur={(e) =>
+                                            void handleReceivedQtyCommit(
+                                              summary.po_number,
+                                              line.item_name,
+                                              reqQty,
+                                              e.target.value
+                                            )
+                                          }
+                                        />
+                                        {reqQty > 0 ? (
+                                          <span className="po-info-ipoint-here-of">/ {reqQty}</span>
+                                        ) : null}
+                                      </div>
                                     </td>
                                     <td className="po-info-scan-checkin-cell">
                                       <IpointPrintCheckbox
@@ -1627,14 +1721,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                     </td>
                                     <td className="po-info-scan-item-name">{line.item_name}</td>
                                     <td className="po-info-ipoint-scanned-cell">
-                                      {isScanned ? (
-                                        <span
-                                          className="po-info-ipoint-scanned-yes"
-                                          title="A barcode for this item was scanned on this PO"
-                                          aria-label="Scanned"
+                                      {lastScannedAt ? (
+                                        <time
+                                          className="po-info-ipoint-scanned-at"
+                                          dateTime={lastScannedAt}
+                                          title="Last barcode scan for this item on this PO"
                                         >
-                                          ✓ Scanned
-                                        </span>
+                                          {formatDateTime(lastScannedAt)}
+                                        </time>
                                       ) : (
                                         <span className="po-info-ipoint-scanned-no">
                                           Not scanned
