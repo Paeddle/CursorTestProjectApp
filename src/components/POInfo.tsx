@@ -45,11 +45,11 @@ import {
   setPoLineChecked,
 } from '../services/poLineCheckedService'
 import {
-  fetchPoLineReceivedMap,
   receivedKey,
   setAllPoLinesReceivedForPo,
   setPoLineReceivedQty,
 } from '../services/poLineReceivedService'
+import { fetchPoLineSyncMaps } from '../services/poLineSyncLoad'
 import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
   buildAggregatedIpointLineDisplayCache,
@@ -440,9 +440,7 @@ function POInfo() {
   const [itemLocations, setItemLocations] = useState<PoItemLocation[]>([])
   const [ipointLoading, setIpointLoading] = useState(true)
   const [labelSelected, setLabelSelected] = useState<Set<string>>(new Set())
-  const [customerOverrides, setCustomerOverrides] = useState<Record<string, string>>(() =>
-    readPoLineCustomerOverrides()
-  )
+  const [customerOverrides, setCustomerOverrides] = useState<Record<string, string>>({})
   const [lineChecked, setLineChecked] = useState<Record<string, boolean>>({})
   const [lineReceived, setLineReceived] = useState<Record<string, number>>({})
   const [boxLabelDraft, setBoxLabelDraft] = useState<
@@ -506,19 +504,23 @@ function POInfo() {
     setIpointLoading(true)
     setError(null)
     try {
-      const [list, catRes, chkRes, refs, lineCheckedMap, customerPickMap, lineReceivedMap] =
-        await Promise.all([
-          loadSummaries(),
-          supabase
-            .from('barcode_catalog')
-            .select(CATALOG_COLUMNS)
-            .order('item_name', { ascending: true }),
-          supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
-          fetchPoJobRefs().catch(() => [] as PoJobRef[]),
-          fetchPoLineCheckedMap().catch(() => ({})),
-          fetchPoLineCustomerPickMap().catch(() => ({})),
-          fetchPoLineReceivedMap().catch(() => ({})),
-        ])
+      const [list, catRes, chkRes, refs, syncMaps] = await Promise.all([
+        loadSummaries(),
+        supabase
+          .from('barcode_catalog')
+          .select(CATALOG_COLUMNS)
+          .order('item_name', { ascending: true }),
+        supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
+        fetchPoJobRefs().catch(() => [] as PoJobRef[]),
+        fetchPoLineSyncMaps(),
+      ])
+      const { lineChecked: lineCheckedMap, customerPicks: customerPickMap, lineReceived: lineReceivedMap, missingSyncTables } =
+        syncMaps
+      if (missingSyncTables) {
+        setNotice(
+          'Check, Here, and customer picks are only on this device until Supabase tables exist. Run supabase/add-po-info-line-sync.sql in the SQL Editor.'
+        )
+      }
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
