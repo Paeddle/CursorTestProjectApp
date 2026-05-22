@@ -307,6 +307,7 @@ function poNumberForBarcodeWrites(
 
 type PoScanSortColumn = 'item' | 'partNumber' | 'qty' | 'lastScan'
 type PoScanSortState = { column: PoScanSortColumn; asc: boolean }
+type PoListSortColumn = 'poNumber' | 'lastScan'
 
 type IpointSortColumn = 'item' | 'lastScan'
 type IpointSortState = { column: IpointSortColumn; asc: boolean }
@@ -431,7 +432,10 @@ function POInfo() {
   const [error, setError] = useState<string | null>(null)
   const [searchPo, setSearchPo] = useState('')
   const [searchItem, setSearchItem] = useState('')
-  const [poSortDir, setPoSortDir] = useState<'asc' | 'desc'>('asc')
+  const [poListSort, setPoListSort] = useState<{ column: PoListSortColumn; asc: boolean }>({
+    column: 'poNumber',
+    asc: true,
+  })
   const [expandedPo, setExpandedPo] = useState<Set<string>>(new Set())
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [lookupOpen, setLookupOpen] = useState<{
@@ -696,11 +700,34 @@ function POInfo() {
         return items.some((li) => (li.item_name || '').toLowerCase().includes(itemQ))
       })
     }
+    const mult = poListSort.asc ? 1 : -1
     return [...list].sort((a, b) => {
-      const cmp = a.po_number.localeCompare(b.po_number, undefined, { numeric: true })
-      return poSortDir === 'asc' ? cmp : -cmp
+      if (poListSort.column === 'lastScan') {
+        const ta = poSummaryLastScannedAt(a.barcodes)
+        const tb = poSummaryLastScannedAt(b.barcodes)
+        const ma = ta ? new Date(ta).getTime() : 0
+        const mb = tb ? new Date(tb).getTime() : 0
+        if (ma !== mb) return mult * (ma - mb)
+        return a.po_number.localeCompare(b.po_number, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      }
+      const cmp = a.po_number.localeCompare(b.po_number, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+      return mult * cmp
     })
-  }, [displaySummaries, searchPo, searchItem, poSortDir, lineItemsByPoKey])
+  }, [displaySummaries, searchPo, searchItem, poListSort, lineItemsByPoKey])
+
+  const togglePoListSort = useCallback((column: PoListSortColumn) => {
+    setPoListSort((cur) =>
+      cur.column === column
+        ? { column, asc: !cur.asc }
+        : { column, asc: column === 'poNumber' }
+    )
+  }, [])
 
   const expandedIpointByPoKey = useMemo(() => {
     const map = new Map<
@@ -1438,16 +1465,46 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
       ) : (
         <div className="po-info-list-shell">
           <div className="po-info-list-header" role="row">
-            <button
-              type="button"
-              className="po-info-list-sort-btn"
-              onClick={() => setPoSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-            >
-              PO number
-              <span className="po-info-list-sort-indicator" aria-hidden>
-                {poSortDir === 'asc' ? ' ▲' : ' ▼'}
-              </span>
-            </button>
+            <div className="po-info-list-header-sorts">
+              <button
+                type="button"
+                className={`po-info-list-sort-btn${poListSort.column === 'poNumber' ? ' is-active' : ''}`}
+                aria-sort={
+                  poListSort.column === 'poNumber'
+                    ? poListSort.asc
+                      ? 'ascending'
+                      : 'descending'
+                    : 'none'
+                }
+                onClick={() => togglePoListSort('poNumber')}
+              >
+                PO number
+                {poListSort.column === 'poNumber' ? (
+                  <span className="po-info-list-sort-indicator" aria-hidden>
+                    {poListSort.asc ? ' ▲' : ' ▼'}
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className={`po-info-list-sort-btn${poListSort.column === 'lastScan' ? ' is-active' : ''}`}
+                aria-sort={
+                  poListSort.column === 'lastScan'
+                    ? poListSort.asc
+                      ? 'ascending'
+                      : 'descending'
+                    : 'none'
+                }
+                onClick={() => togglePoListSort('lastScan')}
+              >
+                Last scan
+                {poListSort.column === 'lastScan' ? (
+                  <span className="po-info-list-sort-indicator" aria-hidden>
+                    {poListSort.asc ? ' ▲' : ' ▼'}
+                  </span>
+                ) : null}
+              </button>
+            </div>
             <span className="po-info-list-header-meta">
               {filtered.length} PO{filtered.length !== 1 ? 's' : ''}
             </span>
