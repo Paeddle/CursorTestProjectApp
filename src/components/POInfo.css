@@ -1213,9 +1213,13 @@ tr.po-info-ipoint-row-checked .po-info-ipoint-loc-more-btn {
 }
 
 .po-info-ipoint-th-scanned {
-  min-width: 8.5rem;
+  min-width: 9.5rem;
   text-align: left;
   white-space: nowrap;
+}
+
+.po-info-ipoint-table {
+  min-width: 52rem;
 }
 
 .po-info-ipoint-scanned-cell {

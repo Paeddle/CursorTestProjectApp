@@ -570,6 +570,15 @@ export function ipointLineIsScanned(
   return false
 }
 
+function bumpLatest(latest: { at: string | null; ms: number }, scannedAt: string) {
+  const ms = new Date(scannedAt).getTime()
+  if (!Number.isFinite(ms)) return
+  if (ms > latest.ms) {
+    latest.ms = ms
+    latest.at = scannedAt
+  }
+}
+
 /** Latest scanner timestamp for barcodes matching this PO line item name. */
 export function ipointItemLastScannedAt(
   itemName: string,
@@ -579,21 +588,27 @@ export function ipointItemLastScannedAt(
   const item = (itemName || '').trim()
   if (!item || !barcodes.length) return null
 
-  let latest: string | null = null
-  let latestMs = -1
+  const latest = { at: null as string | null, ms: -1 }
 
   for (const scan of barcodes) {
-    const scanFields = scannedBarcodeMatchFields(scan.barcode_value, catalogMap)
-    const matches = scanFields.some((field) => ipointScanFieldMatchesItemName(item, field))
-    if (!matches) continue
-    const ms = new Date(scan.scanned_at).getTime()
-    if (Number.isFinite(ms) && ms > latestMs) {
-      latestMs = ms
-      latest = scan.scanned_at
+    let matched = false
+    for (const field of scannedBarcodeMatchFields(scan.barcode_value, catalogMap)) {
+      if (ipointScanFieldMatchesItemName(item, field)) {
+        matched = true
+        break
+      }
     }
+    const cat = lookupCatalogItem(catalogMap, scan.barcode_value)
+    if (!matched && cat?.item_name?.trim() && productNamesMatch(item, cat.item_name)) {
+      matched = true
+    }
+    if (!matched && cat?.part_number?.trim() && productNamesMatch(item, cat.part_number)) {
+      matched = true
+    }
+    if (matched) bumpLatest(latest, scan.scanned_at)
   }
 
-  return latest
+  return latest.at
 }
 
 /** Set of iPoint line ids that have at least one matching barcode scan on the PO. */

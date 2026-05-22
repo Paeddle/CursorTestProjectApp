@@ -117,11 +117,34 @@ export function buildAggregatedIpointLineDisplayCache(
 export function ipointLastScannedAtForAggregatedLines(
   aggregatedLines: AggregatedPoLineItem[],
   barcodes: POBarcode[],
-  catalogMap: Map<string, BarcodeCatalogItem>
+  catalogMap: Map<string, BarcodeCatalogItem>,
+  sourceLines: PoLineItem[] = []
 ): Map<string, string | null> {
+  const sourceById = new Map(sourceLines.map((l) => [l.id, l]))
   const out = new Map<string, string | null>()
+
   for (const line of aggregatedLines) {
-    out.set(line.id, ipointItemLastScannedAt(line.item_name, barcodes, catalogMap))
+    const names = new Set<string>()
+    const primary = (line.item_name || '').trim()
+    if (primary) names.add(primary)
+    for (const id of line.sourceLineIds) {
+      const src = sourceById.get(id)
+      const n = (src?.item_name || '').trim()
+      if (n) names.add(n)
+    }
+
+    let latest: string | null = null
+    let latestMs = -1
+    for (const name of names) {
+      const at = ipointItemLastScannedAt(name, barcodes, catalogMap)
+      if (!at) continue
+      const ms = new Date(at).getTime()
+      if (Number.isFinite(ms) && ms > latestMs) {
+        latestMs = ms
+        latest = at
+      }
+    }
+    out.set(line.id, latest)
   }
   return out
 }

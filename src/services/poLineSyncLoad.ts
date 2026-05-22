@@ -1,5 +1,6 @@
 import { fetchPoLineCustomerPickMap } from './poLineCustomerPickService'
 import { fetchPoLineCheckedMap } from './poLineCheckedService'
+import { fetchPoLineLastScanMap } from './poLineLastScanService'
 import { fetchPoLineReceivedMap } from './poLineReceivedService'
 
 function isMissingTableError(err: unknown): boolean {
@@ -11,6 +12,7 @@ export type PoLineSyncMaps = {
   lineChecked: Record<string, boolean>
   customerPicks: Record<string, string>
   lineReceived: Record<string, number>
+  lineLastScan: Record<string, string>
   missingSyncTables: boolean
 }
 
@@ -27,11 +29,12 @@ export async function fetchPoLineSyncMaps(): Promise<PoLineSyncMaps> {
     }
   }
 
-  const [lineChecked, customerPicks, lineReceived] = await Promise.all([
+  const [lineChecked, customerPicks, lineReceived, lineLastScan] = await Promise.all([
     load(() => fetchPoLineCheckedMap()),
     load(() => fetchPoLineCustomerPickMap()),
     load(() => fetchPoLineReceivedMap()),
+    load(() => fetchPoLineLastScanMap()),
   ])
 
-  return { lineChecked, customerPicks, lineReceived, missingSyncTables }
+  return { lineChecked, customerPicks, lineReceived, lineLastScan, missingSyncTables }
 }

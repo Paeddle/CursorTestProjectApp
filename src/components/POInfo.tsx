@@ -49,6 +49,11 @@ import {
   setAllPoLinesReceivedForPo,
   setPoLineReceivedQty,
 } from '../services/poLineReceivedService'
+import {
+  lastScanStorageKey,
+  pickLatestIso,
+  upsertPoLineLastScan,
+} from '../services/poLineLastScanService'
 import { fetchPoLineSyncMaps } from '../services/poLineSyncLoad'
 import PoLineCustomerSelect from './PoLineCustomerSelect'
 import {
@@ -334,6 +339,19 @@ function sortIpointLines(
 function defaultAscForIpointColumn(column: IpointSortColumn): boolean {
   return column === 'item'
 }
+
+function poSummaryLastScannedAt(barcodes: POBarcode[]): string | null {
+  let latest: string | null = null
+  let latestMs = -1
+  for (const b of barcodes) {
+    const ms = new Date(b.scanned_at).getTime()
+    if (Number.isFinite(ms) && ms > latestMs) {
+      latestMs = ms
+      latest = b.scanned_at
+    }
+  }
+  return latest
+}
 type CatalogSortColumn = 'item' | 'partNumber' | 'manufacturer'
 
 function sortKeyItemName(catalogMap: Map<string, BarcodeCatalogItem>, barcode: string): string {
@@ -443,6 +461,7 @@ function POInfo() {
   const [customerOverrides, setCustomerOverrides] = useState<Record<string, string>>({})
   const [lineChecked, setLineChecked] = useState<Record<string, boolean>>({})
   const [lineReceived, setLineReceived] = useState<Record<string, number>>({})
+  const [lineLastScan, setLineLastScan] = useState<Record<string, string>>({})
   const [boxLabelDraft, setBoxLabelDraft] = useState<
     Record<string, { count: string; job: string }>
   >({})
@@ -514,13 +533,19 @@ function POInfo() {
         fetchPoJobRefs().catch(() => [] as PoJobRef[]),
         fetchPoLineSyncMaps(),
       ])
-      const { lineChecked: lineCheckedMap, customerPicks: customerPickMap, lineReceived: lineReceivedMap, missingSyncTables } =
-        syncMaps
+      const {
+        lineChecked: lineCheckedMap,
+        customerPicks: customerPickMap,
+        lineReceived: lineReceivedMap,
+        lineLastScan: lineLastScanMap,
+        missingSyncTables,
+      } = syncMaps
       if (missingSyncTables) {
         setNotice(
-          'Check, Here, and customer picks are only on this device until Supabase tables exist. Run supabase/add-po-info-line-sync.sql in the SQL Editor.'
+          'Check, Here, customer picks, and last-scanned times sync via Supabase. Run supabase/add-po-info-line-sync.sql in the SQL Editor if data does not appear on all devices.'
         )
       }
+      setLineLastScan(lineLastScanMap)
       if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
@@ -573,6 +598,40 @@ function POInfo() {
         }
       }
       setCustomerOverrides(mergedCustomerPicks)
+
+      const catalogForScanSync = buildCatalogLookupMap((catRes.data ?? []) as BarcodeCatalogItem[])
+      void (async () => {
+        try {
+          const merged: Record<string, string> = { ...lineLastScanMap }
+          const upserts: Promise<void>[] = []
+          for (const summary of list) {
+            const sourceLines = lineItemsForPo(summary.po_number, bundle.lineItems)
+            const lines = aggregateLineItemsForPo(summary.po_number, bundle.lineItems)
+            const computed = ipointLastScannedAtForAggregatedLines(
+              lines,
+              summary.barcodes,
+              catalogForScanSync,
+              sourceLines
+            )
+            for (const line of lines) {
+              const at = computed.get(line.id)
+              if (!at) continue
+              const key = lastScanStorageKey(summary.po_number, line.item_name)
+              const prev = merged[key]
+              const best = pickLatestIso(prev, at)
+              if (!best) continue
+              merged[key] = best
+              if (best !== prev) {
+                upserts.push(upsertPoLineLastScan(summary.po_number, line.item_name, best))
+              }
+            }
+          }
+          if (upserts.length > 0) await Promise.allSettled(upserts)
+          setLineLastScan(merged)
+        } catch {
+          /* keep fetched map */
+        }
+      })()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load PO check-in data')
     } finally {
@@ -694,7 +753,8 @@ function POInfo() {
       const lastScannedAt = ipointLastScannedAtForAggregatedLines(
         lines,
         summary.barcodes,
-        catalogMap
+        catalogMap,
+        sourceLines
       )
 
       map.set(poKey, { lines, scanned, lastScannedAt, labelKeys, lineDisplay })
@@ -1404,14 +1464,26 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
               ipointLastScannedAtForAggregatedLines(
                 poIpointLinesRaw,
                 summary.barcodes,
-                catalogMap
+                catalogMap,
+                lineItemsForPo(summary.po_number, lineItems)
               )
-            const ipointSort = ipointSortByPoKey[key] ?? { column: 'item' as const, asc: true }
+            const poLastScanAt = poSummaryLastScannedAt(summary.barcodes)
+            const ipointSort = ipointSortByPoKey[key] ?? { column: 'lastScan' as const, asc: false }
+            const mergedLastScanForSort = new Map<string, string | null>()
+            for (const line of poIpointLinesRaw) {
+              mergedLastScanForSort.set(
+                line.id,
+                pickLatestIso(
+                  lineLastScan[lastScanStorageKey(summary.po_number, line.item_name)],
+                  ipointLastScanned.get(line.id) ?? null
+                )
+              )
+            }
             const poIpointLines = sortIpointLines(
               poIpointLinesRaw,
               ipointSort.column,
               ipointSort.asc,
-              ipointLastScanned
+              mergedLastScanForSort
             )
             const ipointScanned = ipointBundle?.scanned ?? new Set<string>()
             const total = summary.barcodes.length + summary.documents.length
@@ -1475,6 +1547,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                           `${unique} barcode${unique !== 1 ? 's' : ''}${
                             scanTotal !== unique ? ` · ${scanTotal} scans` : ''
                           }`,
+                        poLastScanAt && `Last scan ${formatDateTime(poLastScanAt)}`,
                         summary.documents.length > 0 &&
                           `${summary.documents.length} doc${summary.documents.length !== 1 ? 's' : ''}`,
                       ]
@@ -1548,6 +1621,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 <th
                                   scope="col"
                                   className="po-info-ipoint-th-scanned"
+                                  title="Latest barcode scan time for this item on this PO"
                                   aria-sort={
                                     ipointSort.column === 'lastScan'
                                       ? ipointSort.asc
@@ -1635,7 +1709,10 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
                                 const someLineLabelsSelected =
                                   selectedCount > 0 && !allLineLabelsSelected
                                 const isScanned = ipointScanned.has(line.id)
-                                const lastScannedAt = ipointLastScanned.get(line.id) ?? null
+                                const lastScannedAt = pickLatestIso(
+                                  lineLastScan[lastScanStorageKey(summary.po_number, line.item_name)],
+                                  ipointLastScanned.get(line.id)
+                                )
                                 const isChecked = isPoLineChecked(
                                   lineChecked,
                                   summary.po_number,
