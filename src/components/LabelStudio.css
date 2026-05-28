@@ -548,6 +548,103 @@
   border-color: #1a5fb4;
   background: rgba(26, 95, 180, 0.08);
   z-index: 2;
+  overflow: visible;
+}
+
+.label-studio-canvas-element .ls-element-text {
+  display: block;
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.label-studio-canvas-element.ls-text-shrink .ls-element-text {
+  font-size: clamp(6px, 2.2vw, 14px) !important;
+  line-height: 1.1;
+}
+
+/* Resize handles (Label Live style) */
+.ls-resize-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background: #1a5fb4;
+  border: 1.5px solid #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  touch-action: none;
+}
+
+.ls-resize-nw {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+.ls-resize-n {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.ls-resize-ne {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+.ls-resize-e {
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.ls-resize-se {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+.ls-resize-s {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.ls-resize-sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+.ls-resize-w {
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.ls-layout-tools {
+  margin-bottom: 0.65rem;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e8ecf0;
+}
+
+.ls-btn-icon {
+  min-width: 2rem;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.ls-size-readout {
+  margin-bottom: 0.65rem;
+  padding: 0.45rem 0.55rem;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.ls-size-values {
+  margin: 0.2rem 0 0;
+  font-size: 0.88rem;
 }
 
 .label-studio-canvas-barcode {

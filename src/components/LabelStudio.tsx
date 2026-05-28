@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
 import {
@@ -36,6 +36,8 @@ import {
   type LabelStudioItemSource,
   type LabelStudioTemplate,
 } from '../types/labelStudio'
+import LabelStudioCanvas from './LabelStudioCanvas'
+import { alignElement } from '../lib/labelStudioCanvasGeometry'
 import './LabelStudio.css'
 
 type DataSource = LabelStudioItemSource | 'excel'
@@ -94,14 +96,6 @@ export default function LabelStudio() {
   const [showGuide, setShowGuide] = useState(
     () => localStorage.getItem(GUIDE_STORAGE_KEY) !== '1'
   )
-  const dragRef = useRef<{
-    elementId: string
-    startX: number
-    startY: number
-    origXPct: number
-    origYPct: number
-  } | null>(null)
-  const canvasRef = useRef<HTMLDivElement>(null)
 
   const activeItems = dataSource === 'excel' ? excelItems : items
   const filteredItems = useMemo(
@@ -167,6 +161,50 @@ export default function LabelStudio() {
     }))
   }
 
+  const updateElementRect = (id: string, rect: { xPct: number; yPct: number; widthPct: number; heightPct: number }) => {
+    updateElement(id, rect)
+  }
+
+  const duplicateSelectedElement = () => {
+    if (!selectedElement) return
+    const copy = {
+      ...selectedElement,
+      id: createElementId(),
+      name: `${selectedElement.name}_2`,
+      xPct: Math.min(92, selectedElement.xPct + 3),
+      yPct: Math.min(92, selectedElement.yPct + 3),
+    } as LabelStudioElement
+    setTemplate((t) => ({ ...t, elements: [...t.elements, copy] }))
+    setSelectedElementId(copy.id)
+  }
+
+  const moveElementLayer = (direction: 'up' | 'down') => {
+    if (!selectedElementId) return
+    setTemplate((t) => {
+      const idx = t.elements.findIndex((e) => e.id === selectedElementId)
+      if (idx < 0) return t
+      const next = [...t.elements]
+      const swap = direction === 'up' ? idx + 1 : idx - 1
+      if (swap < 0 || swap >= next.length) return t
+      ;[next[idx], next[swap]] = [next[swap], next[idx]]
+      return { ...t, elements: next }
+    })
+  }
+
+  const alignSelected = (align: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom') => {
+    if (!selectedElement) return
+    const rect = alignElement(
+      {
+        xPct: selectedElement.xPct,
+        yPct: selectedElement.yPct,
+        widthPct: selectedElement.widthPct,
+        heightPct: selectedElement.heightPct,
+      },
+      align
+    )
+    updateElementRect(selectedElement.id, rect)
+  }
+
   const applyPreset = (preset: 'inventory' | 'shipping') => {
     const next = preset === 'inventory' ? defaultInventoryTemplate() : defaultShippingTemplate()
     setTemplate(next)
@@ -193,6 +231,7 @@ export default function LabelStudio() {
       fontSize: 18,
       bold: true,
       align: 'Center',
+      textFitMode: 'ShrinkToFit',
     }
     setTemplate((t) => ({ ...t, elements: [...t.elements, el] }))
     setSelectedElementId(el.id)
@@ -224,6 +263,42 @@ export default function LabelStudio() {
     }))
     setSelectedElementId(null)
   }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!selectedElementId) return
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      const el = template.elements.find((x) => x.id === selectedElementId)
+      if (!el) return
+
+      const step = e.shiftKey ? 2 : 0.8
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        deleteSelectedElement()
+        return
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        updateElement(el.id, { xPct: el.xPct - step })
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        updateElement(el.id, { xPct: el.xPct + step })
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        updateElement(el.id, { yPct: el.yPct - step })
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        updateElement(el.id, { yPct: el.yPct + step })
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault()
+        duplicateSelectedElement()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedElementId, template.elements])
 
   const handleSaveTemplate = () => {
     const toSave = { ...template, updatedAt: new Date().toISOString() }
@@ -318,36 +393,6 @@ export default function LabelStudio() {
     }
   }
 
-  const onCanvasPointerDown = (el: LabelStudioElement, ev: React.PointerEvent) => {
-    ev.preventDefault()
-    setSelectedElementId(el.id)
-    dragRef.current = {
-      elementId: el.id,
-      startX: ev.clientX,
-      startY: ev.clientY,
-      origXPct: el.xPct,
-      origYPct: el.yPct,
-    }
-    ;(ev.target as HTMLElement).setPointerCapture(ev.pointerId)
-  }
-
-  const onCanvasPointerMove = (ev: React.PointerEvent) => {
-    const drag = dragRef.current
-    const canvas = canvasRef.current
-    if (!drag || !canvas) return
-    const rect = canvas.getBoundingClientRect()
-    const dxPct = ((ev.clientX - drag.startX) / rect.width) * 100
-    const dyPct = ((ev.clientY - drag.startY) / rect.height) * 100
-    updateElement(drag.elementId, {
-      xPct: Math.max(0, Math.min(100 - 5, drag.origXPct + dxPct)),
-      yPct: Math.max(0, Math.min(100 - 5, drag.origYPct + dyPct)),
-    })
-  }
-
-  const onCanvasPointerUp = () => {
-    dragRef.current = null
-  }
-
   const canvasPreviewText = (el: LabelStudioElement): string => {
     if (!previewItem) return el.content.replace(/\{\{[^}]+\}\}/g, '…')
     if (isBarcodeElement(el)) {
@@ -410,8 +455,8 @@ export default function LabelStudio() {
             </li>
           </ol>
           <p className="ls-guide-foot">
-            Placeholders like <code>{'{{item}}'}</code> and <code>{'{{barcode}}'}</code> are replaced with real
-            values from the row you selected. Click any box on the label preview to edit it.
+            Placeholders like <code>{'{{item}}'}</code> are filled from each row you check. On the label preview,
+            drag to move, drag the blue handles to resize (like Label Live), and use arrow keys to nudge.
           </p>
         </section>
       )}
@@ -628,7 +673,7 @@ export default function LabelStudio() {
             <span className="ls-field-label">Add to label</span>
             <div className="ls-btn-row">
               <button type="button" className="ls-btn ls-btn-secondary" onClick={addTextElement}>
-                + Text line
+                + Text
               </button>
               <button type="button" className="ls-btn ls-btn-secondary" onClick={addBarcodeElement}>
                 + Barcode
@@ -636,13 +681,43 @@ export default function LabelStudio() {
               <button
                 type="button"
                 className="ls-btn ls-btn-secondary"
+                onClick={duplicateSelectedElement}
+                disabled={!selectedElementId}
+                title="Ctrl+D"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                className="ls-btn ls-btn-secondary"
                 onClick={deleteSelectedElement}
                 disabled={!selectedElementId}
+                title="Delete"
               >
-                Remove selected
+                Delete
               </button>
             </div>
           </div>
+
+          {selectedElement && (
+            <div className="ls-layout-tools">
+              <span className="ls-field-label">Align on label</span>
+              <div className="ls-btn-row">
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('left')} title="Align left">⬅</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('centerH')} title="Center horizontally">↔</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('right')} title="Align right">➡</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('top')} title="Align top">⬆</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('centerV')} title="Center vertically">↕</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('bottom')} title="Align bottom">⬇</button>
+                <button type="button" className="ls-btn ls-btn-secondary" onClick={() => moveElementLayer('up')} title="Bring forward">
+                  ↑ Layer
+                </button>
+                <button type="button" className="ls-btn ls-btn-secondary" onClick={() => moveElementLayer('down')} title="Send backward">
+                  ↓ Layer
+                </button>
+              </div>
+            </div>
+          )}
 
           {template.elements.length > 0 && (
             <div className="ls-element-picker" role="tablist" aria-label="Fields on this label">
@@ -662,52 +737,19 @@ export default function LabelStudio() {
             </div>
           )}
 
-          <div
-            ref={canvasRef}
-            className="label-studio-canvas"
-            onPointerMove={onCanvasPointerMove}
-            onPointerUp={onCanvasPointerUp}
-            onPointerLeave={onCanvasPointerUp}
-          >
-            {template.elements.length === 0 && (
-              <p className="ls-canvas-empty">Pick a quick-start layout above, or add text / barcode.</p>
-            )}
-            {template.elements.map((el) => {
-              const isBarcode = isBarcodeElement(el)
-              const preview = canvasPreviewText(el) || '(empty)'
-              return (
-                <div
-                  key={el.id}
-                  className={`label-studio-canvas-element${selectedElementId === el.id ? ' active' : ''}${isBarcode ? ' label-studio-canvas-barcode' : ''}`}
-                  style={{
-                    left: `${el.xPct}%`,
-                    top: `${el.yPct}%`,
-                    width: `${el.widthPct}%`,
-                    height: `${el.heightPct}%`,
-                    ...(isTextElement(el)
-                      ? {
-                          fontSize: `${Math.max(8, el.fontSize * 0.45)}px`,
-                          fontWeight: el.bold ? 700 : 400,
-                          textAlign: el.align.toLowerCase() as 'left' | 'center' | 'right',
-                        }
-                      : {}),
-                  }}
-                  onPointerDown={(ev) => onCanvasPointerDown(el, ev)}
-                >
-                  {isBarcode ? (
-                    <>
-                      <div className="label-studio-barcode-bars" aria-hidden />
-                      <span className="label-studio-barcode-caption">{preview}</span>
-                    </>
-                  ) : (
-                    preview
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <LabelStudioCanvas
+            elements={template.elements}
+            selectedElementId={selectedElementId}
+            onSelect={setSelectedElementId}
+            onUpdateRect={updateElementRect}
+            renderPreview={canvasPreviewText}
+          />
 
-          <p className="ls-canvas-hint">Drag any box to move it. What you see is a preview — the printer uses your roll size.</p>
+          <p className="ls-canvas-hint">
+            <strong>Move:</strong> drag the box. <strong>Resize:</strong> drag the blue corner/edge handles (Shift =
+            keep proportions). <strong>Nudge:</strong> arrow keys. <strong>Delete</strong> key removes the selected
+            field.
+          </p>
 
           {previewItem && (
             <div className="ls-live-preview">
@@ -824,13 +866,29 @@ export default function LabelStudio() {
                 <div className="ls-prop-group">
                   <h3 className="ls-prop-group-title">Text style</h3>
                   <label className="ls-field">
-                    <span className="ls-field-label">Font size</span>
+                    <span className="ls-field-label">Text sizing</span>
+                    <select
+                      className="ls-select"
+                      value={selectedElement.textFitMode ?? 'ShrinkToFit'}
+                      onChange={(e) =>
+                        updateElement(selectedElement.id, {
+                          textFitMode: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="ShrinkToFit">Auto fit (shrink to box) — like Label Live</option>
+                      <option value="None">Fixed font size</option>
+                    </select>
+                  </label>
+                  <label className="ls-field">
+                    <span className="ls-field-label">Font size (when fixed)</span>
                     <input
                       className="ls-input"
                       type="number"
                       min={8}
                       max={36}
                       value={selectedElement.fontSize}
+                      disabled={selectedElement.textFitMode === 'ShrinkToFit'}
                       onChange={(e) =>
                         updateElement(selectedElement.id, {
                           fontSize: Number(e.target.value) || 14,
@@ -865,9 +923,16 @@ export default function LabelStudio() {
                 </div>
               ) : null}
 
+              <div className="ls-size-readout">
+                <span className="ls-field-label">Size on label</span>
+                <p className="ls-size-values">
+                  {Math.round(selectedElement.widthPct)}% wide × {Math.round(selectedElement.heightPct)}% tall
+                  <span className="ls-field-hint"> — drag handles on preview to change</span>
+                </p>
+              </div>
+
               <details className="ls-advanced">
-                <summary>Fine-tune position &amp; size</summary>
-                <p className="ls-field-hint">Usually you can just drag on the preview. Use these if you need exact control.</p>
+                <summary>Type exact position &amp; size (%)</summary>
                 <label className="ls-field">
                   <span className="ls-field-label">Width on label (%)</span>
                   <input

@@ -51,9 +51,14 @@ function buildTextObjectXml(
   lines: string[],
   fontSize: number,
   bounds: LabelBounds,
-  options: { align: LabelStudioTextElement['align']; bold: boolean }
+  options: {
+    align: LabelStudioTextElement['align']
+    bold: boolean
+    textFitMode: LabelStudioTextElement['textFitMode']
+  }
 ): string {
   const styled = buildStyledTextBlockXml(lines, fontSize, options.bold)
+  const fit = options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
   return (
     `<ObjectInfo>` +
     `<TextObject>` +
@@ -66,7 +71,7 @@ function buildTextObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>${options.align}</HorizontalAlignment>` +
     `<VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>ShrinkToFit</TextFitMode>` +
+    `<TextFitMode>${fit}</TextFitMode>` +
     `<UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +
@@ -123,6 +128,7 @@ function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
+      textFitMode: el.textFitMode ?? 'ShrinkToFit',
     })
   }
   return ''
@@ -145,7 +151,7 @@ export function buildLabelXmlFromStudio(
         ['(empty label)'],
         18,
         pctToBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
-        { align: 'Center', bold: true }
+        { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
   }

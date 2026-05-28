@@ -1,6 +1,8 @@
 import type { DymoPaperTemplate } from '../lib/dymoLabelXml'
 
 export type LabelStudioTextAlign = 'Left' | 'Center' | 'Right'
+/** Like DYMO / Label Live “Shrink to fit” vs fixed font size. */
+export type LabelStudioTextFitMode = 'ShrinkToFit' | 'None'
 
 export type LabelStudioBarcodeType =
   | 'Auto'
@@ -29,6 +31,7 @@ export type LabelStudioTextElement = LabelStudioElementBase & {
   fontSize: number
   bold: boolean
   align: LabelStudioTextAlign
+  textFitMode: LabelStudioTextFitMode
 }
 
 export type LabelStudioBarcodeElement = LabelStudioElementBase & {
@@ -41,7 +44,10 @@ export type LabelStudioBarcodeElement = LabelStudioElementBase & {
 export type LabelStudioElement = LabelStudioTextElement | LabelStudioBarcodeElement
 
 /** @deprecated Saved templates may omit `kind`; normalized on load. */
-export type LegacyLabelStudioElement = Omit<LabelStudioTextElement, 'kind'> & { kind?: string }
+export type LegacyLabelStudioElement = Omit<LabelStudioTextElement, 'kind' | 'textFitMode'> & {
+  kind?: string
+  textFitMode?: LabelStudioTextFitMode
+}
 
 export type LabelStudioTemplate = {
   id: string
@@ -115,6 +121,7 @@ export function normalizeStudioElement(raw: LegacyLabelStudioElement | LabelStud
     fontSize: legacy.fontSize ?? 18,
     bold: legacy.bold ?? true,
     align: legacy.align ?? 'Center',
+    textFitMode: legacy.textFitMode ?? 'ShrinkToFit',
   }
 }
 
@@ -145,6 +152,7 @@ export function defaultShippingTemplate(): LabelStudioTemplate {
         fontSize: 22,
         bold: true,
         align: 'Center',
+        textFitMode: 'ShrinkToFit',
       },
       {
         kind: 'text',
@@ -158,6 +166,7 @@ export function defaultShippingTemplate(): LabelStudioTemplate {
         fontSize: 16,
         bold: true,
         align: 'Center',
+        textFitMode: 'ShrinkToFit',
       },
     ],
   }
@@ -183,6 +192,7 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
         fontSize: 20,
         bold: true,
         align: 'Center',
+        textFitMode: 'ShrinkToFit',
       },
       {
         kind: 'text',
@@ -196,6 +206,7 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
         fontSize: 13,
         bold: false,
         align: 'Center',
+        textFitMode: 'ShrinkToFit',
       },
       {
         kind: 'barcode',
