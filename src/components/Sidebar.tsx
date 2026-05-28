@@ -24,6 +24,7 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
     { id: 'print-station', label: 'Print Station', icon: '🖨️' },
     { id: 'wire', label: 'Wire Tracker', icon: '🔌' },
     { id: 'purchase-list', label: 'Purchase List', icon: '📑' },
+    { id: 'inventory', label: 'Inventory', icon: '📦' },
     { id: 'analytics', label: 'Analytics', icon: '📊' },
   ]
 

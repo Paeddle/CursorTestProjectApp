@@ -10,6 +10,7 @@ import LabelPrintStation, { PRINT_STATION_ROUTE_PATH } from './components/LabelP
 import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
 import LabelStudio from './components/LabelStudio'
+import InventoryPage from './components/InventoryPage'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
 import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
 import { formatPoDisplay } from './lib/poIpointMatch'
@@ -596,6 +597,8 @@ function App() {
           <PurchaseList />
         ) : activePage === 'label-studio' ? (
           <LabelStudio />
+        ) : activePage === 'inventory' ? (
+          <InventoryPage />
         ) : (
         <>
         <header className="header">
