@@ -40,12 +40,40 @@ import './LabelStudio.css'
 
 type DataSource = LabelStudioItemSource | 'excel'
 
-const SOURCE_LABELS: Record<DataSource, string> = {
-  inventory: 'Inventory',
-  location: 'Locations',
-  barcode: 'Barcodes',
-  po_line: 'PO lines',
-  excel: 'Excel upload',
+const GUIDE_STORAGE_KEY = 'label-studio-guide-dismissed'
+
+const SOURCE_OPTIONS: {
+  id: DataSource
+  label: string
+  hint: string
+}[] = [
+  {
+    id: 'inventory',
+    label: 'Inventory',
+    hint: 'Items from your inventory upload (Purchase List page). Good for part labels with barcodes.',
+  },
+  {
+    id: 'barcode',
+    label: 'Barcode catalog',
+    hint: 'Saved barcode lookups (manufacturer, part number, UPC).',
+  },
+  {
+    id: 'location',
+    label: 'Room locations',
+    hint: 'iPoint location sheets — room name + product per row.',
+  },
+  {
+    id: 'po_line',
+    label: 'PO lines',
+    hint: 'Open purchase order lines (PO number + item name).',
+  },
+]
+
+function elementSummary(el: LabelStudioElement): string {
+  const short = el.content.replace(/\{\{|\}\}/g, '').trim() || '(empty)'
+  if (isBarcodeElement(el)) return `Barcode: ${short}`
+  const preview = el.content.length > 28 ? `${el.content.slice(0, 28)}…` : el.content
+  return `Text: ${preview}`
 }
 
 export default function LabelStudio() {
@@ -63,6 +91,9 @@ export default function LabelStudio() {
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [printing, setPrinting] = useState(false)
   const [dymoSummary, setDymoSummary] = useState<string | null>(null)
+  const [showGuide, setShowGuide] = useState(
+    () => localStorage.getItem(GUIDE_STORAGE_KEY) !== '1'
+  )
   const dragRef = useRef<{
     elementId: string
     startX: number
@@ -84,6 +115,9 @@ export default function LabelStudio() {
   }, [filteredItems, previewItemId, selectedItemIds])
 
   const selectedElement = template.elements.find((e) => e.id === selectedElementId) ?? null
+  const selectedItems = filteredItems.filter((i) => selectedItemIds.has(i.id))
+  const paperName =
+    DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.paperName ?? '30323 Shipping'
 
   const loadItemsForSource = useCallback(async (source: DataSource) => {
     if (source === 'excel') return
@@ -97,7 +131,7 @@ export default function LabelStudio() {
       else if (source === 'po_line') loaded = await fetchLabelStudioPoLineItems()
       setItems(loaded)
       if (loaded.length === 0) {
-        setItemsError(`No ${SOURCE_LABELS[source].toLowerCase()} in the database yet.`)
+        setItemsError(`No rows found. Upload data on the relevant page first (e.g. Purchase List for inventory).`)
       }
     } catch (e) {
       setItemsError(e instanceof Error ? e.message : 'Failed to load items')
@@ -115,6 +149,11 @@ export default function LabelStudio() {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
   }, [])
 
+  const dismissGuide = () => {
+    setShowGuide(false)
+    localStorage.setItem(GUIDE_STORAGE_KEY, '1')
+  }
+
   const updateTemplate = (patch: Partial<LabelStudioTemplate>) => {
     setTemplate((t) => ({ ...t, ...patch }))
   }
@@ -126,6 +165,19 @@ export default function LabelStudio() {
         el.id === id ? ({ ...el, ...patch } as LabelStudioElement) : el
       ),
     }))
+  }
+
+  const applyPreset = (preset: 'inventory' | 'shipping') => {
+    const next = preset === 'inventory' ? defaultInventoryTemplate() : defaultShippingTemplate()
+    setTemplate(next)
+    setSelectedElementId(next.elements[0]?.id ?? null)
+    setStatus({
+      kind: 'ok',
+      text:
+        preset === 'inventory'
+          ? 'Loaded “item + barcode” layout. Select inventory items on the left, then print.'
+          : 'Loaded “job + location” layout. Select location or PO items on the left, then print.',
+    })
   }
 
   const addTextElement = () => {
@@ -177,14 +229,14 @@ export default function LabelStudio() {
     const toSave = { ...template, updatedAt: new Date().toISOString() }
     saveLabelStudioTemplate(toSave)
     setTemplates(loadLabelStudioTemplates())
-    setStatus({ kind: 'ok', text: `Saved template “${toSave.name}”.` })
+    setStatus({ kind: 'ok', text: `Saved “${toSave.name}” on this browser.` })
   }
 
   const handleNewTemplate = () => {
     const t: LabelStudioTemplate = {
       ...defaultShippingTemplate(),
       id: `tpl-${Date.now().toString(36)}`,
-      name: 'New template',
+      name: 'My template',
     }
     setTemplate(t)
     setSelectedElementId(t.elements[0]?.id ?? null)
@@ -195,10 +247,11 @@ export default function LabelStudio() {
     setTemplate(copy)
     saveLabelStudioTemplate(copy)
     setTemplates(loadLabelStudioTemplates())
+    setStatus({ kind: 'ok', text: `Created copy: “${copy.name}”.` })
   }
 
   const handleDeleteTemplate = () => {
-    if (!window.confirm(`Delete template “${template.name}”?`)) return
+    if (!window.confirm(`Delete saved template “${template.name}”?`)) return
     deleteLabelStudioTemplate(template.id)
     const next = loadLabelStudioTemplates()
     setTemplates(next)
@@ -221,22 +274,23 @@ export default function LabelStudio() {
 
   const clearSelection = () => setSelectedItemIds(new Set())
 
-  const selectedItems = filteredItems.filter((i) => selectedItemIds.has(i.id))
-
   const handlePrint = async () => {
     const toPrint =
       selectedItems.length > 0 ? selectedItems : previewItem ? [previewItem] : []
     if (toPrint.length === 0) {
-      setStatus({ kind: 'err', text: 'Select at least one item (or pick one to preview).' })
+      setStatus({
+        kind: 'err',
+        text: 'Check one or more items in the list on the left (or click a single row to preview).',
+      })
       return
     }
     setPrinting(true)
-    setStatus({ kind: 'info', text: `Printing ${toPrint.length} label(s)…` })
+    setStatus({ kind: 'info', text: `Sending ${toPrint.length} label(s) to the printer…` })
     try {
       const result = await printStudioLabels(template, toPrint)
       setStatus({
         kind: 'ok',
-        text: `Printed ${result.printed} label${result.printed !== 1 ? 's' : ''} via ${result.method}.`,
+        text: `Printed ${result.printed} label${result.printed !== 1 ? 's' : ''}.`,
       })
     } catch (e) {
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Print failed' })
@@ -255,7 +309,10 @@ export default function LabelStudio() {
       if (parsed.length === 0) throw new Error('No rows found in the spreadsheet.')
       setExcelItems(parsed)
       setDataSource('excel')
-      setStatus({ kind: 'ok', text: `Loaded ${parsed.length} items from ${file.name}.` })
+      setStatus({
+        kind: 'ok',
+        text: `Loaded ${parsed.length} rows from Excel. Column headers become fields like {{item}}, {{barcode}}, etc.`,
+      })
     } catch (err) {
       setStatus({ kind: 'err', text: err instanceof Error ? err.message : 'Excel import failed' })
     }
@@ -294,101 +351,90 @@ export default function LabelStudio() {
   const canvasPreviewText = (el: LabelStudioElement): string => {
     if (!previewItem) return el.content.replace(/\{\{[^}]+\}\}/g, '…')
     if (isBarcodeElement(el)) {
-      return mergedBarcodeForElement(el.content, previewItem) || '(no barcode value)'
+      return mergedBarcodeForElement(el.content, previewItem) || '(no value)'
     }
     return normalizeMergedText(resolveMergeTemplate(el.content, previewItem.fields))
   }
 
+  const currentSourceHint =
+    dataSource === 'excel'
+      ? 'Using your uploaded spreadsheet — each column is a merge field.'
+      : SOURCE_OPTIONS.find((s) => s.id === dataSource)?.hint ?? ''
+
   return (
     <div className="label-studio">
-      <header className="label-studio-header">
-        <h1>Label Studio</h1>
-        <p>
-          Design DYMO labels like Label Live / DYMO Connect, pull item data from your database, and print to your
-          LabelWriter 450 Twin Turbo ({LABEL_WIDTH_MM}×{LABEL_HEIGHT_MM} mm). {dymoSummary && <em>{dymoSummary}</em>}
-        </p>
+      <header className="ls-header">
+        <div>
+          <h1>Label Studio</h1>
+          <p className="ls-header-sub">
+            Print stickers on your DYMO LabelWriter ({LABEL_WIDTH_MM}×{LABEL_HEIGHT_MM} mm). Use this
+            computer with DYMO Connect running.
+          </p>
+        </div>
+        {dymoSummary && (
+          <div className="ls-printer-pill" title="Printer status from DYMO Connect">
+            {dymoSummary}
+          </div>
+        )}
       </header>
 
-      <div className="label-studio-toolbar">
-        <select
-          value={template.id}
-          onChange={(e) => {
-            const t = templates.find((x) => x.id === e.target.value)
-            if (t) {
-              const normalized = normalizeStudioTemplate(t)
-              setTemplate(normalized)
-              setSelectedElementId(normalized.elements[0]?.id ?? null)
-            }
-          }}
-          aria-label="Saved template"
-        >
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={template.name}
-          onChange={(e) => updateTemplate({ name: e.target.value })}
-          aria-label="Template name"
-          style={{ minWidth: 160 }}
-        />
-        <select
-          value={template.paperTemplateId}
-          onChange={(e) => updateTemplate({ paperTemplateId: e.target.value })}
-          aria-label="Label roll size"
-        >
-          {DYMO_PAPER_TEMPLATES.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.paperName}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={addTextElement}>
-          + Text
-        </button>
-        <button type="button" onClick={addBarcodeElement}>
-          + Barcode
-        </button>
-        <button type="button" onClick={deleteSelectedElement} disabled={!selectedElementId}>
-          Delete field
-        </button>
-        <button type="button" onClick={handleSaveTemplate}>
-          Save template
-        </button>
-        <button type="button" onClick={handleNewTemplate}>
-          New
-        </button>
-        <button type="button" onClick={handleDuplicateTemplate}>
-          Duplicate
-        </button>
-        <button type="button" onClick={handleDeleteTemplate}>
-          Delete template
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setTemplate(defaultShippingTemplate())
-            setSelectedElementId(null)
-          }}
-        >
-          Preset: Job+loc
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setTemplate(defaultInventoryTemplate())
-            setSelectedElementId(null)
-          }}
-        >
-          Preset: Item+barcode
-        </button>
-        <button type="button" className="primary" onClick={() => void handlePrint()} disabled={printing}>
-          {printing ? 'Printing…' : 'Print selected'}
-        </button>
-      </div>
+      {showGuide && (
+        <section className="ls-guide" aria-label="How to use Label Studio">
+          <div className="ls-guide-head">
+            <strong>How it works (3 steps)</strong>
+            <button type="button" className="ls-guide-dismiss" onClick={dismissGuide}>
+              Hide guide
+            </button>
+          </div>
+          <ol className="ls-guide-steps">
+            <li>
+              <span className="ls-step-num">1</span>
+              <span>
+                <strong>Pick a layout</strong> — use a quick-start card below, or adjust the label preview
+                in the middle.
+              </span>
+            </li>
+            <li>
+              <span className="ls-step-num">2</span>
+              <span>
+                <strong>Choose what to print</strong> — check items in the list on the left (inventory,
+                barcodes, locations, or upload Excel like Label Live).
+              </span>
+            </li>
+            <li>
+              <span className="ls-step-num">3</span>
+              <span>
+                <strong>Print</strong> — click the blue Print button. Each checked row prints one label with
+                its data filled in.
+              </span>
+            </li>
+          </ol>
+          <p className="ls-guide-foot">
+            Placeholders like <code>{'{{item}}'}</code> and <code>{'{{barcode}}'}</code> are replaced with real
+            values from the row you selected. Click any box on the label preview to edit it.
+          </p>
+        </section>
+      )}
+
+      <section className="ls-quick-start" aria-label="Quick start layouts">
+        <h2 className="ls-section-title">Quick start</h2>
+        <div className="ls-preset-cards">
+          <button type="button" className="ls-preset-card" onClick={() => applyPreset('inventory')}>
+            <span className="ls-preset-icon" aria-hidden>
+              ▐▌
+            </span>
+            <span className="ls-preset-name">Item + barcode</span>
+            <span className="ls-preset-desc">Product name, part #, scannable UPC/Code128 barcode</span>
+          </button>
+          <button type="button" className="ls-preset-card" onClick={() => applyPreset('shipping')}>
+            <span className="ls-preset-icon" aria-hidden>
+              Aa
+            </span>
+            <span className="ls-preset-name">Job + location</span>
+            <span className="ls-preset-desc">Customer/job name on top, room or location below (PO stickers)</span>
+          </button>
+        </div>
+      </section>
 
       {status && (
         <div className={`label-studio-status ${status.kind}`} role="status">
@@ -396,54 +442,93 @@ export default function LabelStudio() {
         </div>
       )}
 
+      <div className="ls-print-bar">
+        <div className="ls-print-bar-summary">
+          <strong>
+            {selectedItemIds.size > 0
+              ? `${selectedItemIds.size} item${selectedItemIds.size !== 1 ? 's' : ''} ready to print`
+              : previewItem
+                ? '1 item (preview only — check the box to print)'
+                : 'No items selected'}
+          </strong>
+          <span className="ls-print-bar-meta">
+            Template: {template.name} · Roll: {paperName}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="ls-btn ls-btn-primary ls-btn-print"
+          onClick={() => void handlePrint()}
+          disabled={printing}
+        >
+          {printing ? 'Printing…' : 'Print labels'}
+        </button>
+      </div>
+
       <div className="label-studio-grid">
-        <aside className="label-studio-panel">
-          <h2>Items</h2>
-          <div className="label-studio-source-tabs" role="tablist">
-            {(Object.keys(SOURCE_LABELS) as DataSource[]).map((src) => (
-              <button
-                key={src}
-                type="button"
-                role="tab"
-                aria-selected={dataSource === src}
-                className={dataSource === src ? 'active' : ''}
-                onClick={() => setDataSource(src)}
-              >
-                {SOURCE_LABELS[src]}
-              </button>
-            ))}
+        <aside className="label-studio-panel ls-panel-items">
+          <div className="ls-panel-head">
+            <span className="ls-step-badge">Step 2</span>
+            <h2>Choose items to print</h2>
           </div>
+
+          <label className="ls-field">
+            <span className="ls-field-label">Data source</span>
+            <select
+              className="ls-select"
+              value={dataSource === 'excel' ? 'excel' : dataSource}
+              onChange={(e) => {
+                const v = e.target.value as DataSource
+                setDataSource(v)
+              }}
+            >
+              {SOURCE_OPTIONS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+              {excelItems.length > 0 && <option value="excel">Excel upload ({excelItems.length} rows)</option>}
+            </select>
+            <span className="ls-field-hint">{currentSourceHint}</span>
+          </label>
+
           {dataSource !== 'excel' && (
-            <button type="button" onClick={() => void loadItemsForSource(dataSource)} disabled={loadingItems}>
-              {loadingItems ? 'Loading…' : 'Refresh'}
+            <button
+              type="button"
+              className="ls-btn ls-btn-secondary ls-btn-block"
+              onClick={() => void loadItemsForSource(dataSource)}
+              disabled={loadingItems}
+            >
+              {loadingItems ? 'Loading…' : 'Reload list'}
             </button>
           )}
-          <div className="label-studio-excel-row">
-            <label>
-              Excel item list (Label Live–style)
-              <input type="file" accept=".xlsx,.xls" onChange={(e) => void handleExcelUpload(e)} />
-            </label>
+
+          <div className="ls-excel-upload">
+            <span className="ls-field-label">Or import from Excel</span>
+            <p className="ls-field-hint">Same idea as Label Live — first row = column names.</p>
+            <input type="file" accept=".xlsx,.xls" onChange={(e) => void handleExcelUpload(e)} />
           </div>
+
           <input
             className="label-studio-search"
             type="search"
-            placeholder="Search items…"
+            placeholder="Search by name, part, barcode…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
-            <button type="button" onClick={selectAllVisible}>
-              Select all
+
+          <div className="ls-item-actions">
+            <button type="button" className="ls-btn ls-btn-secondary" onClick={selectAllVisible}>
+              Select all shown
             </button>
-            <button type="button" onClick={clearSelection}>
+            <button type="button" className="ls-btn ls-btn-secondary" onClick={clearSelection}>
               Clear
             </button>
-            <span style={{ fontSize: '0.85rem', alignSelf: 'center' }}>
-              {selectedItemIds.size} selected
-            </span>
           </div>
-          {itemsError && <p style={{ color: '#b71c1c', fontSize: '0.85rem' }}>{itemsError}</p>}
-          <div className="label-studio-item-list" role="listbox" aria-label="Items">
+
+          {itemsError && <p className="ls-error">{itemsError}</p>}
+
+          <div className="label-studio-item-list" role="listbox" aria-label="Items to print">
             {filteredItems.map((item) => (
               <div
                 key={item.id}
@@ -457,18 +542,126 @@ export default function LabelStudio() {
                   checked={selectedItemIds.has(item.id)}
                   onChange={() => toggleItemSelection(item.id, false)}
                   onClick={(ev) => ev.stopPropagation()}
+                  aria-label={`Print ${item.title}`}
                 />
                 <span>{item.title}</span>
               </div>
             ))}
             {!loadingItems && filteredItems.length === 0 && (
-              <p style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#666' }}>No items match.</p>
+              <p className="ls-empty">No items match your search.</p>
             )}
           </div>
         </aside>
 
         <section className="label-studio-panel label-studio-canvas-wrap">
-          <h2>Design</h2>
+          <div className="ls-panel-head">
+            <span className="ls-step-badge">Step 1</span>
+            <h2>Label layout</h2>
+          </div>
+
+          <details className="ls-template-details">
+            <summary>Template settings (name, roll size, save)</summary>
+            <div className="ls-template-form">
+              <label className="ls-field">
+                <span className="ls-field-label">Saved template</span>
+                <select
+                  className="ls-select"
+                  value={template.id}
+                  onChange={(e) => {
+                    const t = templates.find((x) => x.id === e.target.value)
+                    if (t) {
+                      const normalized = normalizeStudioTemplate(t)
+                      setTemplate(normalized)
+                      setSelectedElementId(normalized.elements[0]?.id ?? null)
+                    }
+                  }}
+                >
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="ls-field">
+                <span className="ls-field-label">Template name</span>
+                <input
+                  className="ls-input"
+                  type="text"
+                  value={template.name}
+                  onChange={(e) => updateTemplate({ name: e.target.value })}
+                />
+              </label>
+              <label className="ls-field">
+                <span className="ls-field-label">Label roll in printer</span>
+                <select
+                  className="ls-select"
+                  value={template.paperTemplateId}
+                  onChange={(e) => updateTemplate({ paperTemplateId: e.target.value })}
+                >
+                  {DYMO_PAPER_TEMPLATES.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.paperName}
+                    </option>
+                  ))}
+                </select>
+                <span className="ls-field-hint">Must match the roll loaded in DYMO Connect (usually 30323).</span>
+              </label>
+              <div className="ls-btn-row">
+                <button type="button" className="ls-btn ls-btn-secondary" onClick={handleSaveTemplate}>
+                  Save template
+                </button>
+                <button type="button" className="ls-btn ls-btn-secondary" onClick={handleNewTemplate}>
+                  New blank
+                </button>
+                <button type="button" className="ls-btn ls-btn-secondary" onClick={handleDuplicateTemplate}>
+                  Duplicate
+                </button>
+                <button type="button" className="ls-btn ls-btn-danger" onClick={handleDeleteTemplate}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <div className="ls-design-tools">
+            <span className="ls-field-label">Add to label</span>
+            <div className="ls-btn-row">
+              <button type="button" className="ls-btn ls-btn-secondary" onClick={addTextElement}>
+                + Text line
+              </button>
+              <button type="button" className="ls-btn ls-btn-secondary" onClick={addBarcodeElement}>
+                + Barcode
+              </button>
+              <button
+                type="button"
+                className="ls-btn ls-btn-secondary"
+                onClick={deleteSelectedElement}
+                disabled={!selectedElementId}
+              >
+                Remove selected
+              </button>
+            </div>
+          </div>
+
+          {template.elements.length > 0 && (
+            <div className="ls-element-picker" role="tablist" aria-label="Fields on this label">
+              {template.elements.map((el) => (
+                <button
+                  key={el.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedElementId === el.id}
+                  className={`ls-element-chip${selectedElementId === el.id ? ' active' : ''}${isBarcodeElement(el) ? ' barcode' : ''}`}
+                  onClick={() => setSelectedElementId(el.id)}
+                >
+                  {isBarcodeElement(el) ? '▐▌ ' : 'Aa '}
+                  {elementSummary(el)}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div
             ref={canvasRef}
             className="label-studio-canvas"
@@ -476,6 +669,9 @@ export default function LabelStudio() {
             onPointerUp={onCanvasPointerUp}
             onPointerLeave={onCanvasPointerUp}
           >
+            {template.elements.length === 0 && (
+              <p className="ls-canvas-empty">Pick a quick-start layout above, or add text / barcode.</p>
+            )}
             {template.elements.map((el) => {
               const isBarcode = isBarcodeElement(el)
               const preview = canvasPreviewText(el) || '(empty)'
@@ -510,60 +706,71 @@ export default function LabelStudio() {
               )
             })}
           </div>
-          <p style={{ fontSize: '0.85rem', color: '#555', maxWidth: 420, textAlign: 'center' }}>
-            Drag fields to position them. Add <strong>+ Barcode</strong> for scannable Code128/UPC/EAN barcodes bound to{' '}
-            <code>{'{{barcode}}'}</code> or any merge field.
-          </p>
+
+          <p className="ls-canvas-hint">Drag any box to move it. What you see is a preview — the printer uses your roll size.</p>
+
           {previewItem && (
-            <p style={{ fontSize: '0.85rem', maxWidth: 420 }}>
-              <strong>Preview:</strong> {previewTextForTemplate(template.elements, previewItem)}
-            </p>
+            <div className="ls-live-preview">
+              <span className="ls-field-label">Sample with “{previewItem.title}”</span>
+              <p>{previewTextForTemplate(template.elements, previewItem)}</p>
+            </div>
           )}
         </section>
 
         <aside className="label-studio-panel label-studio-props">
-          <h2>Properties</h2>
+          <div className="ls-panel-head">
+            <h2>Edit selected field</h2>
+          </div>
+
           {selectedElement ? (
             <>
-              <label>
-                DYMO object name
-                <input
-                  value={selectedElement.name}
-                  onChange={(e) => updateElement(selectedElement.id, { name: e.target.value })}
-                />
-              </label>
-              <label>
-                Content (merge fields)
+              <p className="ls-field-type">
+                {isBarcodeElement(selectedElement) ? 'Scannable barcode' : 'Text'}
+                {selectedElement.name ? ` · ${selectedElement.name}` : ''}
+              </p>
+
+              <label className="ls-field">
+                <span className="ls-field-label">What to print</span>
                 <textarea
+                  className="ls-textarea"
                   value={selectedElement.content}
                   onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })}
+                  placeholder="{{item}} or {{barcode}}"
                 />
+                <span className="ls-field-hint">
+                  Type text and/or insert data fields below. Each {'{{name}}'} is filled from the item you
+                  selected.
+                </span>
               </label>
-              <p className="label-studio-merge-hints">
-                Examples: <code>{'{{item}}'}</code>, <code>{'{{location}}'}</code>,{' '}
-                <code>{'{{barcode}}'}</code>. Excel columns become field names automatically.
-              </p>
-              <div className="label-studio-merge-chips">
-                {LABEL_STUDIO_MERGE_FIELDS.map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    title={f.example}
-                    onClick={() =>
-                      updateElement(selectedElement.id, {
-                        content: `${selectedElement.content}{{${f.key}}}`,
-                      })
-                    }
-                  >
-                    {f.key}
-                  </button>
-                ))}
+
+              <div className="ls-merge-section">
+                <span className="ls-field-label">Insert data field</span>
+                <div className="label-studio-merge-chips">
+                  {LABEL_STUDIO_MERGE_FIELDS.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      className="ls-merge-chip"
+                      title={`Example: ${f.example}`}
+                      onClick={() =>
+                        updateElement(selectedElement.id, {
+                          content: `${selectedElement.content}{{${f.key}}}`,
+                        })
+                      }
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+
               {isBarcodeElement(selectedElement) ? (
-                <>
-                  <label>
-                    Barcode type
+                <div className="ls-prop-group">
+                  <h3 className="ls-prop-group-title">Barcode options</h3>
+                  <label className="ls-field">
+                    <span className="ls-field-label">Barcode format</span>
                     <select
+                      className="ls-select"
                       value={selectedElement.barcodeType}
                       onChange={(e) =>
                         updateElement(selectedElement.id, {
@@ -571,17 +778,18 @@ export default function LabelStudio() {
                         })
                       }
                     >
-                      <option value="Auto">Auto (UPC-12 / EAN-13 / Code128)</option>
-                      <option value="Code128Auto">Code 128</option>
-                      <option value="UpcA">UPC-A</option>
-                      <option value="Ean13">EAN-13</option>
+                      <option value="Auto">Auto-detect (recommended)</option>
+                      <option value="Code128Auto">Code 128 (most part numbers)</option>
+                      <option value="UpcA">UPC-A (12-digit retail)</option>
+                      <option value="Ean13">EAN-13 (13-digit retail)</option>
                       <option value="Code39">Code 39</option>
-                      <option value="QrCode">QR Code</option>
+                      <option value="QrCode">QR code</option>
                     </select>
                   </label>
-                  <label>
-                    Barcode size
+                  <label className="ls-field">
+                    <span className="ls-field-label">Barcode height</span>
                     <select
+                      className="ls-select"
                       value={selectedElement.size}
                       onChange={(e) =>
                         updateElement(selectedElement.id, {
@@ -595,9 +803,10 @@ export default function LabelStudio() {
                       <option value="ExtraLarge">Extra large</option>
                     </select>
                   </label>
-                  <label>
-                    Human-readable text
+                  <label className="ls-field">
+                    <span className="ls-field-label">Show numbers under barcode?</span>
                     <select
+                      className="ls-select"
                       value={selectedElement.textPosition}
                       onChange={(e) =>
                         updateElement(selectedElement.id, {
@@ -605,17 +814,19 @@ export default function LabelStudio() {
                         })
                       }
                     >
-                      <option value="Bottom">Below barcode</option>
-                      <option value="Top">Above barcode</option>
-                      <option value="None">Hidden</option>
+                      <option value="Bottom">Yes, below</option>
+                      <option value="Top">Yes, above</option>
+                      <option value="None">No, barcode only</option>
                     </select>
                   </label>
-                </>
+                </div>
               ) : isTextElement(selectedElement) ? (
-                <>
-                  <label>
-                    Font size (pt)
+                <div className="ls-prop-group">
+                  <h3 className="ls-prop-group-title">Text style</h3>
+                  <label className="ls-field">
+                    <span className="ls-field-label">Font size</span>
                     <input
+                      className="ls-input"
                       type="number"
                       min={8}
                       max={36}
@@ -627,9 +838,10 @@ export default function LabelStudio() {
                       }
                     />
                   </label>
-                  <label>
-                    Alignment
+                  <label className="ls-field">
+                    <span className="ls-field-label">Alignment</span>
                     <select
+                      className="ls-select"
                       value={selectedElement.align}
                       onChange={(e) =>
                         updateElement(selectedElement.id, {
@@ -642,49 +854,69 @@ export default function LabelStudio() {
                       <option value="Right">Right</option>
                     </select>
                   </label>
-                  <label>
+                  <label className="ls-field ls-field-checkbox">
                     <input
                       type="checkbox"
                       checked={selectedElement.bold}
                       onChange={(e) => updateElement(selectedElement.id, { bold: e.target.checked })}
-                    />{' '}
-                    Bold
+                    />
+                    Bold text
                   </label>
-                </>
+                </div>
               ) : null}
-              <label>
-                Width %
-                <input
-                  type="number"
-                  min={10}
-                  max={100}
-                  value={Math.round(selectedElement.widthPct)}
-                  onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      widthPct: Number(e.target.value) || 80,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Height %
-                <input
-                  type="number"
-                  min={10}
-                  max={100}
-                  value={Math.round(selectedElement.heightPct)}
-                  onChange={(e) =>
-                    updateElement(selectedElement.id, {
-                      heightPct: Number(e.target.value) || 25,
-                    })
-                  }
-                />
-              </label>
+
+              <details className="ls-advanced">
+                <summary>Fine-tune position &amp; size</summary>
+                <p className="ls-field-hint">Usually you can just drag on the preview. Use these if you need exact control.</p>
+                <label className="ls-field">
+                  <span className="ls-field-label">Width on label (%)</span>
+                  <input
+                    className="ls-input"
+                    type="number"
+                    min={10}
+                    max={100}
+                    value={Math.round(selectedElement.widthPct)}
+                    onChange={(e) =>
+                      updateElement(selectedElement.id, {
+                        widthPct: Number(e.target.value) || 80,
+                      })
+                    }
+                  />
+                </label>
+                <label className="ls-field">
+                  <span className="ls-field-label">Height on label (%)</span>
+                  <input
+                    className="ls-input"
+                    type="number"
+                    min={10}
+                    max={100}
+                    value={Math.round(selectedElement.heightPct)}
+                    onChange={(e) =>
+                      updateElement(selectedElement.id, {
+                        heightPct: Number(e.target.value) || 25,
+                      })
+                    }
+                  />
+                </label>
+                <label className="ls-field">
+                  <span className="ls-field-label">Internal name (optional)</span>
+                  <input
+                    className="ls-input"
+                    value={selectedElement.name}
+                    onChange={(e) => updateElement(selectedElement.id, { name: e.target.value })}
+                  />
+                  <span className="ls-field-hint">Only needed for advanced DYMO templates; safe to ignore.</span>
+                </label>
+              </details>
             </>
           ) : (
-            <p style={{ fontSize: '0.9rem', color: '#666' }}>
-              Click a field on the label to edit it, or add + Text / + Barcode.
-            </p>
+            <div className="ls-props-empty">
+              <p>Click a box on the label preview, or pick a field from the chips above the preview.</p>
+              <p className="ls-field-hint">
+                Not sure where to start? Use <strong>Item + barcode</strong> quick start, load inventory on the
+                left, check a few rows, and hit Print.
+              </p>
+            </div>
           )}
         </aside>
       </div>
