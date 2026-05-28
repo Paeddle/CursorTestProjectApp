@@ -20,6 +20,7 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
     { id: 'order-history', label: 'Order History', icon: '📋' },
     { id: 'non-inventory-orders', label: 'Non-Inventory Orders', icon: '🧾' },
     { id: 'po-info', label: 'PO Info', icon: '📥' },
+    { id: 'label-studio', label: 'Label Studio', icon: '🏷️' },
     { id: 'print-station', label: 'Print Station', icon: '🖨️' },
     { id: 'wire', label: 'Wire Tracker', icon: '🔌' },
     { id: 'purchase-list', label: 'Purchase List', icon: '📑' },

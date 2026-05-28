@@ -9,6 +9,7 @@ import { WirePage, WIRE_ROUTE_PATH } from './modules/wire'
 import LabelPrintStation, { PRINT_STATION_ROUTE_PATH } from './components/LabelPrintStation'
 import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
+import LabelStudio from './components/LabelStudio'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
 import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
 import { formatPoDisplay } from './lib/poIpointMatch'
@@ -593,6 +594,8 @@ function App() {
           <NonInventoryOrders />
         ) : activePage === 'purchase-list' ? (
           <PurchaseList />
+        ) : activePage === 'label-studio' ? (
+          <LabelStudio />
         ) : (
         <>
         <header className="header">
