@@ -9,7 +9,7 @@ export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
-/** Map studio 0–100% (full canvas face) to DYMO printable bounds — matches driver scale. */
+/** Map studio 0–100% (label face) to DYMO printable bounds for the selected roll template. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
@@ -28,7 +28,7 @@ export type LabelPrintableMetrics = {
   heightMm: number
 }
 
-/** Label Studio canvas = physical sticker face; print uses DYMO bounds twips for sizing. */
+/** Label Studio canvas = physical sticker face; print uses bounds twips from the same template. */
 export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelPrintableMetrics {
   return {
     widthMm: template.widthMm,
