@@ -2,7 +2,11 @@ import { useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { DYMO_PAPER_TEMPLATES } from '../lib/dymoLabelXml'
 import LabelStudioFittedText from './LabelStudioFittedText'
 import { BARCODE_CAPTION_BAND_PCT, previewBarcodeCaptionMaxFontPx } from '../lib/labelStudioBarcodeLayout'
-import { printableMetricsForTemplate, previewMaxFontSizePx } from '../lib/labelStudioGeometry'
+import {
+  printableMetricsForTemplate,
+  previewMaxFontSizePx,
+  shippingPrintableHeightFraction,
+} from '../lib/labelStudioGeometry'
 import type { LabelStudioElement } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePreview'
@@ -65,6 +69,7 @@ export default function LabelStudioCanvas({
 
   const paper = paperTemplateById(paperTemplateId, DYMO_PAPER_TEMPLATES)
   const metrics = printableMetricsForTemplate(paper)
+  const printableHeightPct = (shippingPrintableHeightFraction(paper) ?? 1) * 100
 
   useLayoutEffect(() => {
     const node = printableRef.current
@@ -147,7 +152,11 @@ export default function LabelStudioCanvas({
       onPointerLeave={endDrag}
       onPointerDown={() => onSelect(null)}
     >
-      <div ref={printableRef} className="ls-printable-area">
+      <div
+        ref={printableRef}
+        className="ls-printable-area"
+        style={{ height: `${printableHeightPct}%`, bottom: 'auto' }}
+      >
         {elements.length === 0 && (
           <p className="ls-canvas-empty">Add text, image, or a barcode. Positions match what will print.</p>
         )}
@@ -250,6 +259,15 @@ export default function LabelStudioCanvas({
           )
         })}
       </div>
+      {printableHeightPct < 100 && (
+        <div
+          className="ls-unprintable-band"
+          style={{ top: `${printableHeightPct}%` }}
+          aria-hidden="true"
+        >
+          <span>Not printed on 30323</span>
+        </div>
+      )}
     </div>
   )
 }

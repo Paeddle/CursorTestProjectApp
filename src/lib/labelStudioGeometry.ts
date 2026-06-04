@@ -1,4 +1,4 @@
-import type { DymoPaperTemplate } from './dymoLabelXml'
+import { mmToTwips, type DymoPaperTemplate } from './dymoLabelXml'
 import type { LabelStudioElement, LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
 
 /** Twips per point (1440 twips/in ÷ 72 pt/in). */
@@ -9,29 +9,11 @@ export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
-/**
- * 30323 Landscape: DYMO bounds are wide×short in XML (≈102mm×28mm twips) while the sticker
- * face is 102×59 mm. Map studio vertical % → bounds X and horizontal % → bounds Y so
- * stacked layouts use the long axis (see scripts/dymo-probe-shipping-render.mjs).
- */
-function shippingStudioFaceBounds(
-  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  template: DymoPaperTemplate
-): DymoLabelBounds {
-  return {
-    x: template.boundsX + Math.round((el.yPct / 100) * template.boundsWidth),
-    y: template.boundsY + Math.round((el.xPct / 100) * template.boundsHeight),
-    width: Math.max(80, Math.round((el.heightPct / 100) * template.boundsWidth)),
-    height: Math.max(60, Math.round((el.widthPct / 100) * template.boundsHeight)),
-  }
-}
-
 /** Map studio 0–100% (label face) to DYMO printable bounds for the selected roll template. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
 ): DymoLabelBounds {
-  if (template.id === 'Shipping') return shippingStudioFaceBounds(el, template)
   return {
     x: template.boundsX + Math.round((el.xPct / 100) * template.boundsWidth),
     y: template.boundsY + Math.round((el.yPct / 100) * template.boundsHeight),
@@ -54,14 +36,22 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
-/** Twips along the studio vertical axis (used for print font / caption scaling). */
+/**
+ * On 30323, DYMO only prints in a band at the top of the physical sticker (~bounds vs full height mm).
+ * Canvas uses this so element % matches print; gray area below is not printed.
+ */
+export function shippingPrintableHeightFraction(template: DymoPaperTemplate): number | null {
+  if (template.id !== 'Shipping') return null
+  const fullTwips = mmToTwips(template.heightMm)
+  if (fullTwips <= 0) return null
+  return Math.min(1, Math.max(0.35, template.boundsHeight / fullTwips))
+}
+
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
-  if (template.id === 'Shipping') return template.boundsWidth
   return template.boundsHeight
 }
 
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
-  if (template.id === 'Shipping') return template.boundsHeight
   return template.boundsWidth
 }
 

@@ -692,10 +692,34 @@
 
 .ls-printable-area {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  top: 0;
   box-sizing: border-box;
   background: #fff;
   overflow: hidden;
+  border-bottom: 2px dashed #1a5fb4;
+}
+
+.ls-unprintable-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    -45deg,
+    #f0f0f0,
+    #f0f0f0 8px,
+    #e8e8e8 8px,
+    #e8e8e8 16px
+  );
+  color: #777;
+  font-size: 0.75rem;
+  pointer-events: none;
 }
 
 .ls-canvas-empty {
