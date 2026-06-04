@@ -5,7 +5,7 @@ import { csvService, TrackingInfo, POItem } from './services/csvService'
 import Sidebar from './components/Sidebar'
 import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
-import { WirePage, WIRE_ROUTE_PATH } from './modules/wire'
+import { WirePage, WireScannerPage, WIRE_ROUTE_PATH, WIRE_SCANNER_ROUTE_PATH } from './modules/wire'
 import LabelPrintStation, { PRINT_STATION_ROUTE_PATH } from './components/LabelPrintStation'
 import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
@@ -20,7 +20,9 @@ type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
 
 function App() {
   const location = useLocation()
-  const isWireRoute = location.pathname === WIRE_ROUTE_PATH
+  const isWireScannerRoute =
+    location.pathname === WIRE_SCANNER_ROUTE_PATH ||
+    location.pathname.startsWith(`${WIRE_SCANNER_ROUTE_PATH}/`)
   const isPrintStationRoute = location.pathname === PRINT_STATION_ROUTE_PATH
   const [activePage, setActivePage] = useState('tracking')
   const [trackings, setTrackings] = useState<TrackingInfo[]>([])
@@ -48,6 +50,15 @@ function App() {
     loadTrackings()
     loadPOItems()
   }, [])
+
+  useEffect(() => {
+    if (location.pathname === WIRE_ROUTE_PATH) {
+      setActivePage('wire')
+      window.history.replaceState(null, '', '/')
+    }
+    const page = (location.state as { page?: string } | null)?.page
+    if (page) setActivePage(page)
+  }, [location.pathname, location.state])
 
   // Clear status filter when switching to order history (since all are delivered)
   // Also clear when switching to items view
@@ -574,18 +585,24 @@ function App() {
   const groupedOrders = Array.from(groupedOrdersMap.values())
   const sortedOrders = sortOrders(groupedOrders, orderSortColumn, orderSortDirection)
 
+  const showMainNav = !isWireScannerRoute && !isPrintStationRoute
+
   return (
-    <div className={`app${navOpen ? ' nav-open' : ''}`}>
-      <Sidebar
-        activePage={activePage}
-        onNavigate={setActivePage}
-        open={navOpen}
-        onOpenChange={setNavOpen}
-      />
-      <div className="main-content">
+    <div className={`app${navOpen && showMainNav ? ' nav-open' : ''}`}>
+      {showMainNav ? (
+        <Sidebar
+          activePage={activePage}
+          onNavigate={setActivePage}
+          open={navOpen}
+          onOpenChange={setNavOpen}
+        />
+      ) : null}
+      <div className={`main-content${showMainNav ? '' : ' main-content--full'}`}>
         {isPrintStationRoute ? (
           <LabelPrintStation />
-        ) : isWireRoute ? (
+        ) : isWireScannerRoute ? (
+          <WireScannerPage />
+        ) : activePage === 'wire' ? (
           <WirePage />
         ) : activePage === 'analytics' ? (
           <Analytics poItemsMap={poItemsMap} trackings={trackings} />

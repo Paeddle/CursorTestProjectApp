@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type MouseEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { WIRE_SCANNER_ROUTE_PATH } from './routes'
 import { supabase } from '../../lib/supabase'
 import type { WireBoxScan, WireBoxSummary } from '../../types/wireBox'
 import {
@@ -614,7 +616,12 @@ export function WirePage() {
   return (
     <div className="wire-page">
       <header className="wire-header">
-        <h1>Wire Tracker</h1>
+        <div className="wire-header-row">
+          <h1>Wire Tracker</h1>
+          <Link className="wire-scanner-link" to={WIRE_SCANNER_ROUTE_PATH}>
+            Open box scanner
+          </Link>
+        </div>
       </header>
 
       <section className="wire-report-section" aria-labelledby="wire-report-heading">
@@ -882,7 +889,7 @@ export function WirePage() {
           <p>
             {searchBox.trim()
               ? 'No boxes match your filter.'
-              : 'No wire box scans yet. Data appears here after using the wire scanner app at /wire-scanner.'}
+              : 'No wire box scans yet. Use Open box scanner above to check boxes in.'}
           </p>
         </div>
       ) : (

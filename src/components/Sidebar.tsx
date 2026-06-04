@@ -1,5 +1,4 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { WIRE_ROUTE_PATH } from '../modules/wire'
 import { PRINT_STATION_ROUTE_PATH } from './LabelPrintStation'
 import './Sidebar.css'
 
@@ -13,8 +12,6 @@ interface SidebarProps {
 function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const isWireOnlyLayout = location.pathname === WIRE_ROUTE_PATH
-
   const menuItems = [
     { id: 'tracking', label: 'Order Tracking', icon: '📦' },
     { id: 'order-history', label: 'Order History', icon: '📋' },
@@ -66,27 +63,15 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
 
       <nav
         id="app-sidebar"
-        className={`sidebar${isWireOnlyLayout ? ' sidebar-wire-only' : ''}${open ? ' sidebar--open' : ''}`}
+        className={`sidebar${open ? ' sidebar--open' : ''}`}
         aria-label="Main navigation"
       >
         <div className="sidebar-header">
-          <h2 className="sidebar-logo">{isWireOnlyLayout ? 'Wire Tracker' : 'Order Tracker'}</h2>
+          <h2 className="sidebar-logo">Order Tracker</h2>
         </div>
-        {!isWireOnlyLayout && (
-          <ul className="sidebar-menu">
+        <ul className="sidebar-menu">
             {menuItems.map(item =>
-              item.id === 'wire' ? (
-                <li key={item.id}>
-                  <NavLink
-                    to={WIRE_ROUTE_PATH}
-                    className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-                    onClick={closeAfterNavigate}
-                  >
-                    <span className="menu-icon">{item.icon}</span>
-                    <span className="menu-label">{item.label}</span>
-                  </NavLink>
-                </li>
-              ) : item.id === 'print-station' ? (
+              item.id === 'print-station' ? (
                 <li key={item.id}>
                   <NavLink
                     to={PRINT_STATION_ROUTE_PATH}
@@ -111,7 +96,6 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
               )
             )}
           </ul>
-        )}
       </nav>
     </>
   )

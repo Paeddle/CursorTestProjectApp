@@ -1,4 +1,3 @@
 export { WirePage } from './WirePage'
-
-/** Client route for the Wire dashboard (same deploy as the main app). */
-export const WIRE_ROUTE_PATH = '/wire' as const
+export { default as WireScannerPage } from './scanner/WireScannerPage'
+export { WIRE_ROUTE_PATH, WIRE_SCANNER_ROUTE_PATH } from './routes'

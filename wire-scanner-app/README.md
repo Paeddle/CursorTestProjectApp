@@ -22,4 +22,4 @@ npm run dev
 
 ## Deploy (DigitalOcean)
 
-The app is deployed as part of the same DigitalOcean app at **/wire-scanner**. Push to the `main` branch; the app spec builds `wire-scanner-app` and serves it at that path. Uses the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as the other apps.
+The scanner is built into the main web app at **/wire-scanner** (source lives in `src/modules/wire/scanner/`). The `wire-scanner-app/` folder is kept for reference only. Open it from **Wire Tracker** in the sidebar, or use a direct link with `?box=bx-1234`.
