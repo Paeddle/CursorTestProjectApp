@@ -1037,24 +1037,10 @@ export default function LabelStudio() {
                     </select>
                   </label>
                   {selectedElement.textPosition !== 'None' && (
-                    <label className="ls-field">
-                      <span className="ls-field-label">Number font size</span>
-                      <input
-                        className="ls-input"
-                        type="number"
-                        min={6}
-                        max={24}
-                        value={selectedElement.textFontSize ?? 10}
-                        onChange={(e) =>
-                          updateElement(selectedElement.id, {
-                            textFontSize: Number(e.target.value) || 10,
-                          })
-                        }
-                      />
-                      <p className="ls-field-hint">
-                        Shown under or above the code in the studio and on the printed label.
-                      </p>
-                    </label>
+                    <p className="ls-field-hint">
+                      Numbers under or above the code auto-fit inside the barcode box on screen and when
+                      printed.
+                    </p>
                   )}
                 </div>
               ) : isTextElement(selectedElement) ? (

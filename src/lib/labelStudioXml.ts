@@ -5,7 +5,10 @@ import {
   dymoBarcodeSymbologyXml,
   resolveBarcodeType,
 } from './labelStudioBarcode'
-import { DEFAULT_BARCODE_TEXT_FONT_SIZE, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
+import {
+  BARCODE_CAPTION_MAX_FONT_PT,
+  splitBarcodeElementBounds,
+} from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import type {
@@ -97,7 +100,6 @@ function buildBarcodeObjectXml(
   bounds: DymoLabelBounds
 ): string {
   const dymoType = dymoBarcodeSymbologyXml(symbology)
-  const captionPt = el.textFontSize ?? DEFAULT_BARCODE_TEXT_FONT_SIZE
   const dymoSize = dymoBarcodeSizeForBounds(bounds, symbology)
 
   return (
@@ -114,8 +116,8 @@ function buildBarcodeObjectXml(
     `<Type>${dymoType}</Type>` +
     `<Size>${dymoSize}</Size>` +
     `<TextPosition>None</TextPosition>` +
-    `<TextFont Family="Arial" Size="${captionPt}" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
-    `<CheckSumFont Family="Arial" Size="${captionPt}" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<TextFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<CheckSumFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
     `<TextEmbedding>None</TextEmbedding>` +
     `<ECLevel>0</ECLevel>` +
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
@@ -136,8 +138,7 @@ function buildBarcodePrintXml(
   const encoded = barcodeTextForPrint(displayText, symbology)
   if (!encoded) return ''
 
-  const captionPt = el.textFontSize ?? DEFAULT_BARCODE_TEXT_FONT_SIZE
-  const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition, captionPt)
+  const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition)
   const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, barcode)
 
   if (!caption || el.textPosition === 'None') return barcodeXml
@@ -145,9 +146,9 @@ function buildBarcodePrintXml(
   const captionXml = buildTextObjectXml(
     `${el.id}_caption`,
     [displayText],
-    captionPt,
+    BARCODE_CAPTION_MAX_FONT_PT,
     caption,
-    { align: 'Center', bold: false, textFitMode: 'None' }
+    { align: 'Center', bold: false, textFitMode: 'ShrinkToFit' }
   )
   return barcodeXml + captionXml
 }

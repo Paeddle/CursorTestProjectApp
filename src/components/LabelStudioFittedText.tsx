@@ -6,6 +6,9 @@ type LabelStudioFittedTextProps = {
   shrink: boolean
   bold: boolean
   align: 'left' | 'center' | 'right'
+  /** Single-line barcode numbers */
+  nowrap?: boolean
+  className?: string
 }
 
 function textFitsBox(span: HTMLSpanElement, box: HTMLElement): boolean {
@@ -19,6 +22,8 @@ export default function LabelStudioFittedText({
   shrink,
   bold,
   align,
+  nowrap = false,
+  className = '',
 }: LabelStudioFittedTextProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const textRef = useRef<HTMLSpanElement>(null)
@@ -57,7 +62,7 @@ export default function LabelStudioFittedText({
   }, [text, maxFontSizePx, shrink])
 
   return (
-    <div ref={hostRef} className="ls-fitted-text-host">
+    <div ref={hostRef} className={`ls-fitted-text-host${className ? ` ${className}` : ''}`}>
       <span
         ref={textRef}
         className="ls-element-text"
@@ -65,6 +70,8 @@ export default function LabelStudioFittedText({
           fontSize: `${fontPx}px`,
           fontWeight: bold ? 700 : 400,
           textAlign: align,
+          whiteSpace: nowrap ? 'nowrap' : undefined,
+          fontFamily: nowrap ? 'monospace' : undefined,
         }}
       >
         {text}

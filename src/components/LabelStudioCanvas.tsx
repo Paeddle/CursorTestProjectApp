@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { DYMO_PAPER_TEMPLATES } from '../lib/dymoLabelXml'
 import LabelStudioFittedText from './LabelStudioFittedText'
-import { barcodeCaptionHeightPct, previewBarcodeCaptionFontPx } from '../lib/labelStudioBarcodeLayout'
+import { BARCODE_CAPTION_BAND_PCT, previewBarcodeCaptionMaxFontPx } from '../lib/labelStudioBarcodeLayout'
 import { printableMetricsForTemplate, previewMaxFontSizePx } from '../lib/labelStudioGeometry'
 import type { LabelStudioElement } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
@@ -156,11 +156,11 @@ export default function LabelStudioCanvas({
           const isBarcode = isBarcodeElement(el)
           const isQrBarcode = isBarcode && el.barcodeType === 'QrCode'
           const barcodeShowText = isBarcode && el.textPosition !== 'None'
-          const captionBandPct = isBarcode && barcodeShowText ? barcodeCaptionHeightPct(el.textFontSize ?? 10) : 0
-          const captionFontPx =
+          const captionBandPct = isBarcode && barcodeShowText ? BARCODE_CAPTION_BAND_PCT : 0
+          const captionMaxFontPx =
             isBarcode && barcodeShowText
-              ? previewBarcodeCaptionFontPx(el.textFontSize ?? 10, el.heightPct, printableSizePx.height, paper)
-              : 0
+              ? previewBarcodeCaptionMaxFontPx(el.heightPct, printableSizePx.height, paper)
+              : 10
           const isImage = isImageElement(el)
           const preview = renderPreview(el) || '(empty)'
           const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
@@ -180,10 +180,7 @@ export default function LabelStudioCanvas({
                 height: `${el.heightPct}%`,
                 zIndex: zIndex + 1,
                 ...(barcodeShowText
-                  ? ({
-                      '--ls-caption-band': `${captionBandPct}%`,
-                      '--ls-caption-font': `${captionFontPx}px`,
-                    } as React.CSSProperties)
+                  ? ({ '--ls-caption-band': `${captionBandPct}%` } as React.CSSProperties)
                   : {}),
               }}
               onPointerDown={(ev) => {
@@ -208,7 +205,17 @@ export default function LabelStudioCanvas({
                       )}
                     </div>
                     {barcodeShowText && (
-                      <span className="label-studio-barcode-caption">{preview}</span>
+                      <div className="ls-barcode-caption-host">
+                        <LabelStudioFittedText
+                          text={preview}
+                          maxFontSizePx={captionMaxFontPx}
+                          shrink
+                          bold={false}
+                          align="center"
+                          nowrap
+                          className="ls-barcode-caption-fit"
+                        />
+                      </div>
                     )}
                   </>
                 ) : isImage ? (
