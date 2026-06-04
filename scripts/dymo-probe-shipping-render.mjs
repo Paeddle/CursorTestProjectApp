@@ -25,20 +25,16 @@ const HYBRID_SHIPPING = {
   boundsHeight: large.boundsHeight,
 }
 
-function pctStacked(el, t) {
-  const padX = Math.round(t.boundsWidth * 0.02)
-  const padY = Math.round(t.boundsHeight * 0.02)
-  const base = {
-    x: t.boundsX + padX,
-    y: t.boundsY + padY,
-    width: t.boundsWidth - padX * 2,
-    height: t.boundsHeight - padY * 2,
-  }
-  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
-  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+/** Match src/lib/labelStudioGeometry.ts pctToDymoShippingHybridBounds */
+function pctDrawFace(el, t) {
+  const pad = 50
+  const axisX = t.drawWidth - pad * 2
+  const axisY = t.drawHeight - pad * 2
+  const width = Math.max(60, Math.round((el.heightPct / 100) * axisX))
+  const height = Math.max(80, Math.round((el.widthPct / 100) * axisY))
   return {
-    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+    x: pad + Math.round((el.yPct / 100) * (axisX - width)),
+    y: pad + Math.round((el.xPct / 100) * (axisY - height)),
     width,
     height,
   }
@@ -75,9 +71,9 @@ function pctSwapFace(el, t) {
   }
 }
 
-function studioInventoryXml(t, mapPct = pctStacked) {
-  const item = mapPct({ xPct: 34, yPct: 6, widthPct: 62, heightPct: 38 }, t)
-  const barcode = mapPct({ xPct: 34, yPct: 62, widthPct: 62, heightPct: 34 }, t)
+function studioInventoryXml(t, mapPct = pctDrawFace) {
+  const item = mapPct({ xPct: 12, yPct: 8, widthPct: 76, heightPct: 32 }, t)
+  const barcode = mapPct({ xPct: 22, yPct: 48, widthPct: 56, heightPct: 44 }, t)
   const text = (name, lines, b, size) =>
     `<ObjectInfo><TextObject><Name>${name}</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
@@ -174,7 +170,7 @@ async function main() {
   const variants = [
     ['po-current', current, 'po', null],
     ['studio-catalog', current, 'studio', pctToBounds],
-    ['studio-hybrid-stacked', HYBRID_SHIPPING, 'studio', pctStacked],
+    ['studio-hybrid-draw-face', HYBRID_SHIPPING, 'studio', pctDrawFace],
   ]
 
   for (const [name, template, kind, mapPct] of variants) {

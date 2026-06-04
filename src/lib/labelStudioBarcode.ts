@@ -72,8 +72,8 @@ export function dymoBarcodeSizeForStudioPrint(
   const configuredRank = Math.max(0, BARCODE_SIZE_ORDER.indexOf(configured))
   const boundsRank = Math.max(0, BARCODE_SIZE_ORDER.indexOf(fromBounds))
   let rank = Math.max(configuredRank, boundsRank)
-  if (symbology === 'QrCode' && rank < BARCODE_SIZE_ORDER.length - 1) {
-    rank += 1
+  if (symbology === 'QrCode') {
+    rank = Math.max(rank, BARCODE_SIZE_ORDER.indexOf('Large'))
   }
-  return BARCODE_SIZE_ORDER[rank] ?? 'ExtraLarge'
+  return BARCODE_SIZE_ORDER[Math.min(BARCODE_SIZE_ORDER.length - 1, rank)] ?? 'ExtraLarge'
 }

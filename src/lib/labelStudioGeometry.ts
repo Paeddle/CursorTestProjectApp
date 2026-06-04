@@ -14,53 +14,78 @@ export type DymoLabelBounds = { x: number; y: number; width: number; height: num
 
 export type StudioPrintBoundsOptions = { /** Use short 30323 catalog twips (fallback if hybrid rejected). */ catalogTwips?: boolean }
 
-/** Slight upscale so print matches studio preview size (photo calibration). */
-const SHIPPING_PRINT_SIZE_SCALE = 1.1
-/** Pull content up — printed labels were vertically centered vs upper-weighted preview. */
-const SHIPPING_PRINT_Y_NUDGE_PCT = -3
-
-function calibratedStudioPct(
-  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  template: DymoPaperTemplate
-): Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'> {
-  if (template.id !== 'Shipping') return el
-  const scale = SHIPPING_PRINT_SIZE_SCALE
-  const widthPct = Math.min(98, el.widthPct * scale)
-  const heightPct = Math.min(98, el.heightPct * scale)
-  const xPct = el.xPct + (el.widthPct - widthPct) / 2
-  const yPct = Math.max(0, el.yPct + (el.heightPct - heightPct) / 2 + SHIPPING_PRINT_Y_NUDGE_PCT)
-  return { xPct, yPct, widthPct, heightPct }
-}
-
-/** Full hybrid printable face — same 0–100% grid as the studio canvas. */
-function studioPrintFaceBounds(template: DymoPaperTemplate): {
-  x: number
-  y: number
-  width: number
-  height: number
+/**
+ * Hybrid tall draw (3331×5715) vs 30323 studio face (102×59 mm):
+ * - Horizontal on the sticker (102 mm) → XML Y / drawHeight
+ * - Vertical on the sticker (59 mm) → XML X / drawWidth
+ * Same xPct → same Y (centered); different yPct → different X (stacked).
+ */
+function shippingDrawFaceAxes(template: DymoPaperTemplate): {
+  x0: number
+  y0: number
+  axisX: number
+  axisY: number
 } {
+  const pad = 50
   return {
-    x: template.boundsX,
-    y: template.boundsY,
-    width: template.boundsWidth,
-    height: template.boundsHeight,
+    x0: pad,
+    y0: pad,
+    axisX: template.drawWidth - pad * 2,
+    axisY: template.drawHeight - pad * 2,
   }
 }
 
-/** Map studio 0–100% (102×59 face) to DYMO bounds — x→x, y→y (stacked layouts stay stacked). */
+function pctToDymoShippingHybridBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  const { x0, y0, axisX, axisY } = shippingDrawFaceAxes(template)
+  const width = Math.max(60, Math.round((el.heightPct / 100) * axisX))
+  const height = Math.max(80, Math.round((el.widthPct / 100) * axisY))
+  return {
+    x: x0 + Math.round((el.yPct / 100) * (axisX - width)),
+    y: y0 + Math.round((el.xPct / 100) * (axisY - height)),
+    width,
+    height,
+  }
+}
+
+function pctToCatalogBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  const pad = 40
+  const base = {
+    x: template.boundsX + pad,
+    y: template.boundsY + pad,
+    width: template.boundsWidth - pad * 2,
+    height: template.boundsHeight - pad * 2,
+  }
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  return {
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+    width,
+    height,
+  }
+}
+
+/** Map studio 0–100% (102×59 face) to DYMO object bounds inside the draw rectangle. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
-  const t = options?.catalogTwips ? template : dymoTemplateForStudioPrint(template)
-  const pct = options?.catalogTwips ? el : calibratedStudioPct(el, template)
-  const base = studioPrintFaceBounds(t)
-  const width = Math.max(80, Math.round((pct.widthPct / 100) * base.width))
-  const height = Math.max(60, Math.round((pct.heightPct / 100) * base.height))
+  if (options?.catalogTwips) return pctToCatalogBounds(el, template)
+  const t = dymoTemplateForStudioPrint(template)
+  if (t.id === 'Shipping') return pctToDymoShippingHybridBounds(el, t)
+  const pad = 50
+  const width = Math.max(80, Math.round((el.widthPct / 100) * (t.drawWidth - pad * 2)))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * (t.drawHeight - pad * 2)))
   return {
-    x: base.x + Math.round((pct.xPct / 100) * (base.width - width)),
-    y: base.y + Math.round((pct.yPct / 100) * (base.height - height)),
+    x: pad + Math.round((el.xPct / 100) * (t.drawWidth - pad * 2 - width)),
+    y: pad + Math.round((el.yPct / 100) * (t.drawHeight - pad * 2 - height)),
     width,
     height,
   }
@@ -78,12 +103,18 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
+/** Studio vertical (59 mm) — maps to drawWidth on 30323 hybrid print. */
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
-  return dymoTemplateForStudioPrint(template).boundsHeight
+  const t = dymoTemplateForStudioPrint(template)
+  if (t.id === 'Shipping') return t.drawWidth
+  return t.boundsHeight
 }
 
+/** Studio horizontal (102 mm) — maps to drawHeight on 30323 hybrid print. */
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
-  return dymoTemplateForStudioPrint(template).boundsWidth
+  const t = dymoTemplateForStudioPrint(template)
+  if (t.id === 'Shipping') return t.drawHeight
+  return t.boundsWidth
 }
 
 export function effectiveTextFontSizePt(
