@@ -12,15 +12,16 @@ const layout = {
   locationLines: ['Room A'],
 }
 
+const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const large = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'LargeShipping')
 const HYBRID = {
   id: 'Shipping',
   paperName: '30323 Shipping',
   drawWidth: large.drawWidth,
   drawHeight: large.drawHeight,
-  boundsX: large.boundsX,
-  boundsY: large.boundsY,
-  boundsWidth: large.boundsWidth,
+  boundsX: catalog.boundsX,
+  boundsY: catalog.boundsY,
+  boundsWidth: catalog.boundsWidth,
   boundsHeight: large.boundsHeight,
 }
 

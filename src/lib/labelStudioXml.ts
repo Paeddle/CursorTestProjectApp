@@ -6,7 +6,7 @@ import {
 } from './dymoLabelXml'
 import {
   barcodeTextForPrint,
-  dymoBarcodeSizeForBounds,
+  dymoBarcodeSizeForStudioPrint,
   dymoBarcodeSymbologyXml,
   resolveBarcodeType,
 } from './labelStudioBarcode'
@@ -112,7 +112,7 @@ function buildBarcodeObjectXml(
   bounds: DymoLabelBounds
 ): string {
   const dymoType = dymoBarcodeSymbologyXml(symbology)
-  const dymoSize = dymoBarcodeSizeForBounds(bounds, symbology)
+  const dymoSize = dymoBarcodeSizeForStudioPrint(bounds, symbology, el.size)
 
   return (
     `<ObjectInfo>` +
@@ -218,7 +218,7 @@ async function buildElementXmlAsync(
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
-      textFitMode: 'None',
+      textFitMode: el.textFitMode ?? 'ShrinkToFit',
     })
   }
   return ''
@@ -244,7 +244,7 @@ function buildElementXml(
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
-      textFitMode: 'None',
+      textFitMode: el.textFitMode ?? 'ShrinkToFit',
     })
   }
   return ''

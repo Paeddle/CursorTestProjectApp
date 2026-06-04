@@ -54,3 +54,26 @@ export function dymoBarcodeSizeForBounds(
   if (metric < 1200) return 'Large'
   return 'ExtraLarge'
 }
+
+const BARCODE_SIZE_ORDER: readonly LabelStudioBarcodeSize[] = [
+  'Small',
+  'Medium',
+  'Large',
+  'ExtraLarge',
+]
+
+/** Prefer configured size; QR codes print one step larger so they match the studio preview. */
+export function dymoBarcodeSizeForStudioPrint(
+  bounds: DymoLabelBounds,
+  symbology: Exclude<LabelStudioBarcodeType, 'Auto'>,
+  configured: LabelStudioBarcodeSize
+): LabelStudioBarcodeSize {
+  const fromBounds = dymoBarcodeSizeForBounds(bounds, symbology)
+  const configuredRank = Math.max(0, BARCODE_SIZE_ORDER.indexOf(configured))
+  const boundsRank = Math.max(0, BARCODE_SIZE_ORDER.indexOf(fromBounds))
+  let rank = Math.max(configuredRank, boundsRank)
+  if (symbology === 'QrCode' && rank < BARCODE_SIZE_ORDER.length - 1) {
+    rank += 1
+  }
+  return BARCODE_SIZE_ORDER[rank] ?? 'ExtraLarge'
+}

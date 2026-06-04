@@ -104,9 +104,10 @@ export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPap
     ...template,
     drawWidth: large.drawWidth,
     drawHeight: large.drawHeight,
-    boundsX: large.boundsX,
-    boundsY: large.boundsY,
-    boundsWidth: large.boundsWidth,
+    /** Tall vertical extent (30256) with 30323 horizontal span — matches 102×59 mm studio face. */
+    boundsX: template.boundsX,
+    boundsY: template.boundsY,
+    boundsWidth: template.boundsWidth,
     boundsHeight: large.boundsHeight,
   }
 }

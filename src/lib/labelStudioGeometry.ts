@@ -14,36 +14,53 @@ export type DymoLabelBounds = { x: number; y: number; width: number; height: num
 
 export type StudioPrintBoundsOptions = { /** Use short 30323 catalog twips (fallback if hybrid rejected). */ catalogTwips?: boolean }
 
-/** Printable face for studio % — full hybrid bounds, light edge margin (no axis swap). */
+/** Slight upscale so print matches studio preview size (photo calibration). */
+const SHIPPING_PRINT_SIZE_SCALE = 1.1
+/** Pull content up — printed labels were vertically centered vs upper-weighted preview. */
+const SHIPPING_PRINT_Y_NUDGE_PCT = -3
+
+function calibratedStudioPct(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'> {
+  if (template.id !== 'Shipping') return el
+  const scale = SHIPPING_PRINT_SIZE_SCALE
+  const widthPct = Math.min(98, el.widthPct * scale)
+  const heightPct = Math.min(98, el.heightPct * scale)
+  const xPct = el.xPct + (el.widthPct - widthPct) / 2
+  const yPct = Math.max(0, el.yPct + (el.heightPct - heightPct) / 2 + SHIPPING_PRINT_Y_NUDGE_PCT)
+  return { xPct, yPct, widthPct, heightPct }
+}
+
+/** Full hybrid printable face — same 0–100% grid as the studio canvas. */
 function studioPrintFaceBounds(template: DymoPaperTemplate): {
   x: number
   y: number
   width: number
   height: number
 } {
-  const padX = Math.round(template.boundsWidth * 0.02)
-  const padY = Math.round(template.boundsHeight * 0.02)
   return {
-    x: template.boundsX + padX,
-    y: template.boundsY + padY,
-    width: template.boundsWidth - padX * 2,
-    height: template.boundsHeight - padY * 2,
+    x: template.boundsX,
+    y: template.boundsY,
+    width: template.boundsWidth,
+    height: template.boundsHeight,
   }
 }
 
-/** Map studio 0–100% (102×59 face) to DYMO bounds — x→x, y→y so stacked layouts stay stacked. */
+/** Map studio 0–100% (102×59 face) to DYMO bounds — x→x, y→y (stacked layouts stay stacked). */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
   const t = options?.catalogTwips ? template : dymoTemplateForStudioPrint(template)
+  const pct = options?.catalogTwips ? el : calibratedStudioPct(el, template)
   const base = studioPrintFaceBounds(t)
-  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
-  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const width = Math.max(80, Math.round((pct.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((pct.heightPct / 100) * base.height))
   return {
-    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+    x: base.x + Math.round((pct.xPct / 100) * (base.width - width)),
+    y: base.y + Math.round((pct.yPct / 100) * (base.height - height)),
     width,
     height,
   }
