@@ -1012,23 +1012,6 @@ export default function LabelStudio() {
                     )}
                   </label>
                   <label className="ls-field">
-                    <span className="ls-field-label">Barcode height</span>
-                    <select
-                      className="ls-select"
-                      value={selectedElement.size}
-                      onChange={(e) =>
-                        updateElement(selectedElement.id, {
-                          size: e.target.value as typeof selectedElement.size,
-                        })
-                      }
-                    >
-                      <option value="Small">Small</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Large">Large</option>
-                      <option value="ExtraLarge">Extra large</option>
-                    </select>
-                  </label>
-                  <label className="ls-field">
                     <span className="ls-field-label">Show numbers under barcode?</span>
                     <select
                       className="ls-select"

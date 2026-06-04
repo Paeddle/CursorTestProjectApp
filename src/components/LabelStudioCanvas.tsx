@@ -149,6 +149,7 @@ export default function LabelStudioCanvas({
         {elements.map((el, zIndex) => {
           const isSelected = selectedElementId === el.id
           const isBarcode = isBarcodeElement(el)
+          const barcodeShowText = isBarcode && el.textPosition !== 'None'
           const isImage = isImageElement(el)
           const preview = renderPreview(el) || '(empty)'
           const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
@@ -160,7 +161,7 @@ export default function LabelStudioCanvas({
           return (
             <div
               key={el.id}
-              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ' label-studio-canvas-barcode' : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
+              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,
@@ -183,15 +184,21 @@ export default function LabelStudioCanvas({
               {isBarcode ? (
                 qrSrc ? (
                   <>
-                    <img className="ls-canvas-qr" src={qrSrc} alt="" />
-                    {el.textPosition !== 'None' && (
+                    <img
+                      className={`ls-canvas-qr${barcodeShowText ? '' : ' ls-canvas-qr-full'}`}
+                      src={qrSrc}
+                      alt=""
+                    />
+                    {barcodeShowText && (
                       <span className="label-studio-barcode-caption">{preview}</span>
                     )}
                   </>
                 ) : (
                   <>
                     <div className="label-studio-barcode-bars" aria-hidden />
-                    <span className="label-studio-barcode-caption">{preview}</span>
+                    {barcodeShowText && (
+                      <span className="label-studio-barcode-caption">{preview}</span>
+                    )}
                   </>
                 )
               ) : isImage ? (

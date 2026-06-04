@@ -1,34 +1,44 @@
-import { mmToTwips, type DymoPaperTemplate } from './dymoLabelXml'
-import type { LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
+import type { DymoPaperTemplate } from './dymoLabelXml'
+import type { LabelStudioElement, LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
 
-/** DYMO label XML: approximate twips per point for Arial on LabelWriter rolls. */
-export const LABEL_TWIPS_PER_PT = 28
+/** Twips per point (1440 twips/in ÷ 72 pt/in). */
+export const LABEL_TWIPS_PER_PT = 20
+
+export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
+
+/** Map studio 0–100% (full canvas face) to DYMO printable bounds — matches driver scale. */
+export function pctToDymoPrintBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  return {
+    x: template.boundsX + Math.round((el.xPct / 100) * template.boundsWidth),
+    y: template.boundsY + Math.round((el.yPct / 100) * template.boundsHeight),
+    width: Math.max(80, Math.round((el.widthPct / 100) * template.boundsWidth)),
+    height: Math.max(60, Math.round((el.heightPct / 100) * template.boundsHeight)),
+  }
+}
 
 export type LabelPrintableMetrics = {
   /** Physical width / height for canvas aspect ratio. */
   widthMm: number
   heightMm: number
-  /** Twips used for Label Studio print XML (full physical face). */
-  studioWidthTwips: number
-  studioHeightTwips: number
 }
 
-/** Label Studio canvas = full physical sticker; coordinates map 0–100% to that face. */
+/** Label Studio canvas = physical sticker face; print uses DYMO bounds twips for sizing. */
 export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelPrintableMetrics {
   return {
     widthMm: template.widthMm,
     heightMm: template.heightMm,
-    studioWidthTwips: mmToTwips(template.widthMm),
-    studioHeightTwips: mmToTwips(template.heightMm),
   }
 }
 
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
-  return mmToTwips(template.heightMm)
+  return template.boundsHeight
 }
 
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
-  return mmToTwips(template.widthMm)
+  return template.boundsWidth
 }
 
 /** Point size used in DYMO XML so print matches the studio box (not DYMO auto-shrink). */

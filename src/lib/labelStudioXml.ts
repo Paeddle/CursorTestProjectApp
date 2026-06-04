@@ -1,9 +1,4 @@
-import {
-  DYMO_PAPER_TEMPLATES,
-  escapeXmlText,
-  mmToTwips,
-  type DymoPaperTemplate,
-} from './dymoLabelXml'
+import { DYMO_PAPER_TEMPLATES, escapeXmlText, type DymoPaperTemplate } from './dymoLabelXml'
 import { barcodeTextForPrint, dymoBarcodeSymbologyXml, resolveBarcodeType } from './labelStudioBarcode'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
@@ -15,10 +10,8 @@ import type {
   LabelStudioTemplate,
   LabelStudioTextElement,
 } from '../types/labelStudio'
-import { effectiveTextFontSizePt } from './labelStudioGeometry'
+import { effectiveTextFontSizePt, pctToDymoPrintBounds, type DymoLabelBounds } from './labelStudioGeometry'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
-
-type LabelBounds = { x: number; y: number; width: number; height: number }
 
 function fontAttributesXml(fontSize: number, bold: boolean): string {
   const b = bold ? 'True' : 'False'
@@ -34,24 +27,7 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
 }
 
-/** Map studio 0–100% to full physical label face in twips (matches canvas aspect). */
-function pctToBounds(
-  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  template: DymoPaperTemplate
-): LabelBounds {
-  const w = mmToTwips(template.widthMm)
-  const h = mmToTwips(template.heightMm)
-  return {
-    x: Math.round((el.xPct / 100) * w),
-    y: Math.round((el.yPct / 100) * h),
-    width: Math.max(80, Math.round((el.widthPct / 100) * w)),
-    height: Math.max(60, Math.round((el.heightPct / 100) * h)),
-  }
-}
-
 function studioDieCutXml(template: DymoPaperTemplate, objectXml: string): string {
-  const w = mmToTwips(template.widthMm)
-  const h = mmToTwips(template.heightMm)
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
@@ -59,7 +35,7 @@ function studioDieCutXml(template: DymoPaperTemplate, objectXml: string): string
     `<Id>${template.id}</Id>` +
     `<PaperName>${template.paperName}</PaperName>` +
     `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${w}" Height="${h}" Rx="270" Ry="270"/>` +
+    `<RoundRectangle X="0" Y="0" Width="${template.drawWidth}" Height="${template.drawHeight}" Rx="270" Ry="270"/>` +
     `</DrawCommands>` +
     objectXml +
     `</DieCutLabel>`
@@ -70,7 +46,7 @@ function buildTextObjectXml(
   objectName: string,
   lines: string[],
   fontSize: number,
-  bounds: LabelBounds,
+  bounds: DymoLabelBounds,
   options: {
     align: LabelStudioTextElement['align']
     bold: boolean
@@ -109,7 +85,7 @@ function buildTextObjectXml(
 function buildBarcodeObjectXml(
   el: LabelStudioBarcodeElement,
   text: string,
-  bounds: LabelBounds
+  bounds: DymoLabelBounds
 ): string {
   const symbology = resolveBarcodeType(el.barcodeType, text)
   const encoded = barcodeTextForPrint(text, symbology)
@@ -145,7 +121,7 @@ function buildBarcodeObjectXml(
 function buildImageObjectXml(
   el: LabelStudioImageElement,
   base64Png: string,
-  bounds: LabelBounds
+  bounds: DymoLabelBounds
 ): string {
   if (!base64Png) return ''
   return (
@@ -176,7 +152,7 @@ async function buildElementXmlAsync(
   item: LabelStudioItem,
   template: DymoPaperTemplate
 ): Promise<string> {
-  const bounds = pctToBounds(el, template)
+  const bounds = pctToDymoPrintBounds(el, template)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
     return buildBarcodeObjectXml(el, value, bounds)
@@ -201,7 +177,7 @@ async function buildElementXmlAsync(
 }
 
 function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template: DymoPaperTemplate): string {
-  const bounds = pctToBounds(el, template)
+  const bounds = pctToDymoPrintBounds(el, template)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
     return buildBarcodeObjectXml(el, value, bounds)
@@ -237,7 +213,7 @@ export function buildLabelXmlFromStudio(
         'TEXT',
         ['(empty label)'],
         18,
-        pctToBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
+        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
@@ -274,7 +250,7 @@ export async function buildLabelXmlFromStudioForPrint(
         'TEXT',
         ['(empty label)'],
         18,
-        pctToBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
+        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
