@@ -38,7 +38,7 @@ export function linearBarcodePreviewDataUrl(
     const srcH = scratch.height
     if (srcW <= 0 || srcH <= 0) return null
 
-    const scale = Math.min((maxW - 4) / srcW, (maxH - 4) / srcH, 1)
+    const scale = Math.min((maxW * 0.9) / srcW, (maxH * 0.9) / srcH, 1)
     const out = document.createElement('canvas')
     out.width = Math.max(1, Math.floor(srcW * scale))
     out.height = Math.max(1, Math.floor(srcH * scale))

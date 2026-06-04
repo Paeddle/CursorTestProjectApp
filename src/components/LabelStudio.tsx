@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
-import { printableMetricsForTemplate } from '../lib/labelStudioGeometry'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
 import {
   fetchLabelStudioItems,
@@ -28,6 +27,7 @@ import {
 import { previewBarcodeBarsBoxPx } from '../lib/labelStudioBarcodeLayout'
 import { linearBarcodePreviewDataUrl } from '../lib/labelStudioBarcodePreview'
 import { qrPreviewDataUrl } from '../lib/labelStudioQr'
+import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePreview'
 import {
   deleteLabelStudioTemplate,
   duplicateLabelStudioTemplate,
@@ -44,7 +44,6 @@ import {
   isTextElement,
   LABEL_STUDIO_MERGE_FIELDS,
   normalizeStudioTemplate,
-  paperTemplateById,
   type LabelStudioBarcodeType,
   type LabelStudioElement,
   type LabelStudioItem,
@@ -93,7 +92,10 @@ export default function LabelStudio() {
   const [inventoryTotal, setInventoryTotal] = useState<number | null>(null)
   const [loadProgress, setLoadProgress] = useState<string | null>(null)
   const fullInventoryRef = useRef<LabelStudioItem[] | null>(null)
-  const [barcodePreviewByElementId, setBarcodePreviewByElementId] = useState<Record<string, string>>({})
+  const [barcodePreviewByElementId, setBarcodePreviewByElementId] = useState<
+    Record<string, LabelStudioBarcodePreview>
+  >({})
+  const [printableSizePx, setPrintableSizePx] = useState({ width: 0, height: 0 })
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<LabelStudioInventorySortKey>('name')
   const [sortDir, setSortDir] = useState<LabelStudioSortDirection>('asc')
@@ -203,31 +205,32 @@ export default function LabelStudio() {
       setBarcodePreviewByElementId({})
       return
     }
+    if (printableSizePx.width < 16 || printableSizePx.height < 16) {
+      return
+    }
     let cancelled = false
-    const paper = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
-    const metrics = printableMetricsForTemplate(paper)
-    const previewCanvasWidthPx = 400
-    const previewCanvasHeightPx = previewCanvasWidthPx * (metrics.heightMm / metrics.widthMm)
 
     void (async () => {
-      const next: Record<string, string> = {}
+      const next: Record<string, LabelStudioBarcodePreview> = {}
       for (const el of template.elements) {
         if (!isBarcodeElement(el)) continue
         const text = mergedBarcodeForElement(el.content, previewItem)
         if (!text) continue
-        const box = previewBarcodeBarsBoxPx(el, previewCanvasWidthPx, previewCanvasHeightPx)
-        const url =
-          el.barcodeType === 'QrCode'
-            ? await qrPreviewDataUrl(text, Math.min(box.width, box.height))
-            : linearBarcodePreviewDataUrl(text, el.barcodeType, box.width, box.height)
-        if (url) next[el.id] = url
+        const box = previewBarcodeBarsBoxPx(el, printableSizePx.width, printableSizePx.height)
+        if (el.barcodeType === 'QrCode') {
+          const dataUrl = await qrPreviewDataUrl(text, Math.min(box.width, box.height))
+          if (dataUrl) next[el.id] = { format: 'qr', dataUrl }
+        } else {
+          const dataUrl = linearBarcodePreviewDataUrl(text, el.barcodeType, box.width, box.height)
+          if (dataUrl) next[el.id] = { format: 'linear', dataUrl }
+        }
       }
       if (!cancelled) setBarcodePreviewByElementId(next)
     })()
     return () => {
       cancelled = true
     }
-  }, [previewItem, template.elements, template.paperTemplateId])
+  }, [previewItem, template.elements, printableSizePx.width, printableSizePx.height])
 
   useEffect(() => {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
@@ -238,6 +241,14 @@ export default function LabelStudio() {
   }
 
   const updateElement = (id: string, patch: Record<string, unknown>) => {
+    if ('barcodeType' in patch) {
+      setBarcodePreviewByElementId((prev) => {
+        if (!prev[id]) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+    }
     setTemplate((t) => ({
       ...t,
       elements: t.elements.map((el) =>
@@ -505,10 +516,15 @@ export default function LabelStudio() {
     [previewItem]
   )
 
-  const canvasBarcodePreviewUrl = useCallback(
-    (el: LabelStudioElement): string | null => {
+  const canvasBarcodePreview = useCallback(
+    (el: LabelStudioElement): LabelStudioBarcodePreview | null => {
       if (!isBarcodeElement(el)) return null
-      return barcodePreviewByElementId[el.id] ?? null
+      const hit = barcodePreviewByElementId[el.id]
+      if (!hit) return null
+      const wantsQr = el.barcodeType === 'QrCode'
+      if (wantsQr && hit.format !== 'qr') return null
+      if (!wantsQr && hit.format !== 'linear') return null
+      return hit
     },
     [barcodePreviewByElementId]
   )
@@ -885,7 +901,8 @@ export default function LabelStudio() {
             onUpdateRect={updateElementRect}
             renderPreview={canvasPreviewText}
             imagePreviewUrl={canvasImagePreviewUrl}
-            barcodePreviewUrl={canvasBarcodePreviewUrl}
+            barcodePreview={canvasBarcodePreview}
+            onPrintableSizeChange={setPrintableSizePx}
           />
 
           <p className="ls-canvas-hint">

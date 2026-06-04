@@ -4,7 +4,7 @@ import QRCode from 'qrcode'
 export async function qrPreviewDataUrl(text: string, maxBoxPx?: number): Promise<string | null> {
   const trimmed = text.trim()
   if (!trimmed) return null
-  const side = Math.max(48, Math.min(320, Math.round(maxBoxPx ?? 200)))
+  const side = Math.max(48, Math.min(320, Math.floor((maxBoxPx ?? 200) * 0.9)))
   try {
     return await QRCode.toDataURL(trimmed, {
       margin: 1,

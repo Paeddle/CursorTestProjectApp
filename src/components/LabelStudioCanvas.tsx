@@ -5,6 +5,7 @@ import { barcodeCaptionHeightPct, previewBarcodeCaptionFontPx } from '../lib/lab
 import { printableMetricsForTemplate, previewMaxFontSizePx } from '../lib/labelStudioGeometry'
 import type { LabelStudioElement } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
+import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePreview'
 import {
   applyMove,
   applyResize,
@@ -39,7 +40,8 @@ export type LabelStudioCanvasProps = {
   onUpdateRect: (id: string, rect: ElementRect) => void
   renderPreview: (el: LabelStudioElement) => string
   imagePreviewUrl?: (el: LabelStudioElement) => string | null
-  barcodePreviewUrl?: (el: LabelStudioElement) => string | null
+  barcodePreview?: (el: LabelStudioElement) => LabelStudioBarcodePreview | null
+  onPrintableSizeChange?: (size: { width: number; height: number }) => void
 }
 
 function rectFromElement(el: LabelStudioElement): ElementRect {
@@ -54,7 +56,8 @@ export default function LabelStudioCanvas({
   onUpdateRect,
   renderPreview,
   imagePreviewUrl,
-  barcodePreviewUrl,
+  barcodePreview,
+  onPrintableSizeChange,
 }: LabelStudioCanvasProps) {
   const printableRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -68,13 +71,15 @@ export default function LabelStudioCanvas({
     if (!node) return
     const measure = () => {
       const r = node.getBoundingClientRect()
-      setPrintableSizePx({ width: r.width, height: r.height })
+      const size = { width: r.width, height: r.height }
+      setPrintableSizePx(size)
+      onPrintableSizeChange?.(size)
     }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(node)
     return () => ro.disconnect()
-  }, [paperTemplateId])
+  }, [paperTemplateId, onPrintableSizeChange])
 
   const onPointerMove = useCallback(
     (ev: React.PointerEvent) => {
@@ -149,6 +154,7 @@ export default function LabelStudioCanvas({
         {elements.map((el, zIndex) => {
           const isSelected = selectedElementId === el.id
           const isBarcode = isBarcodeElement(el)
+          const isQrBarcode = isBarcode && el.barcodeType === 'QrCode'
           const barcodeShowText = isBarcode && el.textPosition !== 'None'
           const captionBandPct = isBarcode && barcodeShowText ? barcodeCaptionHeightPct(el.textFontSize ?? 10) : 0
           const captionFontPx =
@@ -158,7 +164,7 @@ export default function LabelStudioCanvas({
           const isImage = isImageElement(el)
           const preview = renderPreview(el) || '(empty)'
           const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
-          const qrSrc = isBarcode && barcodePreviewUrl ? barcodePreviewUrl(el) : null
+          const barcodePreviewHit = isBarcode && barcodePreview ? barcodePreview(el) : null
           const textEl = isTextElement(el) ? el : null
           const textFitShrink =
             textEl && (textEl.textFitMode === 'ShrinkToFit' || textEl.textFitMode == null)
@@ -185,36 +191,44 @@ export default function LabelStudioCanvas({
                 startMove(el, ev)
               }}
             >
-              {isBarcode ? (
-                <>
-                  <div className="ls-barcode-graphic-wrap">
-                    {qrSrc ? (
-                      <img className="ls-canvas-barcode-img" src={qrSrc} alt="" />
-                    ) : (
-                      <div className="label-studio-barcode-bars" aria-hidden />
+              <div className="ls-element-inset">
+                {isBarcode ? (
+                  <>
+                    <div className="ls-barcode-graphic-wrap">
+                      {isQrBarcode ? (
+                        barcodePreviewHit?.format === 'qr' ? (
+                          <img className="ls-canvas-qr" src={barcodePreviewHit.dataUrl} alt="" />
+                        ) : (
+                          <span className="ls-barcode-placeholder">QR</span>
+                        )
+                      ) : barcodePreviewHit?.format === 'linear' ? (
+                        <img className="ls-canvas-linear-barcode" src={barcodePreviewHit.dataUrl} alt="" />
+                      ) : (
+                        <div className="label-studio-barcode-bars" aria-hidden />
+                      )}
+                    </div>
+                    {barcodeShowText && (
+                      <span className="label-studio-barcode-caption">{preview}</span>
                     )}
-                  </div>
-                  {barcodeShowText && (
-                    <span className="label-studio-barcode-caption">{preview}</span>
-                  )}
-                </>
-              ) : isImage ? (
-                imgSrc ? (
-                  <img className="ls-canvas-image" src={imgSrc} alt="" />
+                  </>
+                ) : isImage ? (
+                  imgSrc ? (
+                    <img className="ls-canvas-image" src={imgSrc} alt="" />
+                  ) : (
+                    <span className="ls-element-text">No image</span>
+                  )
+                ) : textEl ? (
+                  <LabelStudioFittedText
+                    text={preview}
+                    maxFontSizePx={previewMaxFontSizePx(textEl, printableSizePx.height, paper)}
+                    shrink={!!textFitShrink}
+                    bold={textEl.bold}
+                    align={textEl.align.toLowerCase() as 'left' | 'center' | 'right'}
+                  />
                 ) : (
-                  <span className="ls-element-text">No image</span>
-                )
-              ) : textEl ? (
-                <LabelStudioFittedText
-                  text={preview}
-                  maxFontSizePx={previewMaxFontSizePx(textEl, printableSizePx.height, paper)}
-                  shrink={!!textFitShrink}
-                  bold={textEl.bold}
-                  align={textEl.align.toLowerCase() as 'left' | 'center' | 'right'}
-                />
-              ) : (
-                <span className="ls-element-text">{preview}</span>
-              )}
+                  <span className="ls-element-text">{preview}</span>
+                )}
+              </div>
 
               {isSelected &&
                 RESIZE_HANDLES.map((handle) => (

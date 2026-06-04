@@ -4,6 +4,9 @@ import type { LabelStudioElement, LabelStudioTextElement, LabelStudioTextFitMode
 /** Twips per point (1440 twips/in ÷ 72 pt/in). */
 export const LABEL_TWIPS_PER_PT = 20
 
+/** Keep canvas/print preview content inside the dashed element border. */
+export const LABEL_STUDIO_CONTENT_INSET_PX = 6
+
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
 /** Map studio 0–100% (full canvas face) to DYMO printable bounds — matches driver scale. */
@@ -60,7 +63,11 @@ export function previewMaxFontSizePx(
 ): number {
   const studioH = studioBoundsHeightTwips(template)
   const boxHeightTwips = (el.heightPct / 100) * studioH
-  const boxHeightPx = (el.heightPct / 100) * printableAreaHeightPx
+  const boxHeightPx = Math.max(
+    8,
+    (el.heightPct / 100) * printableAreaHeightPx - LABEL_STUDIO_CONTENT_INSET_PX * 2
+  )
   if (boxHeightPx <= 0 || boxHeightTwips <= 0) return Math.max(8, el.fontSize * 0.75)
-  return Math.max(6, (el.fontSize * LABEL_TWIPS_PER_PT * boxHeightPx) / boxHeightTwips)
+  const px = (el.fontSize * LABEL_TWIPS_PER_PT * boxHeightPx) / boxHeightTwips
+  return Math.max(6, Math.floor(px * 0.94))
 }

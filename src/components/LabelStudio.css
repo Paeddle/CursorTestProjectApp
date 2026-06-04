@@ -737,27 +737,35 @@
   position: absolute;
   box-sizing: border-box;
   border: 2px dashed transparent;
-  padding: 2px 4px;
-  overflow: hidden;
+  padding: 0;
+  overflow: visible;
   cursor: move;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   text-align: center;
   line-height: 1.15;
   font-family: Arial, sans-serif;
-  word-break: break-word;
 }
 
 .label-studio-canvas-element.active {
   border-color: #1a5fb4;
   background: rgba(26, 95, 180, 0.08);
   z-index: 2;
-  overflow: visible;
 }
 
-.label-studio-canvas-element.active.label-studio-canvas-barcode {
+.ls-element-inset {
+  position: absolute;
+  inset: 6px;
+  box-sizing: border-box;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.label-studio-canvas-element.ls-text-shrink .ls-element-inset {
+  align-items: stretch;
+  justify-content: center;
 }
 
 .label-studio-canvas-element .ls-element-text {
@@ -770,15 +778,22 @@
   overflow: hidden;
 }
 
-.label-studio-canvas-element.ls-text-shrink {
-  align-items: stretch;
+.ls-fitted-text-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .label-studio-canvas-element.ls-text-shrink .ls-element-text {
   line-height: 1.1;
   overflow: hidden;
-  align-self: center;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Resize handles (Label Live style) */
@@ -865,14 +880,11 @@
   font-size: 0.88rem;
 }
 
-.label-studio-canvas-barcode {
+.label-studio-canvas-barcode .ls-element-inset {
   flex-direction: column;
-  justify-content: stretch;
   align-items: stretch;
-  gap: 1px;
-  padding: 1px;
-  min-height: 0;
-  overflow: hidden;
+  justify-content: stretch;
+  gap: 2px;
 }
 
 .label-studio-canvas-barcode.ls-barcode-text-top {
@@ -902,10 +914,10 @@
 }
 
 .label-studio-barcode-bars {
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  width: 92%;
+  height: 92%;
+  max-width: 92%;
+  max-height: 92%;
   min-height: 0;
   background: repeating-linear-gradient(
     90deg,
@@ -932,9 +944,8 @@
   white-space: nowrap;
 }
 
-.label-studio-canvas-image {
-  padding: 2px;
-  overflow: hidden;
+.label-studio-canvas-image .ls-element-inset {
+  padding: 0;
 }
 
 .ls-canvas-image {
@@ -945,15 +956,23 @@
   pointer-events: none;
 }
 
-.ls-canvas-barcode-img,
-.ls-canvas-qr {
+.ls-canvas-qr,
+.ls-canvas-linear-barcode {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 92%;
+  max-height: 92%;
   width: auto;
   height: auto;
   object-fit: contain;
   pointer-events: none;
+}
+
+.ls-barcode-placeholder {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #666;
+  letter-spacing: 0.05em;
+  user-select: none;
 }
 
 /* Right: properties */

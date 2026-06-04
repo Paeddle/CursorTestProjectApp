@@ -20,12 +20,13 @@ export default function LabelStudioFittedText({
   bold,
   align,
 }: LabelStudioFittedTextProps) {
+  const hostRef = useRef<HTMLDivElement>(null)
   const textRef = useRef<HTMLSpanElement>(null)
   const [fontPx, setFontPx] = useState(() => Math.max(4, maxFontSizePx))
 
   useLayoutEffect(() => {
     const span = textRef.current
-    const box = span?.parentElement
+    const box = hostRef.current
     if (!span || !box) return
 
     const ceiling = Math.max(4, Math.floor(maxFontSizePx))
@@ -52,20 +53,22 @@ export default function LabelStudioFittedText({
       if (trySize(mid)) lo = mid
       else hi = mid - 1
     }
-    setFontPx(lo)
+    setFontPx(Math.max(4, Math.floor(lo * 0.96)))
   }, [text, maxFontSizePx, shrink])
 
   return (
-    <span
-      ref={textRef}
-      className="ls-element-text"
-      style={{
-        fontSize: `${fontPx}px`,
-        fontWeight: bold ? 700 : 400,
-        textAlign: align,
-      }}
-    >
-      {text}
-    </span>
+    <div ref={hostRef} className="ls-fitted-text-host">
+      <span
+        ref={textRef}
+        className="ls-element-text"
+        style={{
+          fontSize: `${fontPx}px`,
+          fontWeight: bold ? 700 : 400,
+          textAlign: align,
+        }}
+      >
+        {text}
+      </span>
+    </div>
   )
 }
