@@ -15,12 +15,51 @@ export type DymoLabelBounds = { x: number; y: number; width: number; height: num
 
 export type StudioPrintBoundsOptions = { /** Use short 30323 catalog twips (fallback if hybrid rejected). */ catalogTwips?: boolean }
 
-/** Map studio 0–100% (label face) to DYMO bounds — same inner area + tall draw as PO labels on 30323. */
+/** 30323 face is 102×59 mm; hybrid draw is ~59×102 mm in XML (X short, Y long). */
+function shippingHybridFaceAxes(template: DymoPaperTemplate): {
+  x0: number
+  y0: number
+  /** Twips along studio vertical (59 mm) → XML X. */
+  axisShort: number
+  /** Twips along studio horizontal (102 mm) → XML Y. */
+  axisLong: number
+} {
+  const padShort = Math.round(template.boundsWidth * 0.02)
+  const padLong = Math.round(template.boundsHeight * 0.02)
+  return {
+    x0: template.boundsX + padShort,
+    y0: template.boundsY + padLong,
+    axisShort: template.boundsWidth - padShort * 2,
+    axisLong: template.boundsHeight - padLong * 2,
+  }
+}
+
+/** Map studio % on 102×59 face to hybrid tall draw (stacked layout, not side-by-side). */
+function pctToDymoShippingHybridBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  const { x0, y0, axisShort, axisLong } = shippingHybridFaceAxes(template)
+  const boundHeight = Math.max(80, Math.round((el.widthPct / 100) * axisLong))
+  const boundWidth = Math.max(60, Math.round((el.heightPct / 100) * axisShort))
+  return {
+    x: x0 + Math.round((el.yPct / 100) * (axisShort - boundWidth)),
+    y: y0 + Math.round((el.xPct / 100) * (axisLong - boundHeight)),
+    width: boundWidth,
+    height: boundHeight,
+  }
+}
+
+/** Map studio 0–100% to DYMO printable bounds. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
+  if (template.id === 'Shipping' && !options?.catalogTwips) {
+    return pctToDymoShippingHybridBounds(el, dymoTemplateForStudioPrint(template))
+  }
+
   const t = options?.catalogTwips ? template : dymoTemplateForStudioPrint(template)
   const base = poInnerBoundsForTemplate(t)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
@@ -34,12 +73,10 @@ export function pctToDymoPrintBounds(
 }
 
 export type LabelPrintableMetrics = {
-  /** Physical width / height for canvas aspect ratio. */
   widthMm: number
   heightMm: number
 }
 
-/** Label Studio canvas = physical sticker face; print uses bounds twips from the same template. */
 export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelPrintableMetrics {
   return {
     widthMm: template.widthMm,
@@ -47,15 +84,20 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
+/** Studio vertical (59 mm) twips for font/box scaling on 30323 hybrid print. */
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
-  return dymoTemplateForStudioPrint(template).boundsHeight
+  const t = dymoTemplateForStudioPrint(template)
+  if (t.id === 'Shipping') return t.boundsWidth
+  return t.boundsHeight
 }
 
+/** Studio horizontal (102 mm) twips for font/box scaling on 30323 hybrid print. */
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
-  return dymoTemplateForStudioPrint(template).boundsWidth
+  const t = dymoTemplateForStudioPrint(template)
+  if (t.id === 'Shipping') return t.boundsHeight
+  return t.boundsWidth
 }
 
-/** Point size for fixed-size text (ShrinkToFit uses max size + DYMO TextFitMode instead). */
 export function effectiveTextFontSizePt(
   fontSize: number,
   _lineCount: number,
@@ -66,7 +108,6 @@ export function effectiveTextFontSizePt(
   return fontSize
 }
 
-/** Max preview font (px) before shrink-to-fit — matches configured pt size in the element box. */
 export function previewMaxFontSizePx(
   el: LabelStudioTextElement,
   printableAreaHeightPx: number,
