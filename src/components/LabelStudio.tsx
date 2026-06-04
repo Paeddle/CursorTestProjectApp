@@ -119,8 +119,9 @@ export default function LabelStudio() {
         .filter((i): i is LabelStudioItem => Boolean(i)),
     [selectedItemIds, selectedItemsById]
   )
-  const paperName =
-    DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.paperName ?? '30323 Shipping'
+  const paperTemplate =
+    DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId) ?? DYMO_PAPER_TEMPLATES[1]
+  const paperName = paperTemplate.paperName
 
   const loadInventoryItems = useCallback(async () => {
     setLoadingItems(true)
@@ -788,10 +789,7 @@ export default function LabelStudio() {
                 </select>
                 <span className="ls-field-hint">
                   Must match your loaded roll in DYMO Connect. Preview size is the real sticker face (
-                  {DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.widthMm ?? LABEL_WIDTH_MM}
-                  ×
-                  {DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.heightMm ?? LABEL_HEIGHT_MM}{' '}
-                  mm for 30323).
+                  {paperTemplate.widthMm}×{paperTemplate.heightMm} mm).
                 </span>
               </label>
               <div className="ls-btn-row">
@@ -899,7 +897,7 @@ export default function LabelStudio() {
           />
 
           <p className="ls-canvas-hint">
-            The white box is the full {LABEL_WIDTH_MM}×{LABEL_HEIGHT_MM} mm label face (30323). What you place here
+            The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face. What you place here
             prints at the same position and size. <strong>Move</strong> drag · <strong>Resize</strong> blue handles ·
             <strong> Delete</strong> key removes the field.
           </p>
