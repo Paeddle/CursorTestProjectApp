@@ -5,10 +5,7 @@ import {
   dymoBarcodeSymbologyXml,
   resolveBarcodeType,
 } from './labelStudioBarcode'
-import {
-  BARCODE_CAPTION_MAX_FONT_PT,
-  splitBarcodeElementBounds,
-} from './labelStudioBarcodeLayout'
+import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import type {
@@ -146,9 +143,9 @@ function buildBarcodePrintXml(
   const captionXml = buildTextObjectXml(
     `${el.id}_caption`,
     [displayText],
-    BARCODE_CAPTION_MAX_FONT_PT,
+    barcodeCaptionFontPt(caption),
     caption,
-    { align: 'Center', bold: false, textFitMode: 'ShrinkToFit' }
+    { align: 'Center', bold: false, textFitMode: 'None' }
   )
   return barcodeXml + captionXml
 }

@@ -12,8 +12,14 @@ export const DEFAULT_BARCODE_TEXT_FONT_SIZE = 10
 /** Caption band as % of the barcode element (numbers auto-fit inside this band). */
 export const BARCODE_CAPTION_BAND_PCT = 22
 
-/** Max point size sent to DYMO before ShrinkToFit scales the caption down. */
+/** Max point size for barcode human-readable numbers. */
 export const BARCODE_CAPTION_MAX_FONT_PT = 14
+
+/** Point size that fills the caption band on the printer (avoids over-shrinking). */
+export function barcodeCaptionFontPt(captionBounds: DymoLabelBounds): number {
+  const hPt = captionBounds.height / LABEL_TWIPS_PER_PT
+  return Math.max(6, Math.min(BARCODE_CAPTION_MAX_FONT_PT, Math.round(hPt * 0.82)))
+}
 
 export function barcodeCaptionHeightPct(_textFontSize?: number): number {
   return BARCODE_CAPTION_BAND_PCT
@@ -74,14 +80,13 @@ export function previewBarcodeCaptionMaxFontPx(
   printableAreaHeightPx: number,
   template: DymoPaperTemplate
 ): number {
-  const studioH = studioBoundsHeightTwips(template)
-  const captionHeightTwips = (elementHeightPct / 100) * studioH * (BARCODE_CAPTION_BAND_PCT / 100)
   const captionHeightPx = Math.max(
     6,
     (elementHeightPct / 100) * printableAreaHeightPx * (BARCODE_CAPTION_BAND_PCT / 100) - 2
   )
-  if (captionHeightPx <= 0 || captionHeightTwips <= 0) return 10
-  const px =
-    (BARCODE_CAPTION_MAX_FONT_PT * LABEL_TWIPS_PER_PT * captionHeightPx) / captionHeightTwips
-  return Math.max(5, Math.floor(px * 0.9))
+  const studioH = studioBoundsHeightTwips(template)
+  const captionTwips = (elementHeightPct / 100) * studioH * (BARCODE_CAPTION_BAND_PCT / 100)
+  const pt = barcodeCaptionFontPt({ x: 0, y: 0, width: 1, height: Math.max(72, captionTwips) })
+  if (captionHeightPx <= 0 || captionTwips <= 0) return 10
+  return Math.max(5, Math.floor((pt * LABEL_TWIPS_PER_PT * captionHeightPx) / captionTwips))
 }

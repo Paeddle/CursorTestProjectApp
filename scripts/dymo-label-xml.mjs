@@ -16,12 +16,12 @@ export const DYMO_PAPER_TEMPLATES = [
   {
     id: 'Shipping',
     paperName: '30323 Shipping',
-    drawWidth: 5811,
-    drawHeight: 1581,
+    drawWidth: 5782,
+    drawHeight: 3340,
     boundsX: 200,
     boundsY: 50,
-    boundsWidth: 5411,
-    boundsHeight: 1481,
+    boundsWidth: 5382,
+    boundsHeight: 3240,
   },
   {
     id: 'Durable1933085',

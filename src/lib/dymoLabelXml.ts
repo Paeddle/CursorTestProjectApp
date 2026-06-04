@@ -55,12 +55,13 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     paperName: '30323 Shipping',
     widthMm: LABEL_WIDTH_MM,
     heightMm: LABEL_HEIGHT_MM,
-    drawWidth: 5811,
-    drawHeight: 1581,
+    /** Full 102×59 mm face in twips (old drawHeight ~1581 only covered ~28 mm — content printed in top half). */
+    drawWidth: mmToTwips(LABEL_WIDTH_MM),
+    drawHeight: mmToTwips(LABEL_HEIGHT_MM),
     boundsX: 200,
     boundsY: 50,
-    boundsWidth: 5411,
-    boundsHeight: 1481,
+    boundsWidth: mmToTwips(LABEL_WIDTH_MM) - 400,
+    boundsHeight: mmToTwips(LABEL_HEIGHT_MM) - 100,
   },
   {
     id: 'Durable1933085',
