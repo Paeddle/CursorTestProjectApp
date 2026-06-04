@@ -12,15 +12,39 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const outDir = path.join(scriptDir, 'dymo-probe-out')
 
-const SWAP_DRAW = {
+/** Same hybrid as dymoTemplateForStudioPrint (30323 name + 30256 twips). */
+const HYBRID_SHIPPING = {
   id: 'Shipping',
   paperName: '30323 Shipping',
-  drawWidth: 1581,
-  drawHeight: 5811,
-  boundsX: 50,
-  boundsY: 200,
-  boundsWidth: 1481,
-  boundsHeight: 5411,
+  drawWidth: 3331,
+  drawHeight: 5715,
+  boundsX: 336,
+  boundsY: 58,
+  boundsWidth: 5338,
+  boundsHeight: 3192,
+}
+
+function poInner(t) {
+  const padX = Math.round(t.boundsWidth * 0.04)
+  const padY = Math.round(t.boundsHeight * 0.06)
+  return {
+    x: t.boundsX + padX,
+    y: t.boundsY + padY,
+    width: t.boundsWidth - padX * 2,
+    height: t.boundsHeight - padY * 2,
+  }
+}
+
+function pctPoStyle(el, t) {
+  const base = poInner(t)
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  return {
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+    width,
+    height,
+  }
 }
 
 /** Keep draw twips; swap bounds so studio vertical % uses the long axis. */
@@ -54,7 +78,7 @@ function pctSwapFace(el, t) {
   }
 }
 
-function studioInventoryXml(t, mapPct = pctToBounds) {
+function studioInventoryXml(t, mapPct = pctPoStyle) {
   const item = mapPct({ xPct: 34, yPct: 6, widthPct: 62, heightPct: 38 }, t)
   const barcode = mapPct({ xPct: 34, yPct: 62, widthPct: 62, heightPct: 34 }, t)
   const text = (name, lines, b, size) =>
@@ -152,9 +176,8 @@ async function main() {
   const current = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
   const variants = [
     ['po-current', current, 'po', null],
-    ['studio-current', current, 'studio', pctToBounds],
-    ['studio-swap-draw', SWAP_DRAW, 'studio', pctToBounds],
-    ['studio-swap-face', current, 'studio', pctSwapFace],
+    ['studio-catalog', current, 'studio', pctToBounds],
+    ['studio-hybrid-po-bounds', HYBRID_SHIPPING, 'studio', pctPoStyle],
   ]
 
   for (const [name, template, kind, mapPct] of variants) {

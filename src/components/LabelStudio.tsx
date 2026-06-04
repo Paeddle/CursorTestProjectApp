@@ -906,17 +906,8 @@ export default function LabelStudio() {
           />
 
           <p className="ls-canvas-hint">
-            {paperTemplate.id === 'Shipping' ? (
-              <>
-                The outer box is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm sticker. Design inside the
-                top dashed area only — that is what DYMO prints on 30323; the gray strip is not printed.{' '}
-              </>
-            ) : (
-              <>
-                The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face. What you place here
-                prints at the same position and size.{' '}
-              </>
-            )}
+            The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face. What you place here
+            prints at the same position and size (30323 uses the same tall layout as PO Info labels).{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field.
           </p>

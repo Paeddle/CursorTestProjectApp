@@ -1,4 +1,9 @@
-import { DYMO_PAPER_TEMPLATES, escapeXmlText, type DymoPaperTemplate } from './dymoLabelXml'
+import {
+  DYMO_PAPER_TEMPLATES,
+  dymoTemplateForStudioPrint,
+  escapeXmlText,
+  type DymoPaperTemplate,
+} from './dymoLabelXml'
 import {
   barcodeTextForPrint,
   dymoBarcodeSizeForBounds,
@@ -16,7 +21,12 @@ import type {
   LabelStudioTemplate,
   LabelStudioTextElement,
 } from '../types/labelStudio'
-import { effectiveTextFontSizePt, pctToDymoPrintBounds, type DymoLabelBounds } from './labelStudioGeometry'
+import {
+  effectiveTextFontSizePt,
+  pctToDymoPrintBounds,
+  type DymoLabelBounds,
+  type StudioPrintBoundsOptions,
+} from './labelStudioGeometry'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 
 function fontAttributesXml(fontSize: number, bold: boolean): string {
@@ -33,15 +43,20 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
 }
 
-function studioDieCutXml(template: DymoPaperTemplate, objectXml: string): string {
+function studioDieCutXml(
+  template: DymoPaperTemplate,
+  objectXml: string,
+  options?: StudioPrintBoundsOptions
+): string {
+  const t = options?.catalogTwips ? template : dymoTemplateForStudioPrint(template)
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
     `<PaperOrientation>Landscape</PaperOrientation>` +
-    `<Id>${template.id}</Id>` +
-    `<PaperName>${template.paperName}</PaperName>` +
+    `<Id>${t.id}</Id>` +
+    `<PaperName>${t.paperName}</PaperName>` +
     `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${template.drawWidth}" Height="${template.drawHeight}" Rx="270" Ry="270"/>` +
+    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
     `</DrawCommands>` +
     objectXml +
     `</DieCutLabel>`
@@ -182,9 +197,10 @@ function buildImageObjectXml(
 async function buildElementXmlAsync(
   el: LabelStudioElement,
   item: LabelStudioItem,
-  template: DymoPaperTemplate
+  template: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
 ): Promise<string> {
-  const bounds = pctToDymoPrintBounds(el, template)
+  const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
     return buildBarcodePrintXml(el, value, bounds)
@@ -202,14 +218,19 @@ async function buildElementXmlAsync(
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
-      textFitMode: el.textFitMode ?? 'ShrinkToFit',
+      textFitMode: 'None',
     })
   }
   return ''
 }
 
-function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template: DymoPaperTemplate): string {
-  const bounds = pctToDymoPrintBounds(el, template)
+function buildElementXml(
+  el: LabelStudioElement,
+  item: LabelStudioItem,
+  template: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
+): string {
+  const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
     return buildBarcodePrintXml(el, value, bounds)
@@ -223,7 +244,7 @@ function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
-      textFitMode: el.textFitMode ?? 'ShrinkToFit',
+      textFitMode: 'None',
     })
   }
   return ''
@@ -232,11 +253,12 @@ function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template
 export function buildLabelXmlFromStudio(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
-  paper?: DymoPaperTemplate
+  paper?: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
 ): string {
   const t = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   const objects = template.elements
-    .map((el) => buildElementXml(el, item, t))
+    .map((el) => buildElementXml(el, item, t, printOptions))
     .filter(Boolean)
 
   if (objects.length === 0) {
@@ -245,13 +267,13 @@ export function buildLabelXmlFromStudio(
         'TEXT',
         ['(empty label)'],
         18,
-        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
+        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t, printOptions),
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
   }
 
-  return studioDieCutXml(t, objects.join(''))
+  return studioDieCutXml(t, objects.join(''), printOptions)
 }
 
 export function buildLabelXmlCandidatesFromStudio(
@@ -270,10 +292,13 @@ export function buildLabelXmlCandidatesFromStudio(
 export async function buildLabelXmlFromStudioForPrint(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
-  paper?: DymoPaperTemplate
+  paper?: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
 ): Promise<string> {
   const t = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
-  const objectParts = await Promise.all(template.elements.map((el) => buildElementXmlAsync(el, item, t)))
+  const objectParts = await Promise.all(
+    template.elements.map((el) => buildElementXmlAsync(el, item, t, printOptions))
+  )
   const objects = objectParts.filter(Boolean)
 
   if (objects.length === 0) {
@@ -282,13 +307,13 @@ export async function buildLabelXmlFromStudioForPrint(
         'TEXT',
         ['(empty label)'],
         18,
-        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
+        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t, printOptions),
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
   }
 
-  return studioDieCutXml(t, objects.join(''))
+  return studioDieCutXml(t, objects.join(''), printOptions)
 }
 
 export async function buildLabelXmlCandidatesFromStudioForPrint(
@@ -296,9 +321,14 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
   item: LabelStudioItem
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
-  const ordered = [
-    preferred,
-    ...DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id),
-  ]
-  return Promise.all(ordered.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper)))
+  const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred)
+  if (preferred.id !== 'Shipping') {
+    const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)
+    const more = await Promise.all(rest.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper)))
+    return [hybrid, ...more]
+  }
+  const catalog = await buildLabelXmlFromStudioForPrint(template, item, preferred, {
+    catalogTwips: true,
+  })
+  return hybrid === catalog ? [hybrid] : [hybrid, catalog]
 }

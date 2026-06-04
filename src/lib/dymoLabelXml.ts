@@ -91,6 +91,43 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   },
 ] as const
 
+/**
+ * PO labels try templates in array order; LargeShipping (30256) validates first and uses a
+ * tall draw area (~full label height). For Label Studio on 30323 rolls, print with the same
+ * twips while keeping PaperName/Id = 30323 Shipping (probe: scripts/dymo-probe-po-vs-studio.mjs).
+ */
+export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
+  if (template.id !== 'Shipping') return template
+  const large = DYMO_PAPER_TEMPLATES.find((p) => p.id === 'LargeShipping')
+  if (!large) return template
+  return {
+    ...template,
+    drawWidth: large.drawWidth,
+    drawHeight: large.drawHeight,
+    boundsX: large.boundsX,
+    boundsY: large.boundsY,
+    boundsWidth: large.boundsWidth,
+    boundsHeight: large.boundsHeight,
+  }
+}
+
+/** Inner printable rectangle (same padding as PO job/location split). */
+export function poInnerBoundsForTemplate(template: DymoPaperTemplate): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  const padX = Math.round(template.boundsWidth * 0.04)
+  const padY = Math.round(template.boundsHeight * 0.06)
+  return {
+    x: template.boundsX + padX,
+    y: template.boundsY + padY,
+    width: template.boundsWidth - padX * 2,
+    height: template.boundsHeight - padY * 2,
+  }
+}
+
 export type LabelRowLayout = {
   jobFontSize: number
   locationFontSize: number
@@ -369,14 +406,7 @@ function splitBoundsForLayout(
   jobLines: string[],
   locationLines: string[]
 ): { job?: LabelBounds; location?: LabelBounds } {
-  const padX = Math.round(template.boundsWidth * 0.04)
-  const padY = Math.round(template.boundsHeight * 0.06)
-  const base = {
-    x: template.boundsX + padX,
-    y: template.boundsY + padY,
-    width: template.boundsWidth - padX * 2,
-    height: template.boundsHeight - padY * 2,
-  }
+  const base = poInnerBoundsForTemplate(template)
 
   const hasJob = jobLines.length > 0 && jobLines[0] !== '(no text)'
   const hasLoc = locationLines.length > 0

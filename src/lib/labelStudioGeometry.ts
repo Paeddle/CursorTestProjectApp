@@ -1,4 +1,8 @@
-import { mmToTwips, type DymoPaperTemplate } from './dymoLabelXml'
+import {
+  dymoTemplateForStudioPrint,
+  poInnerBoundsForTemplate,
+  type DymoPaperTemplate,
+} from './dymoLabelXml'
 import type { LabelStudioElement, LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
 
 /** Twips per point (1440 twips/in ÷ 72 pt/in). */
@@ -9,16 +13,23 @@ export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
-/** Map studio 0–100% (label face) to DYMO printable bounds for the selected roll template. */
+export type StudioPrintBoundsOptions = { /** Use short 30323 catalog twips (fallback if hybrid rejected). */ catalogTwips?: boolean }
+
+/** Map studio 0–100% (label face) to DYMO bounds — same inner area + tall draw as PO labels on 30323. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  template: DymoPaperTemplate
+  template: DymoPaperTemplate,
+  options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
+  const t = options?.catalogTwips ? template : dymoTemplateForStudioPrint(template)
+  const base = poInnerBoundsForTemplate(t)
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
   return {
-    x: template.boundsX + Math.round((el.xPct / 100) * template.boundsWidth),
-    y: template.boundsY + Math.round((el.yPct / 100) * template.boundsHeight),
-    width: Math.max(80, Math.round((el.widthPct / 100) * template.boundsWidth)),
-    height: Math.max(60, Math.round((el.heightPct / 100) * template.boundsHeight)),
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+    width,
+    height,
   }
 }
 
@@ -36,23 +47,12 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
-/**
- * On 30323, DYMO only prints in a band at the top of the physical sticker (~bounds vs full height mm).
- * Canvas uses this so element % matches print; gray area below is not printed.
- */
-export function shippingPrintableHeightFraction(template: DymoPaperTemplate): number | null {
-  if (template.id !== 'Shipping') return null
-  const fullTwips = mmToTwips(template.heightMm)
-  if (fullTwips <= 0) return null
-  return Math.min(1, Math.max(0.35, template.boundsHeight / fullTwips))
-}
-
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
-  return template.boundsHeight
+  return dymoTemplateForStudioPrint(template).boundsHeight
 }
 
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
-  return template.boundsWidth
+  return dymoTemplateForStudioPrint(template).boundsWidth
 }
 
 /** Point size for fixed-size text (ShrinkToFit uses max size + DYMO TextFitMode instead). */
