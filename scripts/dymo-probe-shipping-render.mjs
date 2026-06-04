@@ -19,26 +19,28 @@ const HYBRID_SHIPPING = {
   paperName: '30323 Shipping',
   drawWidth: large.drawWidth,
   drawHeight: large.drawHeight,
-  boundsX: catalog.boundsX,
-  boundsY: catalog.boundsY,
-  boundsWidth: catalog.boundsWidth,
+  boundsX: large.boundsX,
+  boundsY: large.boundsY,
+  boundsWidth: large.boundsWidth,
   boundsHeight: large.boundsHeight,
 }
 
-function pctHybridFace(el, t) {
-  const padShort = Math.round(t.boundsWidth * 0.02)
-  const padLong = Math.round(t.boundsHeight * 0.02)
-  const x0 = t.boundsX + padShort
-  const y0 = t.boundsY + padLong
-  const axisShort = t.boundsWidth - padShort * 2
-  const axisLong = t.boundsHeight - padLong * 2
-  const boundHeight = Math.max(80, Math.round((el.widthPct / 100) * axisLong))
-  const boundWidth = Math.max(60, Math.round((el.heightPct / 100) * axisShort))
+function pctStacked(el, t) {
+  const padX = Math.round(t.boundsWidth * 0.02)
+  const padY = Math.round(t.boundsHeight * 0.02)
+  const base = {
+    x: t.boundsX + padX,
+    y: t.boundsY + padY,
+    width: t.boundsWidth - padX * 2,
+    height: t.boundsHeight - padY * 2,
+  }
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
   return {
-    x: x0 + Math.round((el.yPct / 100) * (axisShort - boundWidth)),
-    y: y0 + Math.round((el.xPct / 100) * (axisLong - boundHeight)),
-    width: boundWidth,
-    height: boundHeight,
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+    width,
+    height,
   }
 }
 
@@ -73,7 +75,7 @@ function pctSwapFace(el, t) {
   }
 }
 
-function studioInventoryXml(t, mapPct = pctHybridFace) {
+function studioInventoryXml(t, mapPct = pctStacked) {
   const item = mapPct({ xPct: 34, yPct: 6, widthPct: 62, heightPct: 38 }, t)
   const barcode = mapPct({ xPct: 34, yPct: 62, widthPct: 62, heightPct: 34 }, t)
   const text = (name, lines, b, size) =>
@@ -172,7 +174,7 @@ async function main() {
   const variants = [
     ['po-current', current, 'po', null],
     ['studio-catalog', current, 'studio', pctToBounds],
-    ['studio-hybrid-face', HYBRID_SHIPPING, 'studio', pctHybridFace],
+    ['studio-hybrid-stacked', HYBRID_SHIPPING, 'studio', pctStacked],
   ]
 
   for (const [name, template, kind, mapPct] of variants) {

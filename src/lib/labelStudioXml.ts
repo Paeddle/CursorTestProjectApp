@@ -218,7 +218,7 @@ async function buildElementXmlAsync(
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
-      textFitMode: el.textFitMode ?? 'ShrinkToFit',
+      textFitMode: 'None',
     })
   }
   return ''
@@ -244,7 +244,7 @@ function buildElementXml(
     return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
-      textFitMode: el.textFitMode ?? 'ShrinkToFit',
+      textFitMode: 'None',
     })
   }
   return ''

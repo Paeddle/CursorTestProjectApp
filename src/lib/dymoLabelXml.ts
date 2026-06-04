@@ -104,10 +104,9 @@ export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPap
     ...template,
     drawWidth: large.drawWidth,
     drawHeight: large.drawHeight,
-    /** Keep 30323 horizontal margins; use 30256 vertical extent (full label height). */
-    boundsX: template.boundsX,
-    boundsY: template.boundsY,
-    boundsWidth: template.boundsWidth,
+    boundsX: large.boundsX,
+    boundsY: large.boundsY,
+    boundsWidth: large.boundsWidth,
     boundsHeight: large.boundsHeight,
   }
 }
