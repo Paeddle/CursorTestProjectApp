@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import {
   aggregatePOBarcodeScans,
   buildCatalogLookupMap,
-  filterCatalogBySearch,
   lookupCatalogItem,
   normalizeBarcodeValue,
   type AggregatedPOBarcodeRow,
@@ -353,8 +352,6 @@ function poSummaryLastScannedAt(barcodes: POBarcode[]): string | null {
   }
   return latest
 }
-type CatalogSortColumn = 'item' | 'partNumber' | 'manufacturer'
-
 function sortKeyItemName(catalogMap: Map<string, BarcodeCatalogItem>, barcode: string): string {
   const cat = lookupCatalogItem(catalogMap, barcode)
   const name = (cat?.item_name || '').trim().toLowerCase()
@@ -396,31 +393,6 @@ function sortAggregatedRows(
   return copy
 }
 
-function sortCatalogRows(
-  items: BarcodeCatalogItem[],
-  column: CatalogSortColumn,
-  asc: boolean
-): BarcodeCatalogItem[] {
-  const mult = asc ? 1 : -1
-  const copy = [...items]
-  copy.sort((a, b) => {
-    if (column === 'item') {
-      const ka = ((a.item_name || '').trim() || '\uFFFF').toLowerCase()
-      const kb = ((b.item_name || '').trim() || '\uFFFF').toLowerCase()
-      return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
-    }
-    if (column === 'partNumber') {
-      const ka = ((a.part_number || '').trim() || '\uFFFF').toLowerCase()
-      const kb = ((b.part_number || '').trim() || '\uFFFF').toLowerCase()
-      return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
-    }
-    const ka = ((a.manufacturer || '').trim() || '\uFFFF').toLowerCase()
-    const kb = ((b.manufacturer || '').trim() || '\uFFFF').toLowerCase()
-    return mult * ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
-  })
-  return copy
-}
-
 function defaultAscForPoScanColumn(column: PoScanSortColumn): boolean {
   return column === 'item' || column === 'partNumber'
 }
@@ -449,11 +421,6 @@ function POInfo() {
   const qtyInputRef = useRef<HTMLInputElement>(null)
   const [poScanSortByKey, setPoScanSortByKey] = useState<Record<string, PoScanSortState>>({})
   const [ipointSortByPoKey, setIpointSortByPoKey] = useState<Record<string, IpointSortState>>({})
-  const [catalogSort, setCatalogSort] = useState<{ column: CatalogSortColumn; asc: boolean }>({
-    column: 'item',
-    asc: true,
-  })
-  const [catalogSearch, setCatalogSearch] = useState('')
   const [checkedInMap, setCheckedInMap] = useState<Record<string, boolean>>({})
   const [checkinSavingKey, setCheckinSavingKey] = useState<string | null>(null)
   const [bulkCheckinPoKey, setBulkCheckinPoKey] = useState<string | null>(null)
@@ -485,11 +452,6 @@ function POInfo() {
     [itemLocations]
   )
 
-  const sortedCatalog = useMemo(() => {
-    const filtered = filterCatalogBySearch(catalog, catalogSearch)
-    return sortCatalogRows(filtered, catalogSort.column, catalogSort.asc)
-  }, [catalog, catalogSearch, catalogSort])
-
   const toggleIpointSort = useCallback((poKey: string, column: IpointSortColumn) => {
     setIpointSortByPoKey((prev) => {
       const cur = prev[poKey]
@@ -508,12 +470,6 @@ function POInfo() {
       }
       return { ...prev, [poKey]: { column, asc: defaultAscForPoScanColumn(column) } }
     })
-  }, [])
-
-  const toggleCatalogSort = useCallback((column: CatalogSortColumn) => {
-    setCatalogSort((cur) =>
-      cur.column === column ? { column, asc: !cur.asc } : { column, asc: true }
-    )
   }, [])
 
   useLayoutEffect(() => {
@@ -2283,141 +2239,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key`}</pre>
           })}
           </div>
         </div>
-      )}
-
-      {!loading && (
-        <section className="po-info-catalog-section">
-          <div className="po-info-catalog-section-header">
-            <h2 className="po-info-catalog-section-title">Barcode catalog</h2>
-            {catalog.length > 0 ? (
-              <input
-                type="search"
-                className="po-info-search po-info-catalog-search"
-                placeholder="Search barcode, item, part #, manufacturer…"
-                value={catalogSearch}
-                onChange={(e) => setCatalogSearch(e.target.value)}
-                aria-label="Search barcode catalog"
-              />
-            ) : null}
-          </div>
-          {catalog.length === 0 ? (
-            <p className="po-info-catalog-empty">No catalog entries yet.</p>
-          ) : sortedCatalog.length === 0 ? (
-            <p className="po-info-catalog-empty">
-              No catalog entries match &ldquo;{catalogSearch.trim()}&rdquo;.
-            </p>
-          ) : (
-            <>
-              {catalogSearch.trim() ? (
-                <p className="po-info-catalog-match-count">
-                  Showing {sortedCatalog.length} of {catalog.length} entries
-                </p>
-              ) : null}
-            <div className="po-info-catalog-table-wrap po-info-catalog-scroll">
-              <table className="po-info-catalog-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Barcode</th>
-                    <th
-                      scope="col"
-                      aria-sort={
-                        catalogSort.column === 'item'
-                          ? catalogSort.asc
-                            ? 'ascending'
-                            : 'descending'
-                          : 'none'
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="po-info-sort-btn"
-                        onClick={() => toggleCatalogSort('item')}
-                      >
-                        Item
-                        {catalogSort.column === 'item' ? (
-                          <span className="po-info-sort-indicator" aria-hidden>
-                            {catalogSort.asc ? ' ▲' : ' ▼'}
-                          </span>
-                        ) : null}
-                      </button>
-                    </th>
-                    <th
-                      scope="col"
-                      aria-sort={
-                        catalogSort.column === 'partNumber'
-                          ? catalogSort.asc
-                            ? 'ascending'
-                            : 'descending'
-                          : 'none'
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="po-info-sort-btn"
-                        onClick={() => toggleCatalogSort('partNumber')}
-                      >
-                        Part number
-                        {catalogSort.column === 'partNumber' ? (
-                          <span className="po-info-sort-indicator" aria-hidden>
-                            {catalogSort.asc ? ' ▲' : ' ▼'}
-                          </span>
-                        ) : null}
-                      </button>
-                    </th>
-                    <th
-                      scope="col"
-                      aria-sort={
-                        catalogSort.column === 'manufacturer'
-                          ? catalogSort.asc
-                            ? 'ascending'
-                            : 'descending'
-                          : 'none'
-                      }
-                    >
-                      <button
-                        type="button"
-                        className="po-info-sort-btn"
-                        onClick={() => toggleCatalogSort('manufacturer')}
-                      >
-                        Manufacturer
-                        {catalogSort.column === 'manufacturer' ? (
-                          <span className="po-info-sort-indicator" aria-hidden>
-                            {catalogSort.asc ? ' ▲' : ' ▼'}
-                          </span>
-                        ) : null}
-                      </button>
-                    </th>
-                    <th scope="col" className="po-info-catalog-th-actions" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedCatalog.map((row) => (
-                    <tr key={row.id}>
-                      <td>
-                        <code className="po-info-catalog-code">{row.barcode_value}</code>
-                      </td>
-                      <td className="po-info-catalog-item-cell">{row.item_name}</td>
-                      <td className="po-info-catalog-part-cell">
-                        {row.part_number?.trim() ? row.part_number : '—'}
-                      </td>
-                      <td className="po-info-meta">{row.manufacturer || '—'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="po-info-catalog-edit-btn"
-                          onClick={() => openBarcodeLookup(row.barcode_value, row, true)}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            </>
-          )}
-        </section>
       )}
 
       {lookupOpen && (

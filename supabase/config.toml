@@ -10,3 +10,6 @@ verify_jwt = true
 
 [functions.sync-po-ipoint]
 verify_jwt = true
+
+[functions.inventory-image-import]
+verify_jwt = true
