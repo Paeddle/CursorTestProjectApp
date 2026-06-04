@@ -519,7 +519,8 @@ function PurchaseList() {
         <p className="purchase-list-meta">
           Replaces all rows in <code>inventory</code> ({inventoryCount} row(s) currently). Columns mapped: manufacturer,
           category, type, item, part_number, description_customer, unit, color, unit_hard_cost, unit_price, margin,
-          markup, id_class, vendor_name, barcode, stock_total, stock_available, stock_on_order.
+          markup, id_class, vendor_name, barcode, stock_total, stock_available, stock_on_order, picture_url,
+          purchase_url.
         </p>
       </section>
 

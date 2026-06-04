@@ -97,7 +97,10 @@ export default function InventoryPage() {
       )
       setLookupAttempts(attempts)
       if (best && applyIfFound) {
-        const updated = await applyBarcodeLookupToInventory(row.id, best.barcode, best.source)
+        const updated = await applyBarcodeLookupToInventory(row.id, best.barcode, best.source, {
+          purchaseUrl:
+            best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
+        })
         setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
         setStats((s) => ({
           ...s,
@@ -186,6 +189,8 @@ export default function InventoryPage() {
         barcode: editDraft.barcode ?? editRow.barcode,
         vendor_name: editDraft.vendor_name ?? editRow.vendor_name,
         category: editDraft.category ?? editRow.category,
+        picture_url: editDraft.picture_url ?? editRow.picture_url,
+        purchase_url: editDraft.purchase_url ?? editRow.purchase_url,
       })
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       setEditRow(null)
@@ -208,7 +213,15 @@ export default function InventoryPage() {
       barcode: row.barcode ?? '',
       vendor_name: row.vendor_name ?? '',
       category: row.category ?? '',
+      picture_url: row.picture_url ?? '',
+      purchase_url: row.purchase_url ?? '',
     })
+  }
+
+  const formatExternalUrl = (url: string) => {
+    const trimmed = url.trim()
+    if (!trimmed) return ''
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -234,7 +247,8 @@ export default function InventoryPage() {
         <p>
           View and edit your inventory database, fill in missing barcodes using multiple lookup sources, and
           keep data in sync with Purchase List uploads (sidebar). Run{' '}
-          <code>supabase/add-inventory-management.sql</code> in Supabase once before editing rows.
+          <code>supabase/add-inventory-management.sql</code> and{' '}
+          <code>supabase/add-inventory-picture-purchase-url.sql</code> in Supabase once before editing rows.
         </p>
       </header>
 
@@ -316,10 +330,12 @@ export default function InventoryPage() {
         <table className="inv-table">
           <thead>
             <tr>
+              <th>Picture</th>
               <th>Manufacturer</th>
               <th>Part #</th>
               <th>Item</th>
               <th>Barcode</th>
+              <th>Buy</th>
               <th>Lookup source</th>
               <th>Stock avail.</th>
               <th>Actions</th>
@@ -328,17 +344,31 @@ export default function InventoryPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7}>Loading…</td>
+                <td colSpan={9}>Loading…</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7}>No rows match. Upload inventory on Purchase List first.</td>
+                <td colSpan={9}>No rows match. Upload inventory on Purchase List first.</td>
               </tr>
             ) : (
               rows.map((row) => {
                 const missing = !row.barcode?.trim()
                 return (
                   <tr key={row.id} className={missing ? 'missing-barcode' : ''}>
+                    <td className="inv-picture-cell">
+                      {row.picture_url?.trim() ? (
+                        <a href={formatExternalUrl(row.picture_url)} target="_blank" rel="noopener noreferrer">
+                          <img
+                            className="inv-picture-thumb"
+                            src={formatExternalUrl(row.picture_url)}
+                            alt=""
+                            loading="lazy"
+                          />
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td>{row.manufacturer || '—'}</td>
                     <td>
                       <code>{row.part_number || '—'}</code>
@@ -346,6 +376,15 @@ export default function InventoryPage() {
                     <td>{row.item || '—'}</td>
                     <td className="barcode-cell">
                       {row.barcode ? <code>{row.barcode}</code> : <em>Missing</em>}
+                    </td>
+                    <td className="inv-purchase-cell">
+                      {row.purchase_url?.trim() ? (
+                        <a href={formatExternalUrl(row.purchase_url)} target="_blank" rel="noopener noreferrer">
+                          Buy
+                        </a>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td>{row.barcode_lookup_source || '—'}</td>
                     <td>{row.stock_available ?? '—'}</td>
@@ -467,6 +506,33 @@ export default function InventoryPage() {
               <input
                 value={editDraft.category ?? ''}
                 onChange={(e) => setEditDraft((d) => ({ ...d, category: e.target.value }))}
+              />
+            </label>
+            <label>
+              Picture URL
+              <input
+                type="url"
+                placeholder="https://…"
+                value={editDraft.picture_url ?? ''}
+                onChange={(e) => setEditDraft((d) => ({ ...d, picture_url: e.target.value }))}
+              />
+            </label>
+            {editDraft.picture_url?.trim() ? (
+              <div className="inv-edit-preview">
+                <img
+                  className="inv-picture-preview"
+                  src={formatExternalUrl(editDraft.picture_url)}
+                  alt="Preview"
+                />
+              </div>
+            ) : null}
+            <label>
+              Purchase URL
+              <input
+                type="url"
+                placeholder="https://…"
+                value={editDraft.purchase_url ?? ''}
+                onChange={(e) => setEditDraft((d) => ({ ...d, purchase_url: e.target.value }))}
               />
             </label>
             <div className="inv-modal-actions">

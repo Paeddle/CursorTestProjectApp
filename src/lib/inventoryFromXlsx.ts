@@ -20,6 +20,8 @@ const TARGET_FIELDS = [
   'stock_total',
   'stock_available',
   'stock_on_order',
+  'picture_url',
+  'purchase_url',
 ] as const
 
 type TargetKey = (typeof TARGET_FIELDS)[number]
@@ -56,6 +58,8 @@ function headerSynonyms(): Map<string, TargetKey> {
   add(['stocktotal', 'stock_total', 'totalstock', 'qtytotal'], 'stock_total')
   add(['stockavailable', 'stock_available', 'available', 'qtyavailable', 'onhand'], 'stock_available')
   add(['stockonorder', 'stock_on_order', 'onorder', 'qtyonorder'], 'stock_on_order')
+  add(['pictureurl', 'picture_url', 'imageurl', 'image_url', 'photo', 'picture', 'image'], 'picture_url')
+  add(['purchaseurl', 'purchase_url', 'producturl', 'product_url', 'buyurl', 'buy_url', 'shopurl', 'link'], 'purchase_url')
   return m
 }
 
@@ -117,6 +121,8 @@ export function parseInventoryXlsxArrayBuffer(buf: ArrayBuffer): InventoryRow[] 
       stock_total: parseNumber(colMap.get('stock_total')),
       stock_available: parseNumber(colMap.get('stock_available')),
       stock_on_order: parseNumber(colMap.get('stock_on_order')),
+      picture_url: parseString(colMap.get('picture_url')),
+      purchase_url: parseString(colMap.get('purchase_url')),
     }
 
     const hasAny =

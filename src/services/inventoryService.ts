@@ -42,7 +42,7 @@ export async function fetchInventoryList(options: {
     if (term) {
       const q = `%${term}%`
       query = query.or(
-        `part_number.ilike.${q},item.ilike.${q},manufacturer.ilike.${q},barcode.ilike.${q},description_customer.ilike.${q}`
+        `part_number.ilike.${q},item.ilike.${q},manufacturer.ilike.${q},barcode.ilike.${q},description_customer.ilike.${q},purchase_url.ilike.${q}`
       )
     }
   }
@@ -91,11 +91,15 @@ export async function updateInventoryRow(
 export async function applyBarcodeLookupToInventory(
   id: string,
   barcode: string,
-  source: string
+  source: string,
+  options?: { purchaseUrl?: string | null }
 ): Promise<InventoryRecord> {
-  return updateInventoryRow(id, {
+  const patch: Parameters<typeof updateInventoryRow>[1] = {
     barcode: barcode.replace(/\D/g, ''),
     barcode_lookup_source: source,
     barcode_lookup_at: new Date().toISOString(),
-  })
+  }
+  const purchaseUrl = options?.purchaseUrl?.trim()
+  if (purchaseUrl) patch.purchase_url = purchaseUrl
+  return updateInventoryRow(id, patch)
 }

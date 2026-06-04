@@ -40,6 +40,8 @@ export interface InventoryRow {
   stock_total: number | null
   stock_available: number | null
   stock_on_order: number | null
+  picture_url: string | null
+  purchase_url: string | null
 }
 
 export interface PullSuggestion {
