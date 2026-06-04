@@ -425,6 +425,12 @@
   margin: 0 0 0.65rem;
 }
 
+.ls-inventory-count {
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.82rem;
+  color: #555;
+}
+
 .ls-item-row-body {
   display: flex;
   gap: 0.5rem;

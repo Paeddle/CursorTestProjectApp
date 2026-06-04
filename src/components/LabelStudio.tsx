@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
-import { fetchLabelStudioInventoryItems, filterLabelStudioItems } from '../lib/labelStudioItems'
+import {
+  fetchLabelStudioInventoryItems,
+  filterLabelStudioItems,
+  searchLabelStudioInventoryItems,
+} from '../lib/labelStudioItems'
 import { printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
@@ -38,7 +42,7 @@ import './LabelStudio.css'
 const GUIDE_STORAGE_KEY = 'label-studio-guide-dismissed'
 
 const INVENTORY_SOURCE_HINT =
-  'Rows from your Supabase inventory table (Inventory page). Fields: name, part number, manufacturer, barcode, picture.'
+  'Full Supabase inventory. Search checks name, part #, manufacturer, barcode, description, and more (not limited to the first 500 rows).'
 
 function inventoryItemDisplay(item: LabelStudioItem) {
   const f = item.fields
@@ -64,11 +68,16 @@ export default function LabelStudio() {
   const [template, setTemplate] = useState<LabelStudioTemplate>(() => loadLabelStudioTemplates()[0])
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [items, setItems] = useState<LabelStudioItem[]>([])
+  const [inventoryTotal, setInventoryTotal] = useState<number | null>(null)
+  const [loadProgress, setLoadProgress] = useState<string | null>(null)
+  const fullInventoryRef = useRef<LabelStudioItem[] | null>(null)
   const [qrPreviewByElementId, setQrPreviewByElementId] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [selectedItemsById, setSelectedItemsById] = useState<Map<string, LabelStudioItem>>(new Map())
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
   const [loadingItems, setLoadingItems] = useState(false)
+  const [searchingItems, setSearchingItems] = useState(false)
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [printing, setPrinting] = useState(false)
@@ -77,7 +86,11 @@ export default function LabelStudio() {
     () => localStorage.getItem(GUIDE_STORAGE_KEY) !== '1'
   )
 
-  const filteredItems = useMemo(() => filterLabelStudioItems(items, search), [items, search])
+  const searchTrimmed = search.trim()
+  const filteredItems = useMemo(() => {
+    if (searchTrimmed) return items
+    return filterLabelStudioItems(items, search)
+  }, [items, search, searchTrimmed])
 
   const previewItem = useMemo(() => {
     const id = previewItemId ?? [...selectedItemIds][0] ?? filteredItems[0]?.id
@@ -85,30 +98,82 @@ export default function LabelStudio() {
   }, [filteredItems, previewItemId, selectedItemIds])
 
   const selectedElement = template.elements.find((e) => e.id === selectedElementId) ?? null
-  const selectedItems = filteredItems.filter((i) => selectedItemIds.has(i.id))
+  const selectedItems = useMemo(
+    () =>
+      [...selectedItemIds]
+        .map((id) => selectedItemsById.get(id))
+        .filter((i): i is LabelStudioItem => Boolean(i)),
+    [selectedItemIds, selectedItemsById]
+  )
   const paperName =
     DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.paperName ?? '30323 Shipping'
 
   const loadInventoryItems = useCallback(async () => {
     setLoadingItems(true)
     setItemsError(null)
+    setLoadProgress(null)
+    fullInventoryRef.current = null
     try {
-      const loaded = await fetchLabelStudioInventoryItems()
-      setItems(loaded)
+      const loaded = await fetchLabelStudioInventoryItems((count, total) => {
+        setLoadProgress(
+          total != null ? `Loading inventory… ${count.toLocaleString()} / ${total.toLocaleString()}` : null
+        )
+        if (total != null) setInventoryTotal(total)
+      })
+      fullInventoryRef.current = loaded
+      setInventoryTotal(loaded.length)
+      if (!searchTrimmed) setItems(loaded)
       if (loaded.length === 0) {
         setItemsError('No inventory rows found. Add items on the Inventory page first.')
       }
     } catch (e) {
       setItemsError(e instanceof Error ? e.message : 'Failed to load inventory')
       setItems([])
+      fullInventoryRef.current = null
     } finally {
       setLoadingItems(false)
+      setLoadProgress(null)
     }
-  }, [])
+  }, [searchTrimmed])
 
   useEffect(() => {
     void loadInventoryItems()
   }, [loadInventoryItems])
+
+  useEffect(() => {
+    const q = searchTrimmed
+    if (!q) {
+      if (fullInventoryRef.current) setItems(fullInventoryRef.current)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      setSearchingItems(true)
+      setItemsError(null)
+      void searchLabelStudioInventoryItems(q)
+        .then((rows) => {
+          if (cancelled) return
+          setItems(rows)
+          if (rows.length === 0) {
+            setItemsError(`No inventory rows match “${q}”.`)
+          }
+        })
+        .catch((e) => {
+          if (cancelled) return
+          setItemsError(e instanceof Error ? e.message : 'Search failed')
+          setItems([])
+        })
+        .finally(() => {
+          if (!cancelled) setSearchingItems(false)
+        })
+    }, 280)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [searchTrimmed])
 
   useEffect(() => {
     if (!previewItem) {
@@ -342,21 +407,35 @@ export default function LabelStudio() {
     setTemplate(next[0] ?? defaultShippingTemplate())
   }
 
-  const toggleItemSelection = (id: string, multi: boolean) => {
+  const toggleItemSelection = (item: LabelStudioItem, multi: boolean) => {
     setSelectedItemIds((prev) => {
       const next = new Set(multi ? prev : [])
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(item.id)) next.delete(item.id)
+      else next.add(item.id)
       return next
     })
-    setPreviewItemId(id)
+    setSelectedItemsById((prev) => {
+      const next = new Map(multi ? prev : [])
+      if (next.has(item.id)) next.delete(item.id)
+      else next.set(item.id, item)
+      return next
+    })
+    setPreviewItemId(item.id)
   }
 
   const selectAllVisible = () => {
     setSelectedItemIds(new Set(filteredItems.map((i) => i.id)))
+    setSelectedItemsById((prev) => {
+      const next = new Map(prev)
+      for (const item of filteredItems) next.set(item.id, item)
+      return next
+    })
   }
 
-  const clearSelection = () => setSelectedItemIds(new Set())
+  const clearSelection = () => {
+    setSelectedItemIds(new Set())
+    setSelectedItemsById(new Map())
+  }
 
   const handlePrint = async () => {
     const toPrint =
@@ -525,18 +604,25 @@ export default function LabelStudio() {
             type="button"
             className="ls-btn ls-btn-secondary ls-btn-block"
             onClick={() => void loadInventoryItems()}
-            disabled={loadingItems}
+            disabled={loadingItems || searchingItems}
           >
-            {loadingItems ? 'Loading inventory…' : 'Reload inventory'}
+            {loadProgress ?? (loadingItems ? 'Loading inventory…' : 'Reload inventory')}
           </button>
+
+          {inventoryTotal != null && !searchTrimmed && !loadingItems && (
+            <p className="ls-inventory-count">
+              {inventoryTotal.toLocaleString()} item{inventoryTotal !== 1 ? 's' : ''} loaded
+            </p>
+          )}
 
           <input
             className="label-studio-search"
             type="search"
-            placeholder="Search by name, part, barcode…"
+            placeholder="Search entire inventory (name, part, description…)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {searchingItems && <p className="ls-field-hint">Searching inventory…</p>}
 
           <div className="ls-item-actions">
             <button type="button" className="ls-btn ls-btn-secondary" onClick={selectAllVisible}>
@@ -558,12 +644,12 @@ export default function LabelStudio() {
                   role="option"
                   aria-selected={selectedItemIds.has(item.id)}
                   className={`label-studio-item-row${selectedItemIds.has(item.id) ? ' selected' : ''}`}
-                  onClick={(ev) => toggleItemSelection(item.id, ev.ctrlKey || ev.metaKey)}
+                  onClick={(ev) => toggleItemSelection(item, ev.ctrlKey || ev.metaKey)}
                 >
                   <input
                     type="checkbox"
                     checked={selectedItemIds.has(item.id)}
-                    onChange={() => toggleItemSelection(item.id, false)}
+                    onChange={() => toggleItemSelection(item, false)}
                     onClick={(ev) => ev.stopPropagation()}
                     aria-label={`Print ${row.name}`}
                   />
@@ -591,8 +677,12 @@ export default function LabelStudio() {
                 </div>
               )
             })}
-            {!loadingItems && filteredItems.length === 0 && (
-              <p className="ls-empty">No inventory rows match your search.</p>
+            {!loadingItems && !searchingItems && filteredItems.length === 0 && (
+              <p className="ls-empty">
+                {searchTrimmed
+                  ? 'No inventory rows match your search.'
+                  : 'No inventory rows loaded yet.'}
+              </p>
             )}
           </div>
         </aside>

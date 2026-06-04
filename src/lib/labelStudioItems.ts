@@ -1,6 +1,10 @@
 import { supabase } from './supabase'
+import { fetchInventoryList } from '../services/inventoryService'
 import { getInventoryPicturePublicUrl } from './inventoryImageStorage'
+import type { InventoryRecord } from '../types/inventory'
 import type { LabelStudioItem } from '../types/labelStudio'
+
+const INVENTORY_PAGE_SIZE = 1000
 
 function fieldsFromInventory(row: Record<string, unknown>): Record<string, string> {
   const f: Record<string, string> = {}
@@ -25,6 +29,56 @@ function fieldsFromInventory(row: Record<string, unknown>): Record<string, strin
   })
   if (picture) f.picture = picture
   return f
+}
+
+export function inventoryRowToLabelStudioItem(row: InventoryRecord): LabelStudioItem {
+  const fields = fieldsFromInventory(row as unknown as Record<string, unknown>)
+  const title = fields.item || fields.part_number || 'Inventory item'
+  return {
+    id: `inv-${row.id}`,
+    source: 'inventory',
+    title,
+    fields,
+  }
+}
+
+/** Load every inventory row (paginated). Replaces the old 500-row cap. */
+export async function fetchLabelStudioInventoryItems(
+  onProgress?: (loaded: number, total: number | null) => void
+): Promise<LabelStudioItem[]> {
+  if (!supabase) return []
+
+  const items: LabelStudioItem[] = []
+  let offset = 0
+  let total: number | null = null
+
+  while (true) {
+    const { rows, total: count } = await fetchInventoryList({
+      limit: INVENTORY_PAGE_SIZE,
+      offset,
+      filter: 'all',
+    })
+    if (total === null) total = count
+    for (const row of rows) {
+      items.push(inventoryRowToLabelStudioItem(row))
+    }
+    onProgress?.(items.length, total)
+    offset += rows.length
+    if (rows.length < INVENTORY_PAGE_SIZE || offset >= count) break
+  }
+
+  return items
+}
+
+/** Server-side search across the full inventory table (same fields as Inventory page). */
+export async function searchLabelStudioInventoryItems(
+  query: string,
+  limit = 500
+): Promise<LabelStudioItem[]> {
+  const q = query.trim()
+  if (!q) return []
+  const { rows } = await fetchInventoryList({ search: q, limit, offset: 0, filter: 'all' })
+  return rows.map((row) => inventoryRowToLabelStudioItem(row))
 }
 
 function fieldsFromLocation(row: Record<string, unknown>): Record<string, string> {
@@ -65,26 +119,6 @@ function fieldsFromPoLine(row: Record<string, unknown>): Record<string, string> 
   set('job', row.job_or_customer)
   set('quantity', row.quantity)
   return f
-}
-
-export async function fetchLabelStudioInventoryItems(limit = 500): Promise<LabelStudioItem[]> {
-  if (!supabase) return []
-  const { data, error } = await supabase
-    .from('inventory')
-    .select('*')
-    .order('item', { ascending: true })
-    .limit(limit)
-  if (error) throw new Error(error.message)
-  return (data ?? []).map((row) => {
-    const fields = fieldsFromInventory(row)
-    const title = fields.item || fields.part_number || 'Inventory item'
-    return {
-      id: `inv-${row.id}`,
-      source: 'inventory' as const,
-      title,
-      fields,
-    }
-  })
 }
 
 export async function fetchLabelStudioLocationItems(limit = 500): Promise<LabelStudioItem[]> {
