@@ -6,7 +6,7 @@ import {
 } from './dymoLabelPrint'
 import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
 import { printLabelXmlViaWebService } from './dymoWebService'
-import { buildLabelXmlCandidatesFromStudioForPrint } from './labelStudioXml'
+import { buildLabelXmlFromStudioForPrint } from './labelStudioXml'
 import type { LabelStudioItem, LabelStudioTemplate } from '../types/labelStudio'
 
 export type PrintStudioLabelsOptions = {
@@ -68,18 +68,18 @@ async function printOneStudioItem(
   item: LabelStudioItem,
   options?: PrintStudioLabelsOptions
 ): Promise<'dymo-web' | 'dymo-framework'> {
-  const candidates = await buildLabelXmlCandidatesFromStudioForPrint(template, item)
+  const labelXml = await buildLabelXmlFromStudioForPrint(template, item)
   const errors: string[] = []
 
   try {
-    await printLabelXmlViaWebService(candidates, options?.printerName, options?.twinTurboRoll)
+    await printLabelXmlViaWebService([labelXml], options?.printerName, options?.twinTurboRoll)
     return 'dymo-web'
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
   try {
-    await printXmlCandidatesViaFramework(candidates, options?.printerName, options?.twinTurboRoll)
+    await printXmlCandidatesViaFramework([labelXml], options?.printerName, options?.twinTurboRoll)
     return 'dymo-framework'
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))

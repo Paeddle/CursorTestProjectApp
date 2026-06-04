@@ -20,6 +20,7 @@ import { printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
   mergedImageUrlForElement,
+  mergedLinesForElement,
   previewTextForTemplate,
   resolveMergeTemplate,
   normalizeMergedText,
@@ -785,7 +786,9 @@ export default function LabelStudio() {
                     </option>
                   ))}
                 </select>
-                <span className="ls-field-hint">Must match the roll loaded in DYMO Connect (usually 30323).</span>
+                <span className="ls-field-hint">
+                  Must match the roll in your printer and in DYMO Connect — layout is built for this size only.
+                </span>
               </label>
               <div className="ls-btn-row">
                 <button type="button" className="ls-btn ls-btn-secondary" onClick={handleSaveTemplate}>
@@ -876,11 +879,17 @@ export default function LabelStudio() {
           )}
 
           <LabelStudioCanvas
+            paperTemplateId={template.paperTemplateId}
             elements={template.elements}
             selectedElementId={selectedElementId}
             onSelect={setSelectedElementId}
             onUpdateRect={updateElementRect}
             renderPreview={canvasPreviewText}
+            textLineCount={(el) => {
+              if (!isTextElement(el) || !previewItem) return undefined
+              const lines = mergedLinesForElement(el.content, previewItem)
+              return Math.max(1, lines.length)
+            }}
             imagePreviewUrl={canvasImagePreviewUrl}
             barcodePreviewUrl={canvasBarcodePreviewUrl}
           />

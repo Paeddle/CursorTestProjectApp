@@ -1,6 +1,11 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useState, useLayoutEffect } from 'react'
+import { DYMO_PAPER_TEMPLATES } from '../lib/dymoLabelXml'
+import {
+  printableMetricsForTemplate,
+  previewFontSizePx,
+} from '../lib/labelStudioGeometry'
 import type { LabelStudioElement } from '../types/labelStudio'
-import { isBarcodeElement, isImageElement, isTextElement } from '../types/labelStudio'
+import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 import {
   applyMove,
   applyResize,
@@ -28,13 +33,14 @@ type DragState =
     }
 
 export type LabelStudioCanvasProps = {
+  paperTemplateId: string
   elements: LabelStudioElement[]
   selectedElementId: string | null
   onSelect: (id: string | null) => void
   onUpdateRect: (id: string, rect: ElementRect) => void
   renderPreview: (el: LabelStudioElement) => string
+  textLineCount?: (el: LabelStudioElement) => number | undefined
   imagePreviewUrl?: (el: LabelStudioElement) => string | null
-  /** When set (e.g. QR symbology), shown instead of linear barcode bars. */
   barcodePreviewUrl?: (el: LabelStudioElement) => string | null
 }
 
@@ -43,24 +49,40 @@ function rectFromElement(el: LabelStudioElement): ElementRect {
 }
 
 export default function LabelStudioCanvas({
+  paperTemplateId,
   elements,
   selectedElementId,
   onSelect,
   onUpdateRect,
   renderPreview,
+  textLineCount,
   imagePreviewUrl,
   barcodePreviewUrl,
 }: LabelStudioCanvasProps) {
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const printableRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
+  const [printableHeightPx, setPrintableHeightPx] = useState(0)
+
+  const paper = paperTemplateById(paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const metrics = printableMetricsForTemplate(paper)
+
+  useLayoutEffect(() => {
+    const node = printableRef.current
+    if (!node) return
+    const measure = () => setPrintableHeightPx(node.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [paperTemplateId])
 
   const onPointerMove = useCallback(
     (ev: React.PointerEvent) => {
       const drag = dragRef.current
-      const canvas = canvasRef.current
-      if (!drag || !canvas) return
+      const area = printableRef.current
+      if (!drag || !area) return
 
-      const rect = canvas.getBoundingClientRect()
+      const rect = area.getBoundingClientRect()
       const dxPct = ((ev.clientX - drag.startX) / rect.width) * 100
       const dyPct = ((ev.clientY - drag.startY) / rect.height) * 100
 
@@ -113,85 +135,97 @@ export default function LabelStudioCanvas({
 
   return (
     <div
-      ref={canvasRef}
       className="label-studio-canvas"
+      style={{ aspectRatio: `${paper.drawWidth} / ${paper.drawHeight}` }}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerLeave={endDrag}
       onPointerDown={() => onSelect(null)}
     >
-      {elements.length === 0 && (
-        <p className="ls-canvas-empty">Add text, image, or a barcode, then drag and resize like Label Live.</p>
-      )}
-      {elements.map((el, zIndex) => {
-        const isSelected = selectedElementId === el.id
-        const isBarcode = isBarcodeElement(el)
-        const isImage = isImageElement(el)
-        const preview = renderPreview(el) || '(empty)'
-        const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
-        const qrSrc = isBarcode && barcodePreviewUrl ? barcodePreviewUrl(el) : null
-        const textFitShrink =
-          isTextElement(el) && (el.textFitMode === 'ShrinkToFit' || el.textFitMode == null)
+      <div
+        ref={printableRef}
+        className="ls-printable-area"
+        style={{
+          left: `${metrics.marginLeftPct}%`,
+          top: `${metrics.marginTopPct}%`,
+          width: `${metrics.printableWidthPct}%`,
+          height: `${metrics.printableHeightPct}%`,
+        }}
+      >
+        {elements.length === 0 && (
+          <p className="ls-canvas-empty">Add text, image, or a barcode. Positions match what will print.</p>
+        )}
+        {elements.map((el, zIndex) => {
+          const isSelected = selectedElementId === el.id
+          const isBarcode = isBarcodeElement(el)
+          const isImage = isImageElement(el)
+          const preview = renderPreview(el) || '(empty)'
+          const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
+          const qrSrc = isBarcode && barcodePreviewUrl ? barcodePreviewUrl(el) : null
+          const textEl = isTextElement(el) ? el : null
+          const textFitShrink =
+            textEl && (textEl.textFitMode === 'ShrinkToFit' || textEl.textFitMode == null)
 
-        return (
-          <div
-            key={el.id}
-            className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ' label-studio-canvas-barcode' : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
-            style={{
-              left: `${el.xPct}%`,
-              top: `${el.yPct}%`,
-              width: `${el.widthPct}%`,
-              height: `${el.heightPct}%`,
-              zIndex: zIndex + 1,
-              ...(isTextElement(el)
-                ? {
-                    fontSize: `${Math.max(7, el.fontSize * 0.42)}px`,
-                    fontWeight: el.bold ? 700 : 400,
-                    textAlign: el.align.toLowerCase() as 'left' | 'center' | 'right',
-                  }
-                : {}),
-            }}
-            onPointerDown={(ev) => {
-              ev.stopPropagation()
-              startMove(el, ev)
-            }}
-          >
-            {isBarcode ? (
-              qrSrc ? (
-                <>
-                  <img className="ls-canvas-qr" src={qrSrc} alt="" />
-                  {el.textPosition !== 'None' && (
+          return (
+            <div
+              key={el.id}
+              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ' label-studio-canvas-barcode' : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
+              style={{
+                left: `${el.xPct}%`,
+                top: `${el.yPct}%`,
+                width: `${el.widthPct}%`,
+                height: `${el.heightPct}%`,
+                zIndex: zIndex + 1,
+                ...(textEl
+                  ? {
+                      fontSize: `${previewFontSizePx(textEl, printableHeightPx, paper, textLineCount?.(el))}px`,
+                      fontWeight: textEl.bold ? 700 : 400,
+                      textAlign: textEl.align.toLowerCase() as 'left' | 'center' | 'right',
+                    }
+                  : {}),
+              }}
+              onPointerDown={(ev) => {
+                ev.stopPropagation()
+                startMove(el, ev)
+              }}
+            >
+              {isBarcode ? (
+                qrSrc ? (
+                  <>
+                    <img className="ls-canvas-qr" src={qrSrc} alt="" />
+                    {el.textPosition !== 'None' && (
+                      <span className="label-studio-barcode-caption">{preview}</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="label-studio-barcode-bars" aria-hidden />
                     <span className="label-studio-barcode-caption">{preview}</span>
-                  )}
-                </>
+                  </>
+                )
+              ) : isImage ? (
+                imgSrc ? (
+                  <img className="ls-canvas-image" src={imgSrc} alt="" />
+                ) : (
+                  <span className="ls-element-text">No image</span>
+                )
               ) : (
-                <>
-                  <div className="label-studio-barcode-bars" aria-hidden />
-                  <span className="label-studio-barcode-caption">{preview}</span>
-                </>
-              )
-            ) : isImage ? (
-              imgSrc ? (
-                <img className="ls-canvas-image" src={imgSrc} alt="" />
-              ) : (
-                <span className="ls-element-text">No image</span>
-              )
-            ) : (
-              <span className="ls-element-text">{preview}</span>
-            )}
+                <span className="ls-element-text">{preview}</span>
+              )}
 
-            {isSelected &&
-              RESIZE_HANDLES.map((handle) => (
-                <div
-                  key={handle}
-                  className={`ls-resize-handle ls-resize-${handle}`}
-                  title="Drag to resize (Shift = keep proportions)"
-                  onPointerDown={(ev) => startResize(el, handle, ev)}
-                />
-              ))}
-          </div>
-        )
-      })}
+              {isSelected &&
+                RESIZE_HANDLES.map((handle) => (
+                  <div
+                    key={handle}
+                    className={`ls-resize-handle ls-resize-${handle}`}
+                    title="Drag to resize (Shift = keep proportions)"
+                    onPointerDown={(ev) => startResize(el, handle, ev)}
+                  />
+                ))}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

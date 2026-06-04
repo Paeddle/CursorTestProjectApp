@@ -14,6 +14,7 @@ import type {
   LabelStudioTemplate,
   LabelStudioTextElement,
 } from '../types/labelStudio'
+import { effectiveTextFontSizePt } from './labelStudioGeometry'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 
 type LabelBounds = { x: number; y: number; width: number; height: number }
@@ -59,8 +60,13 @@ function buildTextObjectXml(
     textFitMode: LabelStudioTextElement['textFitMode']
   }
 ): string {
-  const styled = buildStyledTextBlockXml(lines, fontSize, options.bold)
-  const fit = options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
+  const pt = effectiveTextFontSizePt(
+    fontSize,
+    Math.max(1, lines.length),
+    bounds.height,
+    options.textFitMode
+  )
+  const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
     `<TextObject>` +
@@ -73,7 +79,7 @@ function buildTextObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>${options.align}</HorizontalAlignment>` +
     `<VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>${fit}</TextFitMode>` +
+    `<TextFitMode>None</TextFitMode>` +
     `<UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +

@@ -599,12 +599,19 @@
   position: relative;
   width: 100%;
   max-width: none;
-  aspect-ratio: 102 / 59;
-  background: #fff;
+  background: #e9ecef;
   border: 2px solid #bbb;
   border-radius: 6px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   user-select: none;
+}
+
+.ls-printable-area {
+  position: absolute;
+  box-sizing: border-box;
+  background: #fff;
+  overflow: hidden;
+  border: 1px dashed #c5d3e0;
 }
 
 .ls-canvas-empty {
@@ -673,8 +680,8 @@
 }
 
 .label-studio-canvas-element.ls-text-shrink .ls-element-text {
-  font-size: clamp(6px, 2.2vw, 14px) !important;
   line-height: 1.1;
+  overflow: hidden;
 }
 
 /* Resize handles (Label Live style) */
