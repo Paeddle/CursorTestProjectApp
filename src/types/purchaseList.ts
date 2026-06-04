@@ -41,6 +41,7 @@ export interface InventoryRow {
   stock_available: number | null
   stock_on_order: number | null
   picture_url: string | null
+  picture_path: string | null
   purchase_url: string | null
 }
 

@@ -41,7 +41,17 @@ export type LabelStudioBarcodeElement = LabelStudioElementBase & {
   textPosition: LabelStudioBarcodeTextPosition
 }
 
-export type LabelStudioElement = LabelStudioTextElement | LabelStudioBarcodeElement
+export type LabelStudioImageScaleMode = 'Uniform' | 'Fill'
+
+export type LabelStudioImageElement = LabelStudioElementBase & {
+  kind: 'image'
+  scaleMode: LabelStudioImageScaleMode
+}
+
+export type LabelStudioElement =
+  | LabelStudioTextElement
+  | LabelStudioBarcodeElement
+  | LabelStudioImageElement
 
 /** @deprecated Saved templates may omit `kind`; normalized on load. */
 export type LegacyLabelStudioElement = Omit<LabelStudioTextElement, 'kind' | 'textFitMode'> & {
@@ -88,6 +98,7 @@ export const LABEL_STUDIO_MERGE_FIELDS: { key: string; label: string; example: s
   { key: 'price', label: 'Unit price', example: '12.99' },
   { key: 'color', label: 'Color', example: 'White' },
   { key: 'unit', label: 'Unit', example: 'EA' },
+  { key: 'picture', label: 'Product image (stored)', example: '(image on label)' },
 ]
 
 export const DEFAULT_PAPER_TEMPLATE_ID = 'Shipping'
@@ -104,9 +115,14 @@ export function isTextElement(el: LabelStudioElement): el is LabelStudioTextElem
   return el.kind === 'text'
 }
 
+export function isImageElement(el: LabelStudioElement): el is LabelStudioImageElement {
+  return el.kind === 'image'
+}
+
 /** Upgrade templates saved before barcode support. */
 export function normalizeStudioElement(raw: LegacyLabelStudioElement | LabelStudioElement): LabelStudioElement {
   if (raw.kind === 'barcode') return raw as LabelStudioBarcodeElement
+  if (raw.kind === 'image') return raw as LabelStudioImageElement
   if (raw.kind === 'text') return raw as LabelStudioTextElement
   const legacy = raw as LegacyLabelStudioElement
   return {
@@ -181,13 +197,24 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
     updatedAt: now,
     elements: [
       {
+        kind: 'image',
+        id: createElementId(),
+        name: 'PICTURE',
+        content: '{{picture}}',
+        xPct: 4,
+        yPct: 6,
+        widthPct: 28,
+        heightPct: 88,
+        scaleMode: 'Uniform',
+      },
+      {
         kind: 'text',
         id: createElementId(),
         name: 'ITEM',
         content: '{{item}}',
-        xPct: 4,
+        xPct: 34,
         yPct: 6,
-        widthPct: 92,
+        widthPct: 62,
         heightPct: 38,
         fontSize: 20,
         bold: true,
@@ -199,9 +226,9 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
         id: createElementId(),
         name: 'PART',
         content: '{{part_number}}',
-        xPct: 4,
+        xPct: 34,
         yPct: 44,
-        widthPct: 92,
+        widthPct: 62,
         heightPct: 16,
         fontSize: 13,
         bold: false,
@@ -213,9 +240,9 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
         id: createElementId(),
         name: 'BARCODE',
         content: '{{barcode}}',
-        xPct: 8,
+        xPct: 34,
         yPct: 62,
-        widthPct: 84,
+        widthPct: 62,
         heightPct: 34,
         barcodeType: 'Auto',
         size: 'Medium',

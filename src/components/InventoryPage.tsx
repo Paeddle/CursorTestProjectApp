@@ -15,6 +15,13 @@ import {
   sleep,
 } from '../services/barcodeLookup/findBarcodeForItem'
 import type { ProviderAttempt } from '../services/barcodeLookup/types'
+import {
+  formatExternalUrl,
+  getInventoryPicturePublicUrl,
+  importInventoryPictureFromUrl,
+  removeInventoryStoredPicture,
+  uploadInventoryPictureFile,
+} from '../lib/inventoryImageStorage'
 import './InventoryPage.css'
 
 const PAGE_SIZE = 50
@@ -37,7 +44,9 @@ export default function InventoryPage() {
   const [editRow, setEditRow] = useState<InventoryRecord | null>(null)
   const [editDraft, setEditDraft] = useState<Partial<InventoryRecord>>({})
   const [saving, setSaving] = useState(false)
+  const [imageBusy, setImageBusy] = useState(false)
   const bulkCancelRef = useRef(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   const providers = getBarcodeProviderStatus()
 
@@ -203,6 +212,77 @@ export default function InventoryPage() {
     }
   }
 
+  const persistStoredPicture = async (row: InventoryRecord, picture_path: string) => {
+    const updated = await updateInventoryRow(row.id, { picture_path })
+    setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+    if (editRow?.id === row.id) {
+      setEditRow(updated)
+      setEditDraft((d) => ({ ...d, picture_path: updated.picture_path }))
+    }
+  }
+
+  const handleUploadPicture = async (row: InventoryRecord, file: File) => {
+    setImageBusy(true)
+    try {
+      const { picture_path } = await uploadInventoryPictureFile(row.id, file)
+      await persistStoredPicture(row, picture_path)
+      setStatus({ kind: 'ok', text: 'Image saved to Supabase for label printing.' })
+    } catch (e) {
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Image upload failed' })
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
+  const handleImportPictureFromUrl = async (row: InventoryRecord) => {
+    const source = (editDraft.picture_url ?? row.picture_url ?? '').trim()
+    if (!source) {
+      setStatus({ kind: 'info', text: 'Enter a picture URL first, or paste a vendor link.' })
+      return
+    }
+    setImageBusy(true)
+    try {
+      const updated = await importInventoryPictureFromUrl(row.id, source)
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+      setEditRow(updated)
+      setEditDraft((d) => ({
+        ...d,
+        picture_url: updated.picture_url ?? '',
+        picture_path: updated.picture_path ?? '',
+      }))
+      setStatus({ kind: 'ok', text: 'Image copied to Supabase — it will stay available for labels.' })
+    } catch (e) {
+      setStatus({
+        kind: 'err',
+        text:
+          (e instanceof Error ? e.message : 'Import failed') +
+          ' Try uploading the file instead, or deploy the inventory-image-import Edge Function.',
+      })
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
+  const handleRemoveStoredPicture = async (row: InventoryRecord) => {
+    const path = row.picture_path?.trim()
+    if (!path) return
+    setImageBusy(true)
+    try {
+      await removeInventoryStoredPicture(row.id, path)
+      const updated = await updateInventoryRow(row.id, { picture_path: null })
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+      if (editRow?.id === row.id) {
+        setEditRow(updated)
+        setEditDraft((d) => ({ ...d, picture_path: '' }))
+      }
+      setStatus({ kind: 'ok', text: 'Removed stored image.' })
+    } catch (e) {
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Remove failed' })
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
   const openEdit = (row: InventoryRecord) => {
     setEditRow(row)
     setEditDraft({
@@ -214,14 +294,9 @@ export default function InventoryPage() {
       vendor_name: row.vendor_name ?? '',
       category: row.category ?? '',
       picture_url: row.picture_url ?? '',
+      picture_path: row.picture_path ?? '',
       purchase_url: row.purchase_url ?? '',
     })
-  }
-
-  const formatExternalUrl = (url: string) => {
-    const trimmed = url.trim()
-    if (!trimmed) return ''
-    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -248,7 +323,10 @@ export default function InventoryPage() {
           View and edit your inventory database, fill in missing barcodes using multiple lookup sources, and
           keep data in sync with Purchase List uploads (sidebar). Run{' '}
           <code>supabase/add-inventory-management.sql</code> and{' '}
-          <code>supabase/add-inventory-picture-purchase-url.sql</code> in Supabase once before editing rows.
+          <code>supabase/add-inventory-picture-purchase-url.sql</code>,{' '}
+          <code>supabase/create-inventory-images-bucket.sql</code>, and{' '}
+          <code>supabase/add-inventory-picture-storage.sql</code> in Supabase. Deploy the{' '}
+          <code>inventory-image-import</code> Edge Function to copy vendor image URLs into storage.
         </p>
       </header>
 
@@ -356,18 +434,17 @@ export default function InventoryPage() {
                 return (
                   <tr key={row.id} className={missing ? 'missing-barcode' : ''}>
                     <td className="inv-picture-cell">
-                      {row.picture_url?.trim() ? (
-                        <a href={formatExternalUrl(row.picture_url)} target="_blank" rel="noopener noreferrer">
-                          <img
-                            className="inv-picture-thumb"
-                            src={formatExternalUrl(row.picture_url)}
-                            alt=""
-                            loading="lazy"
-                          />
-                        </a>
-                      ) : (
-                        '—'
-                      )}
+                      {(() => {
+                        const src = getInventoryPicturePublicUrl(row)
+                        return src ? (
+                          <a href={src} target="_blank" rel="noopener noreferrer" title={row.picture_path ? 'Stored in Supabase' : 'External URL'}>
+                            <img className="inv-picture-thumb" src={src} alt="" loading="lazy" />
+                            {row.picture_path ? <span className="inv-picture-badge" title="Stored for labels">✓</span> : null}
+                          </a>
+                        ) : (
+                          '—'
+                        )
+                      })()}
                     </td>
                     <td>{row.manufacturer || '—'}</td>
                     <td>
@@ -508,24 +585,75 @@ export default function InventoryPage() {
                 onChange={(e) => setEditDraft((d) => ({ ...d, category: e.target.value }))}
               />
             </label>
-            <label>
-              Picture URL
+            <fieldset className="inv-picture-fieldset">
+              <legend>Product image (for labels)</legend>
+              <p className="inv-picture-hint">
+                Upload or import into Supabase so printed labels always use the same image. External URLs alone
+                may break when vendors change links.
+              </p>
+              {editRow && getInventoryPicturePublicUrl(editRow) ? (
+                <div className="inv-edit-preview">
+                  <img
+                    className="inv-picture-preview"
+                    src={getInventoryPicturePublicUrl(editRow) ?? ''}
+                    alt="Preview"
+                  />
+                  {editRow.picture_path ? (
+                    <span className="inv-picture-stored">Stored in Supabase</span>
+                  ) : (
+                    <span className="inv-picture-stored warn">External link only — import to store</span>
+                  )}
+                </div>
+              ) : null}
               <input
-                type="url"
-                placeholder="https://…"
-                value={editDraft.picture_url ?? ''}
-                onChange={(e) => setEditDraft((d) => ({ ...d, picture_url: e.target.value }))}
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="inv-file-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file && editRow) void handleUploadPicture(editRow, file)
+                  e.target.value = ''
+                }}
               />
-            </label>
-            {editDraft.picture_url?.trim() ? (
-              <div className="inv-edit-preview">
-                <img
-                  className="inv-picture-preview"
-                  src={formatExternalUrl(editDraft.picture_url)}
-                  alt="Preview"
-                />
+              <div className="inv-picture-actions">
+                <button
+                  type="button"
+                  className="inv-btn"
+                  disabled={imageBusy || !editRow}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  Upload image file
+                </button>
+                <button
+                  type="button"
+                  className="inv-btn"
+                  disabled={imageBusy || !editRow}
+                  onClick={() => editRow && void handleImportPictureFromUrl(editRow)}
+                >
+                  Save URL to Supabase
+                </button>
+                {editRow?.picture_path ? (
+                  <button
+                    type="button"
+                    className="inv-btn"
+                    disabled={imageBusy}
+                    onClick={() => editRow && void handleRemoveStoredPicture(editRow)}
+                  >
+                    Remove stored image
+                  </button>
+                ) : null}
               </div>
-            ) : null}
+              <label>
+                Source / vendor picture URL
+                <input
+                  type="url"
+                  placeholder="https://…"
+                  value={editDraft.picture_url ?? ''}
+                  onChange={(e) => setEditDraft((d) => ({ ...d, picture_url: e.target.value }))}
+                />
+              </label>
+            </fieldset>
             <label>
               Purchase URL
               <input

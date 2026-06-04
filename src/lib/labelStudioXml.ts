@@ -4,15 +4,17 @@ import {
   type DymoPaperTemplate,
 } from './dymoLabelXml'
 import { barcodeTextForPrint, resolveBarcodeType } from './labelStudioBarcode'
-import { mergedBarcodeForElement, mergedLinesForElement } from './labelStudioMerge'
+import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import type {
   LabelStudioBarcodeElement,
   LabelStudioElement,
+  LabelStudioImageElement,
   LabelStudioItem,
   LabelStudioTemplate,
   LabelStudioTextElement,
 } from '../types/labelStudio'
-import { isBarcodeElement, isTextElement, paperTemplateById } from '../types/labelStudio'
+import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 
 type LabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -116,11 +118,71 @@ function buildBarcodeObjectXml(
   )
 }
 
+function buildImageObjectXml(
+  el: LabelStudioImageElement,
+  base64Png: string,
+  bounds: LabelBounds
+): string {
+  if (!base64Png) return ''
+  return (
+    `<ObjectInfo>` +
+    `<ImageObject>` +
+    `<Name>${escapeXmlText(el.name || el.id)}</Name>` +
+    `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
+    `<LinkedObjectName></LinkedObjectName>` +
+    `<Rotation>Rotation0</Rotation>` +
+    `<IsMirrored>False</IsMirrored>` +
+    `<IsVariable>False</IsVariable>` +
+    `<Image>${base64Png}</Image>` +
+    `<ScaleMode>${el.scaleMode ?? 'Uniform'}</ScaleMode>` +
+    `<BorderWidth>0</BorderWidth>` +
+    `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment>` +
+    `<VerticalAlignment>Center</VerticalAlignment>` +
+    `</ImageObject>` +
+    `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
+    `</ObjectInfo>`
+  )
+}
+
+async function buildElementXmlAsync(
+  el: LabelStudioElement,
+  item: LabelStudioItem,
+  template: DymoPaperTemplate
+): Promise<string> {
+  const bounds = pctToBounds(el, template)
+  if (isBarcodeElement(el)) {
+    const value = mergedBarcodeForElement(el.content, item)
+    return buildBarcodeObjectXml(el, value, bounds)
+  }
+  if (isImageElement(el)) {
+    const imageUrl = mergedImageUrlForElement(el.content, item)
+    if (!imageUrl) return ''
+    const base64 = await fetchUrlAsPngBase64(imageUrl)
+    if (!base64) return ''
+    return buildImageObjectXml(el, base64, bounds)
+  }
+  if (isTextElement(el)) {
+    const lines = mergedLinesForElement(el.content, item)
+    if (lines.length === 0) return ''
+    return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
+      align: el.align,
+      bold: el.bold,
+      textFitMode: el.textFitMode ?? 'ShrinkToFit',
+    })
+  }
+  return ''
+}
+
 function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template: DymoPaperTemplate): string {
   const bounds = pctToBounds(el, template)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
     return buildBarcodeObjectXml(el, value, bounds)
+  }
+  if (isImageElement(el)) {
+    return ''
   }
   if (isTextElement(el)) {
     const lines = mergedLinesForElement(el.content, item)
@@ -180,4 +242,52 @@ export function buildLabelXmlCandidatesFromStudio(
     ...DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id),
   ]
   return ordered.map((paper) => buildLabelXmlFromStudio(template, item, paper))
+}
+
+/** Like buildLabelXmlFromStudio but embeds product images as base64 PNG for DYMO printing. */
+export async function buildLabelXmlFromStudioForPrint(
+  template: LabelStudioTemplate,
+  item: LabelStudioItem,
+  paper?: DymoPaperTemplate
+): Promise<string> {
+  const t = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const objectParts = await Promise.all(template.elements.map((el) => buildElementXmlAsync(el, item, t)))
+  const objects = objectParts.filter(Boolean)
+
+  if (objects.length === 0) {
+    objects.push(
+      buildTextObjectXml(
+        'TEXT',
+        ['(empty label)'],
+        18,
+        pctToBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t),
+        { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
+      )
+    )
+  }
+
+  return (
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    `<DieCutLabel Version="8.0" Units="twips">` +
+    `<PaperOrientation>Landscape</PaperOrientation>` +
+    `<Id>${t.id}</Id>` +
+    `<PaperName>${t.paperName}</PaperName>` +
+    `<DrawCommands>` +
+    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
+    `</DrawCommands>` +
+    objects.join('') +
+    `</DieCutLabel>`
+  )
+}
+
+export async function buildLabelXmlCandidatesFromStudioForPrint(
+  template: LabelStudioTemplate,
+  item: LabelStudioItem
+): Promise<string[]> {
+  const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const ordered = [
+    preferred,
+    ...DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id),
+  ]
+  return Promise.all(ordered.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper)))
 }

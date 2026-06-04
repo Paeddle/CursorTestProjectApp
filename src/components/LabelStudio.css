@@ -682,6 +682,19 @@
   white-space: nowrap;
 }
 
+.label-studio-canvas-image {
+  padding: 2px;
+  overflow: hidden;
+}
+
+.ls-canvas-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
 /* Right: properties */
 .ls-field-type {
   margin: 0 0 0.65rem;

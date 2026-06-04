@@ -6,7 +6,7 @@ import {
 } from './dymoLabelPrint'
 import { assertDymoPrintSucceeded } from './dymoLabelXml'
 import { findDymoWebService, resolveDymoWebPrinter } from './dymoWebService'
-import { buildLabelXmlCandidatesFromStudio } from './labelStudioXml'
+import { buildLabelXmlFromStudioForPrint } from './labelStudioXml'
 import type { LabelStudioItem, LabelStudioTemplate } from '../types/labelStudio'
 
 const PRINT_PARAMS =
@@ -90,8 +90,7 @@ export async function printStudioLabels(
 
   const xmlPerItem: string[] = []
   for (const item of items) {
-    const candidates = buildLabelXmlCandidatesFromStudio(template, item)
-    xmlPerItem.push(candidates[0])
+    xmlPerItem.push(await buildLabelXmlFromStudioForPrint(template, item))
   }
 
   const errors: string[] = []

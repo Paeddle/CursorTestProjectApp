@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getInventoryPicturePublicUrl } from './inventoryImageStorage'
 import type { LabelStudioItem } from '../types/labelStudio'
 
 function fieldsFromInventory(row: Record<string, unknown>): Record<string, string> {
@@ -18,6 +19,11 @@ function fieldsFromInventory(row: Record<string, unknown>): Record<string, strin
   set('color', row.color)
   set('unit', row.unit)
   set('type', row.type)
+  const picture = getInventoryPicturePublicUrl({
+    picture_path: row.picture_path as string | null | undefined,
+    picture_url: row.picture_url as string | null | undefined,
+  })
+  if (picture) f.picture = picture
   return f
 }
 

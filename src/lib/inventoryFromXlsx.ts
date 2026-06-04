@@ -122,6 +122,7 @@ export function parseInventoryXlsxArrayBuffer(buf: ArrayBuffer): InventoryRow[] 
       stock_available: parseNumber(colMap.get('stock_available')),
       stock_on_order: parseNumber(colMap.get('stock_on_order')),
       picture_url: parseString(colMap.get('picture_url')),
+      picture_path: null,
       purchase_url: parseString(colMap.get('purchase_url')),
     }
 

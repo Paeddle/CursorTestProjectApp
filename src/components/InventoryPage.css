@@ -323,3 +323,61 @@
   border: 1px solid #ddd;
   background: #f8f8f8;
 }
+
+.inv-picture-cell {
+  position: relative;
+}
+
+.inv-picture-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 0.65rem;
+  background: #1b5e20;
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 3px;
+  line-height: 1.2;
+}
+
+.inv-picture-fieldset {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.inv-picture-fieldset legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+
+.inv-picture-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: #555;
+  line-height: 1.35;
+}
+
+.inv-picture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.inv-file-input {
+  display: none;
+}
+
+.inv-picture-stored {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #1b5e20;
+}
+
+.inv-picture-stored.warn {
+  color: #b45309;
+}

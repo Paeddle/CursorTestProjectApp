@@ -11,6 +11,7 @@ import {
 import { printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
+  mergedImageUrlForElement,
   previewTextForTemplate,
   resolveMergeTemplate,
   normalizeMergedText,
@@ -27,6 +28,7 @@ import {
   defaultInventoryTemplate,
   defaultShippingTemplate,
   isBarcodeElement,
+  isImageElement,
   isTextElement,
   LABEL_STUDIO_MERGE_FIELDS,
   normalizeStudioTemplate,
@@ -74,6 +76,7 @@ const SOURCE_OPTIONS: {
 function elementSummary(el: LabelStudioElement): string {
   const short = el.content.replace(/\{\{|\}\}/g, '').trim() || '(empty)'
   if (isBarcodeElement(el)) return `Barcode: ${short}`
+  if (isImageElement(el)) return `Image: ${short}`
   const preview = el.content.length > 28 ? `${el.content.slice(0, 28)}…` : el.content
   return `Text: ${preview}`
 }
@@ -213,7 +216,7 @@ export default function LabelStudio() {
       kind: 'ok',
       text:
         preset === 'inventory'
-          ? 'Loaded “item + barcode” layout. Select inventory items on the left, then print.'
+          ? 'Loaded “image + item + barcode” layout. Store images on the Inventory page, then print.'
           : 'Loaded “job + location” layout. Select location or PO items on the left, then print.',
     })
   }
@@ -232,6 +235,22 @@ export default function LabelStudio() {
       bold: true,
       align: 'Center',
       textFitMode: 'ShrinkToFit',
+    }
+    setTemplate((t) => ({ ...t, elements: [...t.elements, el] }))
+    setSelectedElementId(el.id)
+  }
+
+  const addImageElement = () => {
+    const el: LabelStudioElement = {
+      kind: 'image',
+      id: createElementId(),
+      name: 'PICTURE',
+      content: '{{picture}}',
+      xPct: 4,
+      yPct: 8,
+      widthPct: 30,
+      heightPct: 84,
+      scaleMode: 'Uniform',
     }
     setTemplate((t) => ({ ...t, elements: [...t.elements, el] }))
     setSelectedElementId(el.id)
@@ -392,6 +411,15 @@ export default function LabelStudio() {
       setStatus({ kind: 'err', text: err instanceof Error ? err.message : 'Excel import failed' })
     }
   }
+
+  const canvasImagePreviewUrl = useCallback(
+    (el: LabelStudioElement): string | null => {
+      if (!isImageElement(el) || !previewItem) return null
+      const url = mergedImageUrlForElement(el.content, previewItem)
+      return url || null
+    },
+    [previewItem]
+  )
 
   const canvasPreviewText = (el: LabelStudioElement): string => {
     if (!previewItem) return el.content.replace(/\{\{[^}]+\}\}/g, '…')
@@ -675,6 +703,9 @@ export default function LabelStudio() {
               <button type="button" className="ls-btn ls-btn-secondary" onClick={addTextElement}>
                 + Text
               </button>
+              <button type="button" className="ls-btn ls-btn-secondary" onClick={addImageElement}>
+                + Image
+              </button>
               <button type="button" className="ls-btn ls-btn-secondary" onClick={addBarcodeElement}>
                 + Barcode
               </button>
@@ -727,10 +758,10 @@ export default function LabelStudio() {
                   type="button"
                   role="tab"
                   aria-selected={selectedElementId === el.id}
-                  className={`ls-element-chip${selectedElementId === el.id ? ' active' : ''}${isBarcodeElement(el) ? ' barcode' : ''}`}
+                  className={`ls-element-chip${selectedElementId === el.id ? ' active' : ''}${isBarcodeElement(el) ? ' barcode' : ''}${isImageElement(el) ? ' image' : ''}`}
                   onClick={() => setSelectedElementId(el.id)}
                 >
-                  {isBarcodeElement(el) ? '▐▌ ' : 'Aa '}
+                  {isBarcodeElement(el) ? '▐▌ ' : isImageElement(el) ? '🖼 ' : 'Aa '}
                   {elementSummary(el)}
                 </button>
               ))}
@@ -743,6 +774,7 @@ export default function LabelStudio() {
             onSelect={setSelectedElementId}
             onUpdateRect={updateElementRect}
             renderPreview={canvasPreviewText}
+            imagePreviewUrl={canvasImagePreviewUrl}
           />
 
           <p className="ls-canvas-hint">
@@ -767,7 +799,11 @@ export default function LabelStudio() {
           {selectedElement ? (
             <>
               <p className="ls-field-type">
-                {isBarcodeElement(selectedElement) ? 'Scannable barcode' : 'Text'}
+                {isBarcodeElement(selectedElement)
+                  ? 'Scannable barcode'
+                  : isImageElement(selectedElement)
+                    ? 'Product image'
+                    : 'Text'}
                 {selectedElement.name ? ` · ${selectedElement.name}` : ''}
               </p>
 
@@ -806,7 +842,29 @@ export default function LabelStudio() {
                 </div>
               </div>
 
-              {isBarcodeElement(selectedElement) ? (
+              {isImageElement(selectedElement) ? (
+                <div className="ls-prop-group">
+                  <h3 className="ls-prop-group-title">Image options</h3>
+                  <p className="ls-field-hint">
+                    Use {'{{picture}}'} for inventory items with images stored in Supabase (Inventory page).
+                  </p>
+                  <label className="ls-field">
+                    <span className="ls-field-label">Scale</span>
+                    <select
+                      className="ls-select"
+                      value={selectedElement.scaleMode}
+                      onChange={(e) =>
+                        updateElement(selectedElement.id, {
+                          scaleMode: e.target.value as typeof selectedElement.scaleMode,
+                        })
+                      }
+                    >
+                      <option value="Uniform">Fit inside box (keep proportions)</option>
+                      <option value="Fill">Fill box (may crop)</option>
+                    </select>
+                  </label>
+                </div>
+              ) : isBarcodeElement(selectedElement) ? (
                 <div className="ls-prop-group">
                   <h3 className="ls-prop-group-title">Barcode options</h3>
                   <label className="ls-field">

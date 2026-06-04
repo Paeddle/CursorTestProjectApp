@@ -1,5 +1,5 @@
 import type { LabelStudioElement, LabelStudioItem } from '../types/labelStudio'
-import { isBarcodeElement } from '../types/labelStudio'
+import { isBarcodeElement, isImageElement } from '../types/labelStudio'
 
 const MERGE_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
 
@@ -34,6 +34,15 @@ export function mergedBarcodeForElement(content: string, item: LabelStudioItem):
   return line ?? ''
 }
 
+/** Resolved image URL for image objects (from {{picture}} or a direct URL). */
+export function mergedImageUrlForElement(content: string, item: LabelStudioItem): string {
+  const raw = normalizeMergedText(resolveMergeTemplate(content, item.fields))
+  const line = raw.split('\n').map((l) => l.trim()).find(Boolean)
+  if (!line) return ''
+  if (/^https?:\/\//i.test(line)) return line
+  return item.fields.picture ?? ''
+}
+
 export function previewTextForTemplate(
   elements: LabelStudioElement[],
   item: LabelStudioItem | null
@@ -44,6 +53,10 @@ export function previewTextForTemplate(
       if (isBarcodeElement(el)) {
         const v = mergedBarcodeForElement(el.content, item)
         return v ? `[barcode] ${v}` : ''
+      }
+      if (isImageElement(el)) {
+        const v = mergedImageUrlForElement(el.content, item)
+        return v ? '[image]' : ''
       }
       return normalizeMergedText(resolveMergeTemplate(el.content, item.fields))
     })
