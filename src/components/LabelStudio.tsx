@@ -20,7 +20,6 @@ import { printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
   mergedImageUrlForElement,
-  mergedLinesForElement,
   previewTextForTemplate,
   resolveMergeTemplate,
   normalizeMergedText,
@@ -818,11 +817,6 @@ export default function LabelStudio() {
             onSelect={setSelectedElementId}
             onUpdateRect={updateElementRect}
             renderPreview={canvasPreviewText}
-            textLineCount={(el) => {
-              if (!isTextElement(el) || !previewItem) return undefined
-              const lines = mergedLinesForElement(el.content, previewItem)
-              return Math.max(1, lines.length)
-            }}
             imagePreviewUrl={canvasImagePreviewUrl}
             barcodePreviewUrl={canvasBarcodePreviewUrl}
           />

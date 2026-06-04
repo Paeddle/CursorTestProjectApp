@@ -41,31 +41,26 @@ export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
   return template.boundsWidth
 }
 
-/** Point size used in DYMO XML so print matches the studio box (not DYMO auto-shrink). */
+/** Point size for fixed-size text (ShrinkToFit uses max size + DYMO TextFitMode instead). */
 export function effectiveTextFontSizePt(
   fontSize: number,
-  lineCount: number,
-  boxHeightTwips: number,
+  _lineCount: number,
+  _boxHeightTwips: number,
   textFitMode: LabelStudioTextFitMode | undefined
 ): number {
-  if (textFitMode === 'None') return fontSize
-  const lines = Math.max(1, lineCount)
-  const maxByBox = Math.floor(boxHeightTwips / (lines * LABEL_TWIPS_PER_PT))
-  return Math.max(8, Math.min(fontSize, maxByBox))
+  if (textFitMode === 'ShrinkToFit' || textFitMode == null) return fontSize
+  return fontSize
 }
 
-/** Preview font size (px) inside the element box on the canvas. */
-export function previewFontSizePx(
+/** Max preview font (px) before shrink-to-fit — matches configured pt size in the element box. */
+export function previewMaxFontSizePx(
   el: LabelStudioTextElement,
   printableAreaHeightPx: number,
-  template: DymoPaperTemplate,
-  lineCount?: number
+  template: DymoPaperTemplate
 ): number {
-  const lines = lineCount ?? Math.max(1, el.content.split('\n').length)
   const studioH = studioBoundsHeightTwips(template)
   const boxHeightTwips = (el.heightPct / 100) * studioH
   const boxHeightPx = (el.heightPct / 100) * printableAreaHeightPx
-  if (boxHeightPx <= 0 || boxHeightTwips <= 0) return Math.max(8, el.fontSize * 0.5)
-  const pt = effectiveTextFontSizePt(el.fontSize, lines, boxHeightTwips, el.textFitMode)
-  return Math.max(6, (pt * LABEL_TWIPS_PER_PT * boxHeightPx) / boxHeightTwips)
+  if (boxHeightPx <= 0 || boxHeightTwips <= 0) return Math.max(8, el.fontSize * 0.75)
+  return Math.max(6, (el.fontSize * LABEL_TWIPS_PER_PT * boxHeightPx) / boxHeightTwips)
 }

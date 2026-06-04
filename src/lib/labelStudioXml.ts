@@ -54,12 +54,14 @@ function buildTextObjectXml(
     textFitMode: LabelStudioTextElement['textFitMode']
   }
 ): string {
+  const fitMode = options.textFitMode ?? 'ShrinkToFit'
   const pt = effectiveTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
     bounds.height,
-    options.textFitMode
+    fitMode
   )
+  const dymoFitMode = fitMode === 'None' ? 'None' : 'ShrinkToFit'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -73,7 +75,7 @@ function buildTextObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>${options.align}</HorizontalAlignment>` +
     `<VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>None</TextFitMode>` +
+    `<TextFitMode>${dymoFitMode}</TextFitMode>` +
     `<UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized>` +
     `<StyledText>${styled}</StyledText>` +

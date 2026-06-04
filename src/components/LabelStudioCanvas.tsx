@@ -1,10 +1,8 @@
 import { useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { DYMO_PAPER_TEMPLATES } from '../lib/dymoLabelXml'
+import LabelStudioFittedText from './LabelStudioFittedText'
 import { barcodeCaptionHeightPct, previewBarcodeCaptionFontPx } from '../lib/labelStudioBarcodeLayout'
-import {
-  printableMetricsForTemplate,
-  previewFontSizePx,
-} from '../lib/labelStudioGeometry'
+import { printableMetricsForTemplate, previewMaxFontSizePx } from '../lib/labelStudioGeometry'
 import type { LabelStudioElement } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 import {
@@ -40,7 +38,6 @@ export type LabelStudioCanvasProps = {
   onSelect: (id: string | null) => void
   onUpdateRect: (id: string, rect: ElementRect) => void
   renderPreview: (el: LabelStudioElement) => string
-  textLineCount?: (el: LabelStudioElement) => number | undefined
   imagePreviewUrl?: (el: LabelStudioElement) => string | null
   barcodePreviewUrl?: (el: LabelStudioElement) => string | null
 }
@@ -56,13 +53,12 @@ export default function LabelStudioCanvas({
   onSelect,
   onUpdateRect,
   renderPreview,
-  textLineCount,
   imagePreviewUrl,
   barcodePreviewUrl,
 }: LabelStudioCanvasProps) {
   const printableRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
-  const [printableHeightPx, setPrintableHeightPx] = useState(0)
+  const [printableSizePx, setPrintableSizePx] = useState({ width: 0, height: 0 })
 
   const paper = paperTemplateById(paperTemplateId, DYMO_PAPER_TEMPLATES)
   const metrics = printableMetricsForTemplate(paper)
@@ -70,7 +66,10 @@ export default function LabelStudioCanvas({
   useLayoutEffect(() => {
     const node = printableRef.current
     if (!node) return
-    const measure = () => setPrintableHeightPx(node.getBoundingClientRect().height)
+    const measure = () => {
+      const r = node.getBoundingClientRect()
+      setPrintableSizePx({ width: r.width, height: r.height })
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(node)
@@ -154,7 +153,7 @@ export default function LabelStudioCanvas({
           const captionBandPct = isBarcode && barcodeShowText ? barcodeCaptionHeightPct(el.textFontSize ?? 10) : 0
           const captionFontPx =
             isBarcode && barcodeShowText
-              ? previewBarcodeCaptionFontPx(el.textFontSize ?? 10, el.heightPct, printableHeightPx, paper)
+              ? previewBarcodeCaptionFontPx(el.textFontSize ?? 10, el.heightPct, printableSizePx.height, paper)
               : 0
           const isImage = isImageElement(el)
           const preview = renderPreview(el) || '(empty)'
@@ -179,13 +178,6 @@ export default function LabelStudioCanvas({
                       '--ls-caption-band': `${captionBandPct}%`,
                       '--ls-caption-font': `${captionFontPx}px`,
                     } as React.CSSProperties)
-                  : {}),
-                ...(textEl
-                  ? {
-                      fontSize: `${previewFontSizePx(textEl, printableHeightPx, paper, textLineCount?.(el))}px`,
-                      fontWeight: textEl.bold ? 700 : 400,
-                      textAlign: textEl.align.toLowerCase() as 'left' | 'center' | 'right',
-                    }
                   : {}),
               }}
               onPointerDown={(ev) => {
@@ -215,6 +207,14 @@ export default function LabelStudioCanvas({
                 ) : (
                   <span className="ls-element-text">No image</span>
                 )
+              ) : textEl ? (
+                <LabelStudioFittedText
+                  text={preview}
+                  maxFontSizePx={previewMaxFontSizePx(textEl, printableSizePx.height, paper)}
+                  shrink={!!textFitShrink}
+                  bold={textEl.bold}
+                  align={textEl.align.toLowerCase() as 'left' | 'center' | 'right'}
+                />
               ) : (
                 <span className="ls-element-text">{preview}</span>
               )}
