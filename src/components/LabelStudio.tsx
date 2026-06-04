@@ -787,7 +787,11 @@ export default function LabelStudio() {
                   ))}
                 </select>
                 <span className="ls-field-hint">
-                  Must match the roll in your printer and in DYMO Connect — layout is built for this size only.
+                  Must match your loaded roll in DYMO Connect. Preview size is the real sticker face (
+                  {DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.widthMm ?? LABEL_WIDTH_MM}
+                  ×
+                  {DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.heightMm ?? LABEL_HEIGHT_MM}{' '}
+                  mm for 30323).
                 </span>
               </label>
               <div className="ls-btn-row">
@@ -895,9 +899,9 @@ export default function LabelStudio() {
           />
 
           <p className="ls-canvas-hint">
-            <strong>Move:</strong> drag the box. <strong>Resize:</strong> drag the blue corner/edge handles (Shift =
-            keep proportions). <strong>Nudge:</strong> arrow keys. <strong>Delete</strong> key removes the selected
-            field.
+            The white box is the full {LABEL_WIDTH_MM}×{LABEL_HEIGHT_MM} mm label face (30323). What you place here
+            prints at the same position and size. <strong>Move</strong> drag · <strong>Resize</strong> blue handles ·
+            <strong> Delete</strong> key removes the field.
           </p>
 
           {previewItem && (

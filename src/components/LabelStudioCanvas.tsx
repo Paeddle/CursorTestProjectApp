@@ -136,22 +136,13 @@ export default function LabelStudioCanvas({
   return (
     <div
       className="label-studio-canvas"
-      style={{ aspectRatio: `${paper.drawWidth} / ${paper.drawHeight}` }}
+      style={{ aspectRatio: `${metrics.widthMm} / ${metrics.heightMm}` }}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerLeave={endDrag}
       onPointerDown={() => onSelect(null)}
     >
-      <div
-        ref={printableRef}
-        className="ls-printable-area"
-        style={{
-          left: `${metrics.marginLeftPct}%`,
-          top: `${metrics.marginTopPct}%`,
-          width: `${metrics.printableWidthPct}%`,
-          height: `${metrics.printableHeightPct}%`,
-        }}
-      >
+      <div ref={printableRef} className="ls-printable-area">
         {elements.length === 0 && (
           <p className="ls-canvas-empty">Add text, image, or a barcode. Positions match what will print.</p>
         )}

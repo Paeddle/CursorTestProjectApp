@@ -599,7 +599,7 @@
   position: relative;
   width: 100%;
   max-width: none;
-  background: #e9ecef;
+  background: #fff;
   border: 2px solid #bbb;
   border-radius: 6px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
@@ -608,10 +608,10 @@
 
 .ls-printable-area {
   position: absolute;
+  inset: 0;
   box-sizing: border-box;
   background: #fff;
   overflow: hidden;
-  border: 1px dashed #c5d3e0;
 }
 
 .ls-canvas-empty {

@@ -13,10 +13,19 @@ export const LABEL_LOC_OBJECT_NAME = 'LOC'
 export const LABEL_XML_SKELETON = ''
 export const LABEL_XML_TEMPLATE = ''
 
+/** Convert millimeters to DYMO twips (1/1440 inch per twip). */
+export function mmToTwips(mm: number): number {
+  return Math.round((mm / 25.4) * 1440)
+}
+
 /** Known-valid PaperName/Id pairs (invalid PaperName → "DieCutLabel is not declared"). */
 export type DymoPaperTemplate = {
   id: string
   paperName: string
+  /** Physical label face width in mm (what you see on the sticker). */
+  widthMm: number
+  /** Physical label face height in mm. */
+  heightMm: number
   drawWidth: number
   drawHeight: number
   boundsX: number
@@ -30,6 +39,8 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   {
     id: 'LargeShipping',
     paperName: '30256 Shipping',
+    widthMm: 59,
+    heightMm: 102,
     drawWidth: 3331,
     drawHeight: 5715,
     boundsX: 336,
@@ -40,6 +51,8 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   {
     id: 'Shipping',
     paperName: '30323 Shipping',
+    widthMm: LABEL_WIDTH_MM,
+    heightMm: LABEL_HEIGHT_MM,
     drawWidth: 5811,
     drawHeight: 1581,
     boundsX: 200,
@@ -50,6 +63,8 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   {
     id: 'Address',
     paperName: '30252 Address',
+    widthMm: 28,
+    heightMm: 89,
     drawWidth: 1581,
     drawHeight: 5040,
     boundsX: 332,

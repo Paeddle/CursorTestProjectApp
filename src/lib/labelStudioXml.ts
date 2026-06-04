@@ -1,6 +1,7 @@
 import {
   DYMO_PAPER_TEMPLATES,
   escapeXmlText,
+  mmToTwips,
   type DymoPaperTemplate,
 } from './dymoLabelXml'
 import { barcodeTextForPrint, dymoBarcodeSymbologyXml, resolveBarcodeType } from './labelStudioBarcode'
@@ -33,20 +34,36 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
 }
 
+/** Map studio 0–100% to full physical label face in twips (matches canvas aspect). */
 function pctToBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
 ): LabelBounds {
-  const baseX = template.boundsX
-  const baseY = template.boundsY
-  const baseW = template.boundsWidth
-  const baseH = template.boundsHeight
+  const w = mmToTwips(template.widthMm)
+  const h = mmToTwips(template.heightMm)
   return {
-    x: Math.round(baseX + (el.xPct / 100) * baseW),
-    y: Math.round(baseY + (el.yPct / 100) * baseH),
-    width: Math.max(80, Math.round((el.widthPct / 100) * baseW)),
-    height: Math.max(60, Math.round((el.heightPct / 100) * baseH)),
+    x: Math.round((el.xPct / 100) * w),
+    y: Math.round((el.yPct / 100) * h),
+    width: Math.max(80, Math.round((el.widthPct / 100) * w)),
+    height: Math.max(60, Math.round((el.heightPct / 100) * h)),
   }
+}
+
+function studioDieCutXml(template: DymoPaperTemplate, objectXml: string): string {
+  const w = mmToTwips(template.widthMm)
+  const h = mmToTwips(template.heightMm)
+  return (
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    `<DieCutLabel Version="8.0" Units="twips">` +
+    `<PaperOrientation>Landscape</PaperOrientation>` +
+    `<Id>${template.id}</Id>` +
+    `<PaperName>${template.paperName}</PaperName>` +
+    `<DrawCommands>` +
+    `<RoundRectangle X="0" Y="0" Width="${w}" Height="${h}" Rx="270" Ry="270"/>` +
+    `</DrawCommands>` +
+    objectXml +
+    `</DieCutLabel>`
+  )
 }
 
 function buildTextObjectXml(
@@ -226,18 +243,7 @@ export function buildLabelXmlFromStudio(
     )
   }
 
-  return (
-    '<?xml version="1.0" encoding="utf-8"?>' +
-    `<DieCutLabel Version="8.0" Units="twips">` +
-    `<PaperOrientation>Landscape</PaperOrientation>` +
-    `<Id>${t.id}</Id>` +
-    `<PaperName>${t.paperName}</PaperName>` +
-    `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
-    `</DrawCommands>` +
-    objects.join('') +
-    `</DieCutLabel>`
-  )
+  return studioDieCutXml(t, objects.join(''))
 }
 
 export function buildLabelXmlCandidatesFromStudio(
@@ -274,18 +280,7 @@ export async function buildLabelXmlFromStudioForPrint(
     )
   }
 
-  return (
-    '<?xml version="1.0" encoding="utf-8"?>' +
-    `<DieCutLabel Version="8.0" Units="twips">` +
-    `<PaperOrientation>Landscape</PaperOrientation>` +
-    `<Id>${t.id}</Id>` +
-    `<PaperName>${t.paperName}</PaperName>` +
-    `<DrawCommands>` +
-    `<RoundRectangle X="0" Y="0" Width="${t.drawWidth}" Height="${t.drawHeight}" Rx="270" Ry="270"/>` +
-    `</DrawCommands>` +
-    objects.join('') +
-    `</DieCutLabel>`
-  )
+  return studioDieCutXml(t, objects.join(''))
 }
 
 export async function buildLabelXmlCandidatesFromStudioForPrint(

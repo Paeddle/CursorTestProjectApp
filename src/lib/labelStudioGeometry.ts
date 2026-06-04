@@ -1,31 +1,34 @@
-import type { DymoPaperTemplate } from './dymoLabelXml'
+import { mmToTwips, type DymoPaperTemplate } from './dymoLabelXml'
 import type { LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
 
 /** DYMO label XML: approximate twips per point for Arial on LabelWriter rolls. */
 export const LABEL_TWIPS_PER_PT = 28
 
 export type LabelPrintableMetrics = {
-  marginLeftPct: number
-  marginTopPct: number
-  printableWidthPct: number
-  printableHeightPct: number
-  boundsWidth: number
-  boundsHeight: number
-  drawWidth: number
-  drawHeight: number
+  /** Physical width / height for canvas aspect ratio. */
+  widthMm: number
+  heightMm: number
+  /** Twips used for Label Studio print XML (full physical face). */
+  studioWidthTwips: number
+  studioHeightTwips: number
 }
 
+/** Label Studio canvas = full physical sticker; coordinates map 0–100% to that face. */
 export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelPrintableMetrics {
   return {
-    marginLeftPct: (template.boundsX / template.drawWidth) * 100,
-    marginTopPct: (template.boundsY / template.drawHeight) * 100,
-    printableWidthPct: (template.boundsWidth / template.drawWidth) * 100,
-    printableHeightPct: (template.boundsHeight / template.drawHeight) * 100,
-    boundsWidth: template.boundsWidth,
-    boundsHeight: template.boundsHeight,
-    drawWidth: template.drawWidth,
-    drawHeight: template.drawHeight,
+    widthMm: template.widthMm,
+    heightMm: template.heightMm,
+    studioWidthTwips: mmToTwips(template.widthMm),
+    studioHeightTwips: mmToTwips(template.heightMm),
   }
+}
+
+export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
+  return mmToTwips(template.heightMm)
+}
+
+export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
+  return mmToTwips(template.widthMm)
 }
 
 /** Point size used in DYMO XML so print matches the studio box (not DYMO auto-shrink). */
@@ -49,7 +52,8 @@ export function previewFontSizePx(
   lineCount?: number
 ): number {
   const lines = lineCount ?? Math.max(1, el.content.split('\n').length)
-  const boxHeightTwips = (el.heightPct / 100) * template.boundsHeight
+  const studioH = studioBoundsHeightTwips(template)
+  const boxHeightTwips = (el.heightPct / 100) * studioH
   const boxHeightPx = (el.heightPct / 100) * printableAreaHeightPx
   if (boxHeightPx <= 0 || boxHeightTwips <= 0) return Math.max(8, el.fontSize * 0.5)
   const pt = effectiveTextFontSizePt(el.fontSize, lines, boxHeightTwips, el.textFitMode)
