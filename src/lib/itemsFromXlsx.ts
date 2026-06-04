@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { InventoryRow } from '../types/purchaseList'
+import type { ItemRow } from '../types/purchaseList'
 
 const TARGET_FIELDS = [
   'manufacturer',
@@ -80,7 +80,7 @@ function parseString(val: unknown): string | null {
   return s.length ? s : null
 }
 
-export function parseInventoryXlsxArrayBuffer(buf: ArrayBuffer): InventoryRow[] {
+export function parseItemsXlsxArrayBuffer(buf: ArrayBuffer): ItemRow[] {
   const wb = XLSX.read(buf, { type: 'array' })
   const first = wb.SheetNames[0]
   if (!first) return []
@@ -92,7 +92,7 @@ export function parseInventoryXlsxArrayBuffer(buf: ArrayBuffer): InventoryRow[] 
     raw: false,
   })
 
-  const out: InventoryRow[] = []
+  const out: ItemRow[] = []
   for (const row of rows) {
     const keys = Object.keys(row)
     const colMap = new Map<TargetKey, unknown>()
@@ -102,7 +102,7 @@ export function parseInventoryXlsxArrayBuffer(buf: ArrayBuffer): InventoryRow[] 
       if (field) colMap.set(field, row[k])
     }
 
-    const inv: InventoryRow = {
+    const inv: ItemRow = {
       manufacturer: parseString(colMap.get('manufacturer')),
       category: parseString(colMap.get('category')),
       type: parseString(colMap.get('type')),

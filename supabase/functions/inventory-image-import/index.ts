@@ -34,11 +34,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = (await req.json()) as { inventoryId?: string; sourceUrl?: string }
-    const inventoryId = (body.inventoryId ?? '').trim()
+    const body = (await req.json()) as { itemId?: string; inventoryId?: string; sourceUrl?: string }
+    const itemId = (body.itemId ?? body.inventoryId ?? '').trim()
     const sourceUrl = (body.sourceUrl ?? '').trim()
-    if (!inventoryId || !sourceUrl) {
-      return new Response(JSON.stringify({ error: 'inventoryId and sourceUrl are required' }), {
+    if (!itemId || !sourceUrl) {
+      return new Response(JSON.stringify({ error: 'itemId and sourceUrl are required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
 
     const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
     const ext = extFromContentType(contentType)
-    const path = `${inventoryId}/picture.${ext}`
+    const path = `${itemId}/picture.${ext}`
 
     const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, bytes, {
       upsert: true,
@@ -96,9 +96,9 @@ Deno.serve(async (req) => {
     }
 
     const { data: row, error: updateError } = await supabase
-      .from('inventory')
+      .from('items')
       .update({ picture_path: path, picture_url: sourceUrl })
-      .eq('id', inventoryId)
+      .eq('id', itemId)
       .select('*')
       .single()
 

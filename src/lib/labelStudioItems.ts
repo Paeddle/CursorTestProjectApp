@@ -1,12 +1,12 @@
 import { supabase } from './supabase'
-import { fetchInventoryList } from '../services/inventoryService'
-import { getInventoryPicturePublicUrl } from './inventoryImageStorage'
-import type { InventoryRecord } from '../types/inventory'
+import { fetchItemsList } from '../services/itemsService'
+import { getItemPicturePublicUrl } from './itemsImageStorage'
+import type { ItemRecord } from '../types/items'
 import type { LabelStudioItem } from '../types/labelStudio'
 
-const INVENTORY_PAGE_SIZE = 1000
+const ITEMS_PAGE_SIZE = 1000
 
-function fieldsFromInventory(row: Record<string, unknown>): Record<string, string> {
+function fieldsFromItem(row: Record<string, unknown>): Record<string, string> {
   const f: Record<string, string> = {}
   const set = (key: string, val: unknown) => {
     const s = val != null ? String(val).trim() : ''
@@ -23,7 +23,7 @@ function fieldsFromInventory(row: Record<string, unknown>): Record<string, strin
   set('color', row.color)
   set('unit', row.unit)
   set('type', row.type)
-  const picture = getInventoryPicturePublicUrl({
+  const picture = getItemPicturePublicUrl({
     picture_path: row.picture_path as string | null | undefined,
     picture_url: row.picture_url as string | null | undefined,
   })
@@ -31,19 +31,22 @@ function fieldsFromInventory(row: Record<string, unknown>): Record<string, strin
   return f
 }
 
-export function inventoryRowToLabelStudioItem(row: InventoryRecord): LabelStudioItem {
-  const fields = fieldsFromInventory(row as unknown as Record<string, unknown>)
-  const title = fields.item || fields.part_number || 'Inventory item'
+export function itemRowToLabelStudioItem(row: ItemRecord): LabelStudioItem {
+  const fields = fieldsFromItem(row as unknown as Record<string, unknown>)
+  const title = fields.item || fields.part_number || 'Item'
   return {
-    id: `inv-${row.id}`,
-    source: 'inventory',
+    id: `item-${row.id}`,
+    source: 'items',
     title,
     fields,
   }
 }
 
-/** Load every inventory row (paginated). Replaces the old 500-row cap. */
-export async function fetchLabelStudioInventoryItems(
+/** @deprecated Use fetchLabelStudioItems */
+export const inventoryRowToLabelStudioItem = itemRowToLabelStudioItem
+
+/** Load every items row (paginated). */
+export async function fetchLabelStudioItems(
   onProgress?: (loaded: number, total: number | null) => void
 ): Promise<LabelStudioItem[]> {
   if (!supabase) return []
@@ -53,33 +56,36 @@ export async function fetchLabelStudioInventoryItems(
   let total: number | null = null
 
   while (true) {
-    const { rows, total: count } = await fetchInventoryList({
-      limit: INVENTORY_PAGE_SIZE,
+    const { rows, total: count } = await fetchItemsList({
+      limit: ITEMS_PAGE_SIZE,
       offset,
       filter: 'all',
     })
     if (total === null) total = count
     for (const row of rows) {
-      items.push(inventoryRowToLabelStudioItem(row))
+      items.push(itemRowToLabelStudioItem(row))
     }
     onProgress?.(items.length, total)
     offset += rows.length
-    if (rows.length < INVENTORY_PAGE_SIZE || offset >= count) break
+    if (rows.length < ITEMS_PAGE_SIZE || offset >= count) break
   }
 
   return items
 }
 
-/** Server-side search across the full inventory table (same fields as Inventory page). */
-export async function searchLabelStudioInventoryItems(
-  query: string,
-  limit = 500
-): Promise<LabelStudioItem[]> {
+/** @deprecated Use fetchLabelStudioItems */
+export const fetchLabelStudioInventoryItems = fetchLabelStudioItems
+
+/** Server-side search across the full items table. */
+export async function searchLabelStudioItems(query: string, limit = 500): Promise<LabelStudioItem[]> {
   const q = query.trim()
   if (!q) return []
-  const { rows } = await fetchInventoryList({ search: q, limit, offset: 0, filter: 'all' })
-  return rows.map((row) => inventoryRowToLabelStudioItem(row))
+  const { rows } = await fetchItemsList({ search: q, limit, offset: 0, filter: 'all' })
+  return rows.map((row) => itemRowToLabelStudioItem(row))
 }
+
+/** @deprecated Use searchLabelStudioItems */
+export const searchLabelStudioInventoryItems = searchLabelStudioItems
 
 function fieldsFromLocation(row: Record<string, unknown>): Record<string, string> {
   const f: Record<string, string> = {}
@@ -95,36 +101,10 @@ function fieldsFromLocation(row: Record<string, unknown>): Record<string, string
   return f
 }
 
-function fieldsFromBarcode(row: Record<string, unknown>): Record<string, string> {
-  const f: Record<string, string> = {}
-  const set = (key: string, val: unknown) => {
-    const s = val != null ? String(val).trim() : ''
-    if (s) f[key] = s
-  }
-  set('barcode', row.barcode_value)
-  set('item', row.item_name)
-  set('manufacturer', row.manufacturer)
-  set('part_number', row.part_number)
-  return f
-}
-
-function fieldsFromPoLine(row: Record<string, unknown>): Record<string, string> {
-  const f: Record<string, string> = {}
-  const set = (key: string, val: unknown) => {
-    const s = val != null ? String(val).trim() : ''
-    if (s) f[key] = s
-  }
-  set('po_number', row.po_number)
-  set('item', row.item_name)
-  set('job', row.job_or_customer)
-  set('quantity', row.quantity)
-  return f
-}
-
 export async function fetchLabelStudioLocationItems(limit = 500): Promise<LabelStudioItem[]> {
   if (!supabase) return []
   const { data, error } = await supabase
-    .from('po_item_locations')
+    .from('item_locations')
     .select('*')
     .order('location_name', { ascending: true })
     .limit(limit)
@@ -141,26 +121,6 @@ export async function fetchLabelStudioLocationItems(limit = 500): Promise<LabelS
   })
 }
 
-export async function fetchLabelStudioBarcodeItems(limit = 500): Promise<LabelStudioItem[]> {
-  if (!supabase) return []
-  const { data, error } = await supabase
-    .from('barcode_catalog')
-    .select('*')
-    .order('item_name', { ascending: true })
-    .limit(limit)
-  if (error) throw new Error(error.message)
-  return (data ?? []).map((row) => {
-    const fields = fieldsFromBarcode(row)
-    const title = fields.item || fields.barcode || 'Barcode item'
-    return {
-      id: `bc-${row.id}`,
-      source: 'barcode' as const,
-      title,
-      fields,
-    }
-  })
-}
-
 export async function fetchLabelStudioPoLineItems(limit = 500): Promise<LabelStudioItem[]> {
   if (!supabase) return []
   const { data, error } = await supabase
@@ -170,14 +130,38 @@ export async function fetchLabelStudioPoLineItems(limit = 500): Promise<LabelStu
     .limit(limit)
   if (error) throw new Error(error.message)
   return (data ?? []).map((row) => {
-    const fields = fieldsFromPoLine(row)
-    const title = [fields.po_number, fields.item].filter(Boolean).join(' — ') || 'PO line'
+    const f: Record<string, string> = {}
+    const set = (key: string, val: unknown) => {
+      const s = val != null ? String(val).trim() : ''
+      if (s) f[key] = s
+    }
+    set('po_number', row.po_number)
+    set('item', row.item_name)
+    set('job', row.job_or_customer)
+    set('quantity', row.quantity)
+    const title = [f.po_number, f.item].filter(Boolean).join(' — ') || 'PO line'
     return {
       id: `po-${row.id}`,
       source: 'po_line' as const,
       title,
-      fields,
+      fields: f,
     }
+  })
+}
+
+export type LabelStudioInventorySortKey = 'name' | 'part_number' | 'manufacturer'
+export type LabelStudioSortDirection = 'asc' | 'desc'
+
+export function sortLabelStudioItems(
+  items: LabelStudioItem[],
+  key: LabelStudioInventorySortKey,
+  dir: LabelStudioSortDirection
+): LabelStudioItem[] {
+  const mult = dir === 'asc' ? 1 : -1
+  return [...items].sort((a, b) => {
+    const av = (a.fields[key === 'name' ? 'item' : key] ?? '').toLowerCase()
+    const bv = (b.fields[key === 'name' ? 'item' : key] ?? '').toLowerCase()
+    return av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true }) * mult
   })
 }
 
@@ -185,26 +169,7 @@ export function filterLabelStudioItems(items: LabelStudioItem[], query: string):
   const q = query.trim().toLowerCase()
   if (!q) return items
   return items.filter((item) => {
-    if (item.title.toLowerCase().includes(q)) return true
-    return Object.values(item.fields).some((v) => v.toLowerCase().includes(q))
+    const blob = Object.values(item.fields).join(' ').toLowerCase()
+    return blob.includes(q) || item.title.toLowerCase().includes(q)
   })
-}
-
-export type LabelStudioInventorySortKey = 'name' | 'part_number' | 'manufacturer'
-export type LabelStudioSortDirection = 'asc' | 'desc'
-
-function sortValue(item: LabelStudioItem, key: LabelStudioInventorySortKey): string {
-  if (key === 'name') return item.fields.item ?? ''
-  return item.fields[key] ?? ''
-}
-
-export function sortLabelStudioItems(
-  items: LabelStudioItem[],
-  key: LabelStudioInventorySortKey,
-  direction: LabelStudioSortDirection
-): LabelStudioItem[] {
-  const sign = direction === 'asc' ? 1 : -1
-  return [...items].sort(
-    (a, b) => sign * sortValue(a, key).localeCompare(sortValue(b, key), undefined, { sensitivity: 'base' })
-  )
 }

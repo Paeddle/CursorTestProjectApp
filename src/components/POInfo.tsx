@@ -8,6 +8,7 @@ import {
   normalizeBarcodeValue,
   type AggregatedPOBarcodeRow,
 } from '../lib/barcodeCatalogLookup'
+import { fetchItemsAsCatalog } from '../services/itemsService'
 import type { POBarcode, PODocument, POCheckinSummary, BarcodeCatalogItem } from '../types/poCheckin'
 import type { PoItemLocation, PoJobRef, PoLineItem, PoLabelPrintRow } from '../types/poIpoint'
 import {
@@ -229,8 +230,6 @@ function documentTypeLabel(type: string) {
 const BARCODE_SUMMARY_COLUMNS = 'id,po_number,barcode_value,scanned_at,created_at'
 const DOCUMENT_SUMMARY_COLUMNS =
   'id,po_number,file_url,document_type,name,scanned_at,created_at'
-const CATALOG_COLUMNS = 'id,barcode_value,manufacturer,part_number,item_name,created_at,updated_at'
-
 async function loadSummaries(): Promise<POCheckinSummary[]> {
   const [barcodesRes, docsRes] = await Promise.all([
     supabase
@@ -483,12 +482,9 @@ function POInfo() {
     setIpointLoading(true)
     setError(null)
     try {
-      const [list, catRes, chkRes, refs, syncMaps] = await Promise.all([
+      const [list, catalogRows, chkRes, refs, syncMaps] = await Promise.all([
         loadSummaries(),
-        supabase
-          .from('barcode_catalog')
-          .select(CATALOG_COLUMNS)
-          .order('item_name', { ascending: true }),
+        fetchItemsAsCatalog(),
         supabase.from('po_barcode_checkin').select('po_number, barcode_value, checked_in'),
         fetchPoJobRefs().catch(() => [] as PoJobRef[]),
         fetchPoLineSyncMaps(),
@@ -506,10 +502,9 @@ function POInfo() {
         )
       }
       setLineLastScan(lineLastScanMap)
-      if (catRes.error) throw new Error(catRes.error.message)
       if (chkRes.error) throw new Error(chkRes.error.message)
       setSummaries(list)
-      setCatalog((catRes.data ?? []) as BarcodeCatalogItem[])
+      setCatalog(catalogRows)
       setJobRefs(refs)
       const nextChecked: Record<string, boolean> = {}
       for (const r of chkRes.data ?? []) {
@@ -559,7 +554,7 @@ function POInfo() {
       }
       setCustomerOverrides(mergedCustomerPicks)
 
-      const catalogForScanSync = buildCatalogLookupMap((catRes.data ?? []) as BarcodeCatalogItem[])
+      const catalogForScanSync = buildCatalogLookupMap(catalogRows)
       void (async () => {
         try {
           const merged: Record<string, string> = { ...lineLastScanMap }

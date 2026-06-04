@@ -19,7 +19,7 @@ type Hit = { label: string; stock_available: number; via: 'part_number' | 'item'
 /**
  * Build lookups for part_number and item (normalized keys).
  */
-export function inventoryLookups(rows: InvRow[]): {
+export function itemsLookups(rows: InvRow[]): {
   byPart: Map<string, Hit>
   byItem: Map<string, Hit>
 } {
@@ -48,7 +48,7 @@ export function inventoryLookups(rows: InvRow[]): {
   return { byPart, byItem }
 }
 
-export function comparePurchaseToInventory(
+export function comparePurchaseToItems(
   purchaseParts: {
     part: string
     required: number
@@ -56,9 +56,9 @@ export function comparePurchaseToInventory(
     vendor: string | null
     manufacturer: string | null
   }[],
-  inventoryRows: InvRow[]
+  itemRows: InvRow[]
 ): PullSuggestion[] {
-  const { byPart, byItem } = inventoryLookups(inventoryRows)
+  const { byPart, byItem } = itemsLookups(itemRows)
   return purchaseParts.map((p) => {
     const key = normalizeMatchKey(p.part)
     const hit = byPart.get(key) ?? byItem.get(key)
@@ -74,7 +74,7 @@ export function comparePurchaseToInventory(
       stock_available: stock,
       can_pull: can,
       match_type: hit ? hit.via : 'none',
-      inventory_part_number: hit?.label ?? null,
+      items_part_number: hit?.label ?? null,
     }
   })
 }

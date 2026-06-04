@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { fetchItemsAsCatalog, upsertItemFromCatalogEntry } from '../services/itemsService'
 import { normalizeBarcodeValue, barcodesMatch } from '../lib/barcodeCatalogLookup'
 import type { BarcodeCatalogItem } from '../types/poCheckin'
 import './BarcodeLookup.css'
@@ -179,8 +179,12 @@ export default function BarcodeLookupModal({
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const res = await supabase.from('barcode_catalog').select('*').order('updated_at', { ascending: false })
-      if (!cancelled && !res.error) setCatalog((res.data ?? []) as BarcodeCatalogItem[])
+      try {
+        const rows = await fetchItemsAsCatalog()
+        if (!cancelled) setCatalog(rows)
+      } catch {
+        /* ignore load errors in modal */
+      }
     }
     load()
     return () => {
@@ -326,7 +330,7 @@ export default function BarcodeLookupModal({
     setAddSaving(true)
     setLookupError(null)
     try {
-      const row = {
+      const saved = await upsertItemFromCatalogEntry({
         barcode_value: barcodeValueToSave,
         manufacturer: addManufacturer.trim() || null,
         part_number: addPartNumber.trim() || null,
@@ -334,10 +338,7 @@ export default function BarcodeLookupModal({
         image_url: addImageUrl.trim() || null,
         product_url: addProductUrl.trim() || null,
         notes: addNotes.trim() || null,
-      }
-      const res = await supabase.from('barcode_catalog').upsert(row, { onConflict: 'barcode_value' }).select('*').single()
-      if (res.error) throw new Error(res.error.message)
-      const saved = res.data as BarcodeCatalogItem
+      })
       setCatalog((prev) => {
         const rest = prev.filter((c) => c.barcode_value !== saved.barcode_value)
         return [saved, ...rest]
@@ -347,7 +348,7 @@ export default function BarcodeLookupModal({
       onCatalogSaved?.()
       onClose()
     } catch (e: unknown) {
-      setLookupError(e instanceof Error ? e.message : 'Failed to save to catalog')
+      setLookupError(e instanceof Error ? e.message : 'Failed to save to items')
     } finally {
       setAddSaving(false)
     }

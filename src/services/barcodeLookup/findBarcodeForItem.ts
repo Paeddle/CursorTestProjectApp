@@ -1,5 +1,5 @@
 import type { BarcodeCatalogItem } from '../../types/poCheckin'
-import type { BarcodeProviderStatus } from '../../types/inventory'
+import type { BarcodeProviderStatus } from '../../types/items'
 import type { BarcodeFindResult, ProductLookupInput, ProviderAttempt } from './types'
 import {
   lookupCatalogByProduct,
@@ -24,9 +24,9 @@ export function getBarcodeProviderStatus(): BarcodeProviderStatus[] {
   return [
     {
       id: 'catalog',
-      label: 'Your barcode catalog',
+      label: 'Your items',
       enabled: true,
-      note: 'Matches part number or item name from PO Info scans / manual catalog.',
+      note: 'Matches part number or item name from saved items.',
     },
     {
       id: 'upcitemdb',

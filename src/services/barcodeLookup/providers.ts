@@ -1,4 +1,4 @@
-import { supabase } from '../../lib/supabase'
+import { fetchItemsAsCatalog } from '../itemsService'
 import { normalizePartKey, extractBarcodesFromText, buildSearchQueries } from './barcodeExtract'
 import type { BarcodeFindResult, ProductLookupInput } from './types'
 import type { BarcodeCatalogItem } from '../../types/poCheckin'
@@ -27,17 +27,14 @@ function resultFromBarcode(
   }
 }
 
-/** Local barcode_catalog — match by part number or item name. */
+/** Local items table (formerly barcode_catalog) — match by part number or item name. */
 export async function lookupCatalogByProduct(
   input: ProductLookupInput,
   catalog?: BarcodeCatalogItem[]
 ): Promise<BarcodeFindResult | null> {
   let rows = catalog
   if (!rows) {
-    if (!supabase) return null
-    const { data, error } = await supabase.from('barcode_catalog').select('*')
-    if (error) throw new Error(error.message)
-    rows = (data ?? []) as BarcodeCatalogItem[]
+    rows = await fetchItemsAsCatalog()
   }
 
   const partKey = normalizePartKey(input.part_number || '')
@@ -46,7 +43,7 @@ export async function lookupCatalogByProduct(
     if (exact?.barcode_value) {
       return resultFromBarcode(
         exact.barcode_value,
-        'Your barcode catalog',
+        'Your items',
         'high',
         exact.item_name,
         exact.part_number ?? null,
@@ -64,7 +61,7 @@ export async function lookupCatalogByProduct(
     if (hit?.barcode_value) {
       return resultFromBarcode(
         hit.barcode_value,
-        'Your barcode catalog (item name)',
+        'Your items (item name)',
         'medium',
         hit.item_name,
         hit.part_number ?? null,

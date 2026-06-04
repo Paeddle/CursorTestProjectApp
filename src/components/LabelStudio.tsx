@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
 import {
-  fetchLabelStudioInventoryItems,
+  fetchLabelStudioItems,
   filterLabelStudioItems,
-  searchLabelStudioInventoryItems,
+  searchLabelStudioItems,
   sortLabelStudioItems,
   type LabelStudioInventorySortKey,
   type LabelStudioSortDirection,
@@ -51,9 +51,9 @@ import { alignElement } from '../lib/labelStudioCanvasGeometry'
 import './LabelStudio.css'
 
 const INVENTORY_SOURCE_HINT =
-  'Full Supabase inventory. Search checks name, part #, manufacturer, barcode, description, and more (not limited to the first 500 rows).'
+  'Full Supabase items table. Search checks name, part #, manufacturer, barcode, description, and more (not limited to the first 500 rows).'
 
-function inventoryItemDisplay(item: LabelStudioItem) {
+function itemRowDisplay(item: LabelStudioItem) {
   const f = item.fields
   return {
     name: f.item || '—',
@@ -127,15 +127,15 @@ export default function LabelStudio() {
     DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId) ?? DYMO_PAPER_TEMPLATES[1]
   const paperName = paperTemplate.paperName
 
-  const loadInventoryItems = useCallback(async () => {
+  const loadItems = useCallback(async () => {
     setLoadingItems(true)
     setItemsError(null)
     setLoadProgress(null)
     fullInventoryRef.current = null
     try {
-      const loaded = await fetchLabelStudioInventoryItems((count, total) => {
+      const loaded = await fetchLabelStudioItems((count, total) => {
         setLoadProgress(
-          total != null ? `Loading inventory… ${count.toLocaleString()} / ${total.toLocaleString()}` : null
+          total != null ? `Loading items… ${count.toLocaleString()} / ${total.toLocaleString()}` : null
         )
         if (total != null) setInventoryTotal(total)
       })
@@ -143,10 +143,10 @@ export default function LabelStudio() {
       setInventoryTotal(loaded.length)
       if (!searchTrimmed) setItems(loaded)
       if (loaded.length === 0) {
-        setItemsError('No inventory rows found. Add items on the Inventory page first.')
+        setItemsError('No items found. Add items on the Items page first.')
       }
     } catch (e) {
-      setItemsError(e instanceof Error ? e.message : 'Failed to load inventory')
+      setItemsError(e instanceof Error ? e.message : 'Failed to load items')
       setItems([])
       fullInventoryRef.current = null
     } finally {
@@ -156,8 +156,8 @@ export default function LabelStudio() {
   }, [searchTrimmed])
 
   useEffect(() => {
-    void loadInventoryItems()
-  }, [loadInventoryItems])
+    void loadItems()
+  }, [loadItems])
 
   useEffect(() => {
     const q = searchTrimmed
@@ -170,12 +170,12 @@ export default function LabelStudio() {
     const timer = window.setTimeout(() => {
       setSearchingItems(true)
       setItemsError(null)
-      void searchLabelStudioInventoryItems(q)
+      void searchLabelStudioItems(q)
         .then((rows) => {
           if (cancelled) return
           setItems(rows)
           if (rows.length === 0) {
-            setItemsError(`No inventory rows match “${q}”.`)
+            setItemsError(`No items match “${q}”.`)
           }
         })
         .catch((e) => {
@@ -575,7 +575,7 @@ export default function LabelStudio() {
           <button
             type="button"
             className="ls-btn ls-btn-secondary"
-            onClick={() => void loadInventoryItems()}
+            onClick={() => void loadItems()}
             disabled={loadingItems || searchingItems}
           >
             {loadProgress ?? (loadingItems ? 'Loading…' : 'Reload')}
@@ -616,11 +616,11 @@ export default function LabelStudio() {
         <input
           className="label-studio-search"
           type="search"
-          placeholder="Search entire inventory (name, part, description…)"
+          placeholder="Search all items (name, part, description…)"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {searchingItems && <p className="ls-field-hint">Searching inventory…</p>}
+        {searchingItems && <p className="ls-field-hint">Searching items…</p>}
 
         <div className="ls-item-actions">
           <button type="button" className="ls-btn ls-btn-secondary" onClick={selectAllVisible}>
@@ -636,11 +636,11 @@ export default function LabelStudio() {
         <div
           className="label-studio-item-list"
           role="listbox"
-          aria-label="Inventory items to print"
+          aria-label="Items to print"
           aria-multiselectable="true"
         >
             {filteredItems.map((item) => {
-              const row = inventoryItemDisplay(item)
+              const row = itemRowDisplay(item)
               const isSelected = selectedItemIds.has(item.id)
               const isPreview = previewItemId === item.id
               return (
@@ -690,8 +690,8 @@ export default function LabelStudio() {
             {!loadingItems && !searchingItems && filteredItems.length === 0 && (
               <p className="ls-empty">
                 {searchTrimmed
-                  ? 'No inventory rows match your search.'
-                  : 'No inventory rows loaded yet.'}
+                  ? 'No items match your search.'
+                  : 'No items loaded yet.'}
               </p>
             )}
         </div>
@@ -944,7 +944,7 @@ export default function LabelStudio() {
                 <div className="ls-prop-group">
                   <h3 className="ls-prop-group-title">Image options</h3>
                   <p className="ls-field-hint">
-                    Use {'{{picture}}'} for inventory items with images stored in Supabase (Inventory page).
+                    Use {'{{picture}}'} for items with images stored in Supabase (Items page).
                   </p>
                   <label className="ls-field">
                     <span className="ls-field-label">Scale</span>
@@ -1143,7 +1143,7 @@ export default function LabelStudio() {
             <div className="ls-props-empty">
               <p>Click a box on the label preview, or pick a field from the chips above the preview.</p>
               <p className="ls-field-hint">
-                Check inventory rows above to print; the label preview uses the row you last clicked.
+                Check items above to print; the label preview uses the row you last clicked.
               </p>
             </div>
           )}

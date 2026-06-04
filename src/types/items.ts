@@ -1,14 +1,16 @@
-import type { InventoryRow } from './purchaseList'
+import type { ItemRow } from './purchaseList'
 
-export type InventoryRecord = InventoryRow & {
+export type ItemRecord = ItemRow & {
   id: string
   uploaded_at: string
   created_at: string
+  updated_at?: string | null
+  notes?: string | null
   barcode_lookup_source: string | null
   barcode_lookup_at: string | null
 }
 
-export type InventoryBarcodeFilter = 'all' | 'missing' | 'has_barcode'
+export type ItemBarcodeFilter = 'all' | 'missing' | 'has_barcode'
 
 export type BarcodeLookupHit = {
   barcode: string

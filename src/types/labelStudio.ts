@@ -70,7 +70,7 @@ export type LabelStudioTemplate = {
 }
 
 export type LabelStudioItemSource =
-  | 'inventory'
+  | 'items'
   | 'location'
   | 'barcode'
   | 'po_line'

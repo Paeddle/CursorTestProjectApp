@@ -3,9 +3,9 @@ import Papa from 'papaparse'
 import { supabase } from '../lib/supabase'
 import { extractPdfLinesFromArrayBuffer } from '../lib/extractPdfLines'
 import { parsePurchaseManagerLines } from '../lib/parsePurchaseManagerExport'
-import { parseInventoryXlsxArrayBuffer } from '../lib/inventoryFromXlsx'
-import { comparePurchaseToInventory } from '../lib/purchaseListMatch'
-import type { InventoryRow, PurchaseListBatch, PurchaseListItemRow, PullSuggestion } from '../types/purchaseList'
+import { parseItemsXlsxArrayBuffer } from '../lib/itemsFromXlsx'
+import { comparePurchaseToItems } from '../lib/purchaseListMatch'
+import type { ItemRow, PurchaseListBatch, PurchaseListItemRow, PullSuggestion } from '../types/purchaseList'
 
 type CompareSortKey =
   | 'parse_order'
@@ -143,7 +143,7 @@ function PurchaseList() {
   const [batches, setBatches] = useState<PurchaseListBatch[]>([])
   const [selectedBatchId, setSelectedBatchId] = useState<string>('')
   const [batchItems, setBatchItems] = useState<PurchaseListItemRow[]>([])
-  const [inventoryCount, setInventoryCount] = useState(0)
+  const [itemsCount, setItemsCount] = useState(0)
   const [suggestions, setSuggestions] = useState<PullSuggestion[]>([])
   const [parsedDebugRows, setParsedDebugRows] = useState<ParsedDebugRow[]>([])
   const [compareSortKey, setCompareSortKey] = useState<CompareSortKey>('parse_order')
@@ -159,12 +159,12 @@ function PurchaseList() {
     setBatches((data ?? []) as PurchaseListBatch[])
   }, [])
 
-  const loadInventoryCount = useCallback(async () => {
+  const loadItemsCount = useCallback(async () => {
     const { count, error: e } = await supabase
-      .from('inventory')
+      .from('items')
       .select('*', { count: 'exact', head: true })
     if (e) throw new Error(e.message)
-    setInventoryCount(count ?? 0)
+    setItemsCount(count ?? 0)
   }, [])
 
   const loadBatchItems = useCallback(async (batchId: string) => {
@@ -192,10 +192,10 @@ function PurchaseList() {
     }
     try {
       const { data: inv, error: e } = await supabase
-        .from('inventory')
+        .from('items')
         .select('part_number, item, stock_available')
       if (e) throw new Error(e.message)
-      const invRows = (inv ?? []) as Pick<InventoryRow, 'part_number' | 'item' | 'stock_available'>[]
+      const invRows = (inv ?? []) as Pick<ItemRow, 'part_number' | 'item' | 'stock_available'>[]
       const purchaseRows = batchItems.map((r) => ({
         part: r.part,
         required: r.required,
@@ -203,7 +203,7 @@ function PurchaseList() {
         vendor: r.vendor || null,
         manufacturer: r.manufacturer || null,
       }))
-      setSuggestions(comparePurchaseToInventory(purchaseRows, invRows))
+      setSuggestions(comparePurchaseToItems(purchaseRows, invRows))
     } catch (err) {
       setSuggestions([])
       setError(err instanceof Error ? err.message : 'Compare failed')
@@ -215,12 +215,12 @@ function PurchaseList() {
     ;(async () => {
       try {
         await loadBatches()
-        await loadInventoryCount()
+        await loadItemsCount()
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load')
       }
     })()
-  }, [loadBatches, loadInventoryCount])
+  }, [loadBatches, loadItemsCount])
 
   useEffect(() => {
     if (!selectedBatchId) return
@@ -373,22 +373,22 @@ function PurchaseList() {
     }
   }
 
-  const handleUploadInventory = async () => {
+  const handleUploadItems = async () => {
     setError(null)
     setSuccess(null)
     if (!xlsxFile) {
-      setError('Choose an inventory .xlsx file.')
+      setError('Choose an items .xlsx file.')
       return
     }
     setBusy(true)
     try {
       const buf = await xlsxFile.arrayBuffer()
-      const rows = parseInventoryXlsxArrayBuffer(buf)
+      const rows = parseItemsXlsxArrayBuffer(buf)
       if (rows.length === 0) {
         throw new Error('No rows found in the first sheet, or headers did not match expected columns.')
       }
 
-      const { error: delErr } = await supabase.from('inventory').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+      const { error: delErr } = await supabase.from('items').delete().neq('id', '00000000-0000-0000-0000-000000000000')
       if (delErr) throw new Error(delErr.message)
 
       const now = new Date().toISOString()
@@ -396,14 +396,14 @@ function PurchaseList() {
         ...r,
         uploaded_at: now,
       }))
-      await insertInChunks('inventory', withTs as unknown as Record<string, unknown>[])
+      await insertInChunks('items', withTs as unknown as Record<string, unknown>[])
 
-      setSuccess(`Replaced inventory with ${rows.length} row(s) from "${xlsxFile.name}".`)
+      setSuccess(`Replaced items table with ${rows.length} row(s) from "${xlsxFile.name}".`)
       setXlsxFile(null)
-      await loadInventoryCount()
+      await loadItemsCount()
       void runCompare()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Inventory import failed')
+      setError(e instanceof Error ? e.message : 'Items import failed')
     } finally {
       setBusy(false)
     }
@@ -449,7 +449,7 @@ function PurchaseList() {
       <div className="purchase-list-page">
         <header className="purchase-list-header">
           <h1>Purchase List</h1>
-          <p className="purchase-list-subtitle">Purchase Manager PDF + inventory XLSX → Supabase</p>
+          <p className="purchase-list-subtitle">Purchase Manager PDF + items XLSX → Supabase</p>
         </header>
         <div className="purchase-list-setup">
           <p>
@@ -467,8 +467,8 @@ function PurchaseList() {
       <header className="purchase-list-header">
         <h1>Purchase List</h1>
         <p className="purchase-list-subtitle">
-          Upload Purchase Manager PDF exports and your inventory spreadsheet. We match each line’s{' '}
-          <strong>Required</strong> to <strong>stock_available</strong> using the same text as your inventory{' '}
+          Upload Purchase Manager PDF exports and your items spreadsheet. We match each line’s{' '}
+          <strong>Required</strong> to <strong>stock_available</strong> using the same text as your items{' '}
           <strong>part_number</strong> or <strong>item</strong> (normalized text match).
         </p>
       </header>
@@ -503,7 +503,7 @@ function PurchaseList() {
       </section>
 
       <section className="purchase-list-section">
-        <h2>2. Inventory (.xlsx)</h2>
+        <h2>2. Items (.xlsx)</h2>
         <div className="purchase-list-row">
           <input
             type="file"
@@ -511,13 +511,13 @@ function PurchaseList() {
             onChange={(e) => setXlsxFile(e.target.files?.[0] ?? null)}
           />
           <div className="purchase-list-actions">
-            <button type="button" className="primary" disabled={busy} onClick={() => void handleUploadInventory()}>
-              Import columns → inventory table
+            <button type="button" className="primary" disabled={busy} onClick={() => void handleUploadItems()}>
+              Import columns → items table
             </button>
           </div>
         </div>
         <p className="purchase-list-meta">
-          Replaces all rows in <code>inventory</code> ({inventoryCount} row(s) currently). Columns mapped: manufacturer,
+          Replaces all rows in <code>items</code> ({itemsCount} row(s) currently). Columns mapped: manufacturer,
           category, type, item, part_number, description_customer, unit, color, unit_hard_cost, unit_price, margin,
           markup, id_class, vendor_name, barcode, stock_total, stock_available, stock_on_order, picture_url,
           purchase_url.

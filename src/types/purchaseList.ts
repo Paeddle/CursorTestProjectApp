@@ -21,7 +21,7 @@ export interface PurchaseListItemRow {
   parse_order?: number
 }
 
-export interface InventoryRow {
+export interface ItemRow {
   manufacturer: string | null
   category: string | null
   type: string | null
@@ -43,6 +43,7 @@ export interface InventoryRow {
   picture_url: string | null
   picture_path: string | null
   purchase_url: string | null
+  notes?: string | null
 }
 
 export interface PullSuggestion {
@@ -54,5 +55,5 @@ export interface PullSuggestion {
   stock_available: number | null
   can_pull: number
   match_type: 'part_number' | 'item' | 'none'
-  inventory_part_number: string | null
+  items_part_number: string | null
 }

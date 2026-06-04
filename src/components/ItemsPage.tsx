@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import type { BarcodeCatalogItem } from '../types/poCheckin'
-import type { InventoryBarcodeFilter, InventoryRecord } from '../types/inventory'
+import type { ItemBarcodeFilter, ItemRecord } from '../types/items'
 import {
-  applyBarcodeLookupToInventory,
-  fetchInventoryList,
-  fetchInventoryStats,
-  isInventoryConfigured,
-  updateInventoryRow,
-} from '../services/inventoryService'
+  applyBarcodeLookupToItem,
+  fetchItemsAsCatalog,
+  fetchItemsList,
+  fetchItemsStats,
+  isItemsConfigured,
+  updateItemRow,
+} from '../services/itemsService'
 import {
   findBarcodeForItem,
   getBarcodeProviderStatus,
@@ -17,32 +17,32 @@ import {
 import type { ProviderAttempt } from '../services/barcodeLookup/types'
 import {
   formatExternalUrl,
-  getInventoryPicturePublicUrl,
-  importInventoryPictureFromUrl,
-  removeInventoryStoredPicture,
-  uploadInventoryPictureFile,
-} from '../lib/inventoryImageStorage'
-import './InventoryPage.css'
+  getItemPicturePublicUrl,
+  importItemPictureFromUrl,
+  removeItemStoredPicture,
+  uploadItemPictureFile,
+} from '../lib/itemsImageStorage'
+import './ItemsPage.css'
 
 const PAGE_SIZE = 50
 
-export default function InventoryPage() {
+export default function ItemsPage() {
   const [stats, setStats] = useState({ total: 0, missingBarcode: 0, hasBarcode: 0 })
-  const [rows, setRows] = useState<InventoryRecord[]>([])
+  const [rows, setRows] = useState<ItemRecord[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<InventoryBarcodeFilter>('missing')
+  const [filter, setFilter] = useState<ItemBarcodeFilter>('missing')
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, found: 0 })
-  const [lookupRow, setLookupRow] = useState<InventoryRecord | null>(null)
+  const [lookupRow, setLookupRow] = useState<ItemRecord | null>(null)
   const [lookupAttempts, setLookupAttempts] = useState<ProviderAttempt[]>([])
   const [lookupLoading, setLookupLoading] = useState(false)
-  const [editRow, setEditRow] = useState<InventoryRecord | null>(null)
-  const [editDraft, setEditDraft] = useState<Partial<InventoryRecord>>({})
+  const [editRow, setEditRow] = useState<ItemRecord | null>(null)
+  const [editDraft, setEditDraft] = useState<Partial<ItemRecord>>({})
   const [saving, setSaving] = useState(false)
   const [imageBusy, setImageBusy] = useState(false)
   const bulkCancelRef = useRef(false)
@@ -51,21 +51,23 @@ export default function InventoryPage() {
   const providers = getBarcodeProviderStatus()
 
   const loadCatalog = useCallback(async () => {
-    if (!supabase) return
-    const { data } = await supabase.from('barcode_catalog').select('*')
-    setCatalog((data ?? []) as BarcodeCatalogItem[])
+    try {
+      setCatalog(await fetchItemsAsCatalog())
+    } catch {
+      setCatalog([])
+    }
   }, [])
 
   const refresh = useCallback(async () => {
-    if (!isInventoryConfigured()) {
+    if (!isItemsConfigured()) {
       setLoading(false)
       return
     }
     setLoading(true)
     try {
       const [s, list] = await Promise.all([
-        fetchInventoryStats(),
-        fetchInventoryList({
+        fetchItemsStats(),
+        fetchItemsList({
           search,
           filter,
           limit: PAGE_SIZE,
@@ -76,7 +78,7 @@ export default function InventoryPage() {
       setRows(list.rows)
       setTotal(list.total)
     } catch (e) {
-      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Failed to load inventory' })
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Failed to load items' })
     } finally {
       setLoading(false)
     }
@@ -90,7 +92,7 @@ export default function InventoryPage() {
     void refresh()
   }, [refresh])
 
-  const runLookupForRow = async (row: InventoryRecord, applyIfFound: boolean) => {
+  const runLookupForRow = async (row: ItemRecord, applyIfFound: boolean) => {
     setLookupRow(row)
     setLookupLoading(true)
     setLookupAttempts([])
@@ -106,7 +108,7 @@ export default function InventoryPage() {
       )
       setLookupAttempts(attempts)
       if (best && applyIfFound) {
-        const updated = await applyBarcodeLookupToInventory(row.id, best.barcode, best.source, {
+        const updated = await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
           purchaseUrl:
             best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
         })
@@ -134,12 +136,12 @@ export default function InventoryPage() {
   }
 
   const runBulkLookup = async () => {
-    if (!isInventoryConfigured()) return
+    if (!isItemsConfigured()) return
     bulkCancelRef.current = false
     setBulkRunning(true)
     setStatus({ kind: 'info', text: 'Loading rows missing barcodes…' })
     try {
-      const { rows: missing } = await fetchInventoryList({
+      const { rows: missing } = await fetchItemsList({
         filter: 'missing',
         limit: 500,
         offset: 0,
@@ -163,7 +165,7 @@ export default function InventoryPage() {
           { catalog }
         )
         if (best) {
-          await applyBarcodeLookupToInventory(row.id, best.barcode, best.source)
+          await applyBarcodeLookupToItem(row.id, best.barcode, best.source)
           found++
         }
         setBulkProgress({ done: i + 1, total: missing.length, found })
@@ -190,7 +192,7 @@ export default function InventoryPage() {
     if (!editRow) return
     setSaving(true)
     try {
-      const updated = await updateInventoryRow(editRow.id, {
+      const updated = await updateItemRow(editRow.id, {
         manufacturer: editDraft.manufacturer ?? editRow.manufacturer,
         part_number: editDraft.part_number ?? editRow.part_number,
         item: editDraft.item ?? editRow.item,
@@ -204,7 +206,7 @@ export default function InventoryPage() {
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       setEditRow(null)
       setStatus({ kind: 'ok', text: 'Row saved.' })
-      await fetchInventoryStats().then(setStats)
+      await fetchItemsStats().then(setStats)
     } catch (e) {
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Save failed' })
     } finally {
@@ -212,8 +214,8 @@ export default function InventoryPage() {
     }
   }
 
-  const persistStoredPicture = async (row: InventoryRecord, picture_path: string) => {
-    const updated = await updateInventoryRow(row.id, { picture_path })
+  const persistStoredPicture = async (row: ItemRecord, picture_path: string) => {
+    const updated = await updateItemRow(row.id, { picture_path })
     setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
     if (editRow?.id === row.id) {
       setEditRow(updated)
@@ -221,10 +223,10 @@ export default function InventoryPage() {
     }
   }
 
-  const handleUploadPicture = async (row: InventoryRecord, file: File) => {
+  const handleUploadPicture = async (row: ItemRecord, file: File) => {
     setImageBusy(true)
     try {
-      const { picture_path } = await uploadInventoryPictureFile(row.id, file)
+      const { picture_path } = await uploadItemPictureFile(row.id, file)
       await persistStoredPicture(row, picture_path)
       setStatus({ kind: 'ok', text: 'Image saved to Supabase for label printing.' })
     } catch (e) {
@@ -234,7 +236,7 @@ export default function InventoryPage() {
     }
   }
 
-  const handleImportPictureFromUrl = async (row: InventoryRecord) => {
+  const handleImportPictureFromUrl = async (row: ItemRecord) => {
     const source = (editDraft.picture_url ?? row.picture_url ?? '').trim()
     if (!source) {
       setStatus({ kind: 'info', text: 'Enter a picture URL first, or paste a vendor link.' })
@@ -242,7 +244,7 @@ export default function InventoryPage() {
     }
     setImageBusy(true)
     try {
-      const updated = await importInventoryPictureFromUrl(row.id, source)
+      const updated = await importItemPictureFromUrl(row.id, source)
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       setEditRow(updated)
       setEditDraft((d) => ({
@@ -263,13 +265,13 @@ export default function InventoryPage() {
     }
   }
 
-  const handleRemoveStoredPicture = async (row: InventoryRecord) => {
+  const handleRemoveStoredPicture = async (row: ItemRecord) => {
     const path = row.picture_path?.trim()
     if (!path) return
     setImageBusy(true)
     try {
-      await removeInventoryStoredPicture(row.id, path)
-      const updated = await updateInventoryRow(row.id, { picture_path: null })
+      await removeItemStoredPicture(row.id, path)
+      const updated = await updateItemRow(row.id, { picture_path: null })
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       if (editRow?.id === row.id) {
         setEditRow(updated)
@@ -283,7 +285,7 @@ export default function InventoryPage() {
     }
   }
 
-  const openEdit = (row: InventoryRecord) => {
+  const openEdit = (row: ItemRecord) => {
     setEditRow(row)
     setEditDraft({
       manufacturer: row.manufacturer ?? '',
@@ -301,11 +303,11 @@ export default function InventoryPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  if (!isInventoryConfigured()) {
+  if (!isItemsConfigured()) {
     return (
-      <div className="inventory-page">
+      <div className="items-page">
         <header className="inv-header">
-          <h1>Inventory</h1>
+          <h1>Items</h1>
           <p>
             Configure <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your{' '}
             <code>.env</code> file, then redeploy.
@@ -316,16 +318,13 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="inventory-page">
+    <div className="items-page">
       <header className="inv-header">
-        <h1>Inventory</h1>
+        <h1>Items</h1>
         <p>
-          View and edit your inventory database, fill in missing barcodes using multiple lookup sources, and
+          View and edit your items database, fill in missing barcodes using multiple lookup sources, and
           keep data in sync with Purchase List uploads (sidebar). Run{' '}
-          <code>supabase/add-inventory-management.sql</code> and{' '}
-          <code>supabase/add-inventory-picture-purchase-url.sql</code>,{' '}
-          <code>supabase/create-inventory-images-bucket.sql</code>, and{' '}
-          <code>supabase/add-inventory-picture-storage.sql</code> in Supabase. Deploy the{' '}
+          <code>supabase/rename-inventory-to-items-merge-catalog.sql</code> and picture migrations in Supabase. Deploy the{' '}
           <code>inventory-image-import</code> Edge Function to copy vendor image URLs into storage.
         </p>
       </header>
@@ -382,7 +381,7 @@ export default function InventoryPage() {
         <select
           value={filter}
           onChange={(e) => {
-            setFilter(e.target.value as InventoryBarcodeFilter)
+            setFilter(e.target.value as ItemBarcodeFilter)
             setPage(0)
           }}
           aria-label="Filter"
@@ -426,7 +425,7 @@ export default function InventoryPage() {
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={9}>No rows match. Upload inventory on Purchase List first.</td>
+                <td colSpan={9}>No rows match. Upload items on Purchase List first.</td>
               </tr>
             ) : (
               rows.map((row) => {
@@ -435,7 +434,7 @@ export default function InventoryPage() {
                   <tr key={row.id} className={missing ? 'missing-barcode' : ''}>
                     <td className="inv-picture-cell">
                       {(() => {
-                        const src = getInventoryPicturePublicUrl(row)
+                        const src = getItemPicturePublicUrl(row)
                         return src ? (
                           <a href={src} target="_blank" rel="noopener noreferrer" title={row.picture_path ? 'Stored in Supabase' : 'External URL'}>
                             <img className="inv-picture-thumb" src={src} alt="" loading="lazy" />
@@ -534,7 +533,7 @@ export default function InventoryPage() {
       {editRow && (
         <div className="inv-modal-overlay" onClick={() => setEditRow(null)}>
           <div className="inv-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Edit inventory row</h2>
+            <h2>Edit item</h2>
             <label>
               Manufacturer
               <input
@@ -591,11 +590,11 @@ export default function InventoryPage() {
                 Upload or import into Supabase so printed labels always use the same image. External URLs alone
                 may break when vendors change links.
               </p>
-              {editRow && getInventoryPicturePublicUrl(editRow) ? (
+              {editRow && getItemPicturePublicUrl(editRow) ? (
                 <div className="inv-edit-preview">
                   <img
                     className="inv-picture-preview"
-                    src={getInventoryPicturePublicUrl(editRow) ?? ''}
+                    src={getItemPicturePublicUrl(editRow) ?? ''}
                     alt="Preview"
                   />
                   {editRow.picture_path ? (
