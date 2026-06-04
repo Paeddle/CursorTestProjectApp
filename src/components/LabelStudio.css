@@ -308,7 +308,7 @@
 }
 
 .ls-panel-items-top .label-studio-item-list {
-  max-height: 240px;
+  max-height: 420px;
 }
 
 .label-studio-design-row {
@@ -464,6 +464,10 @@
 
 .label-studio-item-row.selected {
   background: #e3f2fd;
+}
+
+.label-studio-item-row.preview:not(.selected) {
+  box-shadow: inset 3px 0 0 #90caf9;
 }
 
 .label-studio-item-row:last-child {

@@ -34,7 +34,6 @@ import {
 } from '../lib/labelStudioStorage'
 import {
   createElementId,
-  defaultInventoryTemplate,
   defaultShippingTemplate,
   isBarcodeElement,
   isImageElement,
@@ -49,8 +48,6 @@ import {
 import LabelStudioCanvas from './LabelStudioCanvas'
 import { alignElement } from '../lib/labelStudioCanvasGeometry'
 import './LabelStudio.css'
-
-const GUIDE_STORAGE_KEY = 'label-studio-guide-dismissed'
 
 const INVENTORY_SOURCE_HINT =
   'Full Supabase inventory. Search checks name, part #, manufacturer, barcode, description, and more (not limited to the first 500 rows).'
@@ -96,9 +93,6 @@ export default function LabelStudio() {
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [printing, setPrinting] = useState(false)
   const [dymoSummary, setDymoSummary] = useState<string | null>(null)
-  const [showGuide, setShowGuide] = useState(
-    () => localStorage.getItem(GUIDE_STORAGE_KEY) !== '1'
-  )
 
   const searchTrimmed = search.trim()
   const filteredItems = useMemo(() => {
@@ -216,11 +210,6 @@ export default function LabelStudio() {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
   }, [])
 
-  const dismissGuide = () => {
-    setShowGuide(false)
-    localStorage.setItem(GUIDE_STORAGE_KEY, '1')
-  }
-
   const updateTemplate = (patch: Partial<LabelStudioTemplate>) => {
     setTemplate((t) => ({ ...t, ...patch }))
   }
@@ -276,19 +265,6 @@ export default function LabelStudio() {
       align
     )
     updateElementRect(selectedElement.id, rect)
-  }
-
-  const applyPreset = (preset: 'inventory' | 'shipping') => {
-    const next = preset === 'inventory' ? defaultInventoryTemplate() : defaultShippingTemplate()
-    setTemplate(next)
-    setSelectedElementId(next.elements[0]?.id ?? null)
-    setStatus({
-      kind: 'ok',
-      text:
-        preset === 'inventory'
-          ? 'Loaded “image + item + barcode” layout. Store images on the Inventory page, then print.'
-          : 'Loaded “job + location” layout. Pick inventory rows on the left, then print.',
-    })
   }
 
   const addTextElement = () => {
@@ -423,19 +399,23 @@ export default function LabelStudio() {
     setTemplate(next[0] ?? defaultShippingTemplate())
   }
 
-  const toggleItemSelection = (item: LabelStudioItem, multi: boolean) => {
+  const toggleItemSelection = (item: LabelStudioItem) => {
     setSelectedItemIds((prev) => {
-      const next = new Set(multi ? prev : [])
+      const next = new Set(prev)
       if (next.has(item.id)) next.delete(item.id)
       else next.add(item.id)
       return next
     })
     setSelectedItemsById((prev) => {
-      const next = new Map(multi ? prev : [])
+      const next = new Map(prev)
       if (next.has(item.id)) next.delete(item.id)
       else next.set(item.id, item)
       return next
     })
+    setPreviewItemId(item.id)
+  }
+
+  const setPreviewOnly = (item: LabelStudioItem) => {
     setPreviewItemId(item.id)
   }
 
@@ -454,12 +434,11 @@ export default function LabelStudio() {
   }
 
   const handlePrint = async () => {
-    const toPrint =
-      selectedItems.length > 0 ? selectedItems : previewItem ? [previewItem] : []
+    const toPrint = selectedItems
     if (toPrint.length === 0) {
       setStatus({
         kind: 'err',
-        text: 'Check one or more items in the list on the left (or click a single row to preview).',
+        text: 'Check one or more items in the list above, then click Print labels.',
       })
       return
     }
@@ -520,64 +499,6 @@ export default function LabelStudio() {
         )}
       </header>
 
-      {showGuide && (
-        <section className="ls-guide" aria-label="How to use Label Studio">
-          <div className="ls-guide-head">
-            <strong>How it works (3 steps)</strong>
-            <button type="button" className="ls-guide-dismiss" onClick={dismissGuide}>
-              Hide guide
-            </button>
-          </div>
-          <ol className="ls-guide-steps">
-            <li>
-              <span className="ls-step-num">1</span>
-              <span>
-                <strong>Pick a layout</strong> — use a quick-start card below, or adjust the label preview
-                in the middle.
-              </span>
-            </li>
-            <li>
-              <span className="ls-step-num">2</span>
-              <span>
-                <strong>Choose what to print</strong> — search and check inventory rows above the layout
-                (name, part #, manufacturer, barcode, picture).
-              </span>
-            </li>
-            <li>
-              <span className="ls-step-num">3</span>
-              <span>
-                <strong>Print</strong> — click the blue Print button. Each checked row prints one label with
-                its data filled in.
-              </span>
-            </li>
-          </ol>
-          <p className="ls-guide-foot">
-            Placeholders like <code>{'{{item}}'}</code> are filled from each row you check. On the label preview,
-            drag to move, drag the blue handles to resize (like Label Live), and use arrow keys to nudge.
-          </p>
-        </section>
-      )}
-
-      <section className="ls-quick-start" aria-label="Quick start layouts">
-        <h2 className="ls-section-title">Quick start</h2>
-        <div className="ls-preset-cards">
-          <button type="button" className="ls-preset-card" onClick={() => applyPreset('inventory')}>
-            <span className="ls-preset-icon" aria-hidden>
-              ▐▌
-            </span>
-            <span className="ls-preset-name">Item + barcode</span>
-            <span className="ls-preset-desc">Product name, part #, scannable UPC/Code128 barcode</span>
-          </button>
-          <button type="button" className="ls-preset-card" onClick={() => applyPreset('shipping')}>
-            <span className="ls-preset-icon" aria-hidden>
-              Aa
-            </span>
-            <span className="ls-preset-name">Job + location</span>
-            <span className="ls-preset-desc">Customer/job name on top, room or location below (PO stickers)</span>
-          </button>
-        </div>
-      </section>
-
       {status && (
         <div className={`label-studio-status ${status.kind}`} role="status">
           {status.text}
@@ -588,10 +509,8 @@ export default function LabelStudio() {
         <div className="ls-print-bar-summary">
           <strong>
             {selectedItemIds.size > 0
-              ? `${selectedItemIds.size} item${selectedItemIds.size !== 1 ? 's' : ''} ready to print`
-              : previewItem
-                ? '1 item (preview only — check the box to print)'
-                : 'No items selected'}
+              ? `${selectedItemIds.size} item${selectedItemIds.size !== 1 ? 's' : ''} selected — one label each`
+              : 'No items selected — check rows below to print'}
           </strong>
           <span className="ls-print-bar-meta">
             Template: {template.name} · Paper: {paperName} · Feed: {dymoTwinTurboRollLabel(twinTurboRoll)}
@@ -609,9 +528,13 @@ export default function LabelStudio() {
           type="button"
           className="ls-btn ls-btn-primary ls-btn-print"
           onClick={() => void handlePrint()}
-          disabled={printing}
+          disabled={printing || selectedItemIds.size === 0}
         >
-          {printing ? 'Printing…' : 'Print labels'}
+          {printing
+            ? 'Printing…'
+            : selectedItemIds.size > 1
+              ? `Print ${selectedItemIds.size} labels`
+              : 'Print labels'}
         </button>
       </div>
 
@@ -684,23 +607,30 @@ export default function LabelStudio() {
 
         {itemsError && <p className="ls-error">{itemsError}</p>}
 
-        <div className="label-studio-item-list" role="listbox" aria-label="Inventory items to print">
+        <div
+          className="label-studio-item-list"
+          role="listbox"
+          aria-label="Inventory items to print"
+          aria-multiselectable="true"
+        >
             {filteredItems.map((item) => {
               const row = inventoryItemDisplay(item)
+              const isSelected = selectedItemIds.has(item.id)
+              const isPreview = previewItemId === item.id
               return (
                 <div
                   key={item.id}
                   role="option"
-                  aria-selected={selectedItemIds.has(item.id)}
-                  className={`label-studio-item-row${selectedItemIds.has(item.id) ? ' selected' : ''}`}
-                  onClick={(ev) => toggleItemSelection(item, ev.ctrlKey || ev.metaKey)}
+                  aria-selected={isSelected}
+                  className={`label-studio-item-row${isSelected ? ' selected' : ''}${isPreview ? ' preview' : ''}`}
+                  onClick={() => setPreviewOnly(item)}
                 >
                   <input
                     type="checkbox"
-                    checked={selectedItemIds.has(item.id)}
-                    onChange={() => toggleItemSelection(item, false)}
+                    checked={isSelected}
+                    onChange={() => toggleItemSelection(item)}
                     onClick={(ev) => ev.stopPropagation()}
-                    aria-label={`Print ${row.name}`}
+                    aria-label={`Select ${row.name} for printing`}
                   />
                   <div className="ls-item-row-body">
                     {row.picture ? (
@@ -1165,8 +1095,7 @@ export default function LabelStudio() {
             <div className="ls-props-empty">
               <p>Click a box on the label preview, or pick a field from the chips above the preview.</p>
               <p className="ls-field-hint">
-                Not sure where to start? Use <strong>Item + barcode</strong> quick start, pick inventory rows
-                above, and hit Print.
+                Check inventory rows above to print; the label preview uses the row you last clicked.
               </p>
             </div>
           )}
