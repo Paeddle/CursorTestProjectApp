@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
+import { printableMetricsForTemplate } from '../lib/labelStudioGeometry'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
 import {
   fetchLabelStudioItems,
@@ -24,6 +25,8 @@ import {
   resolveMergeTemplate,
   normalizeMergedText,
 } from '../lib/labelStudioMerge'
+import { previewBarcodeBarsBoxPx } from '../lib/labelStudioBarcodeLayout'
+import { linearBarcodePreviewDataUrl } from '../lib/labelStudioBarcodePreview'
 import { qrPreviewDataUrl } from '../lib/labelStudioQr'
 import {
   deleteLabelStudioTemplate,
@@ -41,6 +44,7 @@ import {
   isTextElement,
   LABEL_STUDIO_MERGE_FIELDS,
   normalizeStudioTemplate,
+  paperTemplateById,
   type LabelStudioBarcodeType,
   type LabelStudioElement,
   type LabelStudioItem,
@@ -89,7 +93,7 @@ export default function LabelStudio() {
   const [inventoryTotal, setInventoryTotal] = useState<number | null>(null)
   const [loadProgress, setLoadProgress] = useState<string | null>(null)
   const fullInventoryRef = useRef<LabelStudioItem[] | null>(null)
-  const [qrPreviewByElementId, setQrPreviewByElementId] = useState<Record<string, string>>({})
+  const [barcodePreviewByElementId, setBarcodePreviewByElementId] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<LabelStudioInventorySortKey>('name')
   const [sortDir, setSortDir] = useState<LabelStudioSortDirection>('asc')
@@ -196,25 +200,34 @@ export default function LabelStudio() {
 
   useEffect(() => {
     if (!previewItem) {
-      setQrPreviewByElementId({})
+      setBarcodePreviewByElementId({})
       return
     }
     let cancelled = false
+    const paper = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+    const metrics = printableMetricsForTemplate(paper)
+    const previewCanvasWidthPx = 400
+    const previewCanvasHeightPx = previewCanvasWidthPx * (metrics.heightMm / metrics.widthMm)
+
     void (async () => {
       const next: Record<string, string> = {}
       for (const el of template.elements) {
-        if (!isBarcodeElement(el) || el.barcodeType !== 'QrCode') continue
+        if (!isBarcodeElement(el)) continue
         const text = mergedBarcodeForElement(el.content, previewItem)
         if (!text) continue
-        const url = await qrPreviewDataUrl(text)
+        const box = previewBarcodeBarsBoxPx(el, previewCanvasWidthPx, previewCanvasHeightPx)
+        const url =
+          el.barcodeType === 'QrCode'
+            ? await qrPreviewDataUrl(text, Math.min(box.width, box.height))
+            : linearBarcodePreviewDataUrl(text, el.barcodeType, box.width, box.height)
         if (url) next[el.id] = url
       }
-      if (!cancelled) setQrPreviewByElementId(next)
+      if (!cancelled) setBarcodePreviewByElementId(next)
     })()
     return () => {
       cancelled = true
     }
-  }, [previewItem, template.elements])
+  }, [previewItem, template.elements, template.paperTemplateId])
 
   useEffect(() => {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
@@ -323,7 +336,7 @@ export default function LabelStudio() {
       widthPct: 80,
       heightPct: 38,
       barcodeType: 'Auto',
-      size: 'Medium',
+      size: 'Small',
       textPosition: 'Bottom',
       textFontSize: 10,
     }
@@ -494,10 +507,10 @@ export default function LabelStudio() {
 
   const canvasBarcodePreviewUrl = useCallback(
     (el: LabelStudioElement): string | null => {
-      if (!isBarcodeElement(el) || el.barcodeType !== 'QrCode') return null
-      return qrPreviewByElementId[el.id] ?? null
+      if (!isBarcodeElement(el)) return null
+      return barcodePreviewByElementId[el.id] ?? null
     },
-    [qrPreviewByElementId]
+    [barcodePreviewByElementId]
   )
 
   const canvasPreviewText = (el: LabelStudioElement): string => {

@@ -756,6 +756,10 @@
   overflow: visible;
 }
 
+.label-studio-canvas-element.active.label-studio-canvas-barcode {
+  overflow: hidden;
+}
+
 .label-studio-canvas-element .ls-element-text {
   display: block;
   width: 100%;
@@ -863,24 +867,31 @@
 
 .label-studio-canvas-barcode {
   flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  padding: 2px;
+  justify-content: stretch;
+  align-items: stretch;
+  gap: 1px;
+  padding: 1px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .label-studio-canvas-barcode.ls-barcode-text-top {
   flex-direction: column-reverse;
 }
 
-.label-studio-canvas-barcode.ls-barcode-text-none .label-studio-barcode-bars {
-  flex: 1;
-  min-height: 100%;
+.ls-barcode-graphic-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
-.label-studio-canvas-barcode.ls-barcode-has-caption .label-studio-barcode-bars,
-.label-studio-canvas-barcode.ls-barcode-has-caption .ls-canvas-qr {
+.label-studio-canvas-barcode.ls-barcode-has-caption .ls-barcode-graphic-wrap {
   flex: 1 1 calc(100% - var(--ls-caption-band, 22%));
-  min-height: 0;
   max-height: calc(100% - var(--ls-caption-band, 22%));
 }
 
@@ -891,9 +902,11 @@
 }
 
 .label-studio-barcode-bars {
-  flex: 1;
-  width: 92%;
-  min-height: 28px;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
   background: repeating-linear-gradient(
     90deg,
     #111 0,
@@ -906,6 +919,7 @@
     #fff 8px
   );
   border: 1px solid #ccc;
+  box-sizing: border-box;
 }
 
 .label-studio-barcode-caption {
@@ -931,12 +945,14 @@
   pointer-events: none;
 }
 
+.ls-canvas-barcode-img,
 .ls-canvas-qr {
-  flex: 1;
-  width: 100%;
-  max-height: 100%;
-  object-fit: contain;
   display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   pointer-events: none;
 }
 

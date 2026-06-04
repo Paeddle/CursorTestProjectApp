@@ -255,7 +255,7 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
         widthPct: 62,
         heightPct: 34,
         barcodeType: 'Auto',
-        size: 'Medium',
+        size: 'Small',
         textPosition: 'Bottom',
         textFontSize: 10,
       },

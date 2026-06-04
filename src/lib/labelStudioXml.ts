@@ -1,5 +1,10 @@
 import { DYMO_PAPER_TEMPLATES, escapeXmlText, type DymoPaperTemplate } from './dymoLabelXml'
-import { barcodeTextForPrint, dymoBarcodeSymbologyXml, resolveBarcodeType } from './labelStudioBarcode'
+import {
+  barcodeTextForPrint,
+  dymoBarcodeSizeForBounds,
+  dymoBarcodeSymbologyXml,
+  resolveBarcodeType,
+} from './labelStudioBarcode'
 import { DEFAULT_BARCODE_TEXT_FONT_SIZE, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
@@ -93,6 +98,7 @@ function buildBarcodeObjectXml(
 ): string {
   const dymoType = dymoBarcodeSymbologyXml(symbology)
   const captionPt = el.textFontSize ?? DEFAULT_BARCODE_TEXT_FONT_SIZE
+  const dymoSize = dymoBarcodeSizeForBounds(bounds, symbology)
 
   return (
     `<ObjectInfo>` +
@@ -106,7 +112,7 @@ function buildBarcodeObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<Text>${escapeXmlText(encoded)}</Text>` +
     `<Type>${dymoType}</Type>` +
-    `<Size>${el.size}</Size>` +
+    `<Size>${dymoSize}</Size>` +
     `<TextPosition>None</TextPosition>` +
     `<TextFont Family="Arial" Size="${captionPt}" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
     `<CheckSumFont Family="Arial" Size="${captionPt}" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +

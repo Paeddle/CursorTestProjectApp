@@ -5,13 +5,28 @@ import {
   type DymoLabelBounds,
 } from './labelStudioGeometry'
 import type { DymoPaperTemplate } from './dymoLabelXml'
-import type { LabelStudioBarcodeTextPosition } from '../types/labelStudio'
+import type { LabelStudioBarcodeElement, LabelStudioBarcodeTextPosition } from '../types/labelStudio'
 
 export const DEFAULT_BARCODE_TEXT_FONT_SIZE = 10
 
 /** Caption band height as % of the barcode element box. */
 export function barcodeCaptionHeightPct(textFontSize: number): number {
   return Math.min(42, Math.max(16, 12 + textFontSize * 1.1))
+}
+
+/** Pixel size of the bars/QR band inside the dashed element (excludes caption). */
+export function previewBarcodeBarsBoxPx(
+  el: Pick<LabelStudioBarcodeElement, 'widthPct' | 'heightPct' | 'textPosition' | 'textFontSize'>,
+  printableWidthPx: number,
+  printableHeightPx: number
+): { width: number; height: number } {
+  const band = el.textPosition !== 'None' ? barcodeCaptionHeightPct(el.textFontSize ?? DEFAULT_BARCODE_TEXT_FONT_SIZE) : 0
+  const innerW = (el.widthPct / 100) * printableWidthPx
+  const innerH = (el.heightPct / 100) * printableHeightPx
+  return {
+    width: Math.max(16, innerW - 6),
+    height: Math.max(12, innerH * (1 - band / 100) - 4),
+  }
 }
 
 export function splitBarcodeElementBounds(

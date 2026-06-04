@@ -186,21 +186,18 @@ export default function LabelStudioCanvas({
               }}
             >
               {isBarcode ? (
-                qrSrc ? (
-                  <>
-                    <img className="ls-canvas-qr" src={qrSrc} alt="" />
-                    {barcodeShowText && (
-                      <span className="label-studio-barcode-caption">{preview}</span>
+                <>
+                  <div className="ls-barcode-graphic-wrap">
+                    {qrSrc ? (
+                      <img className="ls-canvas-barcode-img" src={qrSrc} alt="" />
+                    ) : (
+                      <div className="label-studio-barcode-bars" aria-hidden />
                     )}
-                  </>
-                ) : (
-                  <>
-                    <div className="label-studio-barcode-bars" aria-hidden />
-                    {barcodeShowText && (
-                      <span className="label-studio-barcode-caption">{preview}</span>
-                    )}
-                  </>
-                )
+                  </div>
+                  {barcodeShowText && (
+                    <span className="label-studio-barcode-caption">{preview}</span>
+                  )}
+                </>
               ) : isImage ? (
                 imgSrc ? (
                   <img className="ls-canvas-image" src={imgSrc} alt="" />

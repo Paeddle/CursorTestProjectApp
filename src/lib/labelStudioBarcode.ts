@@ -1,4 +1,5 @@
-import type { LabelStudioBarcodeType } from '../types/labelStudio'
+import type { DymoLabelBounds } from './labelStudioGeometry'
+import type { LabelStudioBarcodeSize, LabelStudioBarcodeType } from '../types/labelStudio'
 
 export function inferBarcodeType(value: string): Exclude<LabelStudioBarcodeType, 'Auto'> {
   const digits = value.replace(/\D/g, '')
@@ -34,4 +35,22 @@ export function barcodeTextForPrint(
   if (type === 'UpcA') return trimmed.replace(/\D/g, '').slice(0, 12)
   if (type === 'Ean13') return trimmed.replace(/\D/g, '').slice(0, 13)
   return trimmed
+}
+
+/**
+ * DYMO &lt;Size&gt; is a multiplier, not shrink-to-fit — pick from printable bounds so the code stays inside the box.
+ */
+export function dymoBarcodeSizeForBounds(
+  bounds: DymoLabelBounds,
+  symbology: Exclude<LabelStudioBarcodeType, 'Auto'>
+): LabelStudioBarcodeSize {
+  const h = bounds.height
+  const w = bounds.width
+  const metric =
+    symbology === 'QrCode' ? Math.min(h, w) : Math.min(h, Math.round(w / 2.5))
+
+  if (metric < 520) return 'Small'
+  if (metric < 820) return 'Medium'
+  if (metric < 1200) return 'Large'
+  return 'ExtraLarge'
 }
