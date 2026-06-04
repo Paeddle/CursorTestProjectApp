@@ -28,10 +28,12 @@ import { qrPreviewDataUrl } from '../lib/labelStudioQr'
 import {
   deleteLabelStudioTemplate,
   duplicateLabelStudioTemplate,
+  isLabelStudioTemplateSaved,
   loadLabelStudioTemplates,
   saveLabelStudioTemplate,
 } from '../lib/labelStudioStorage'
 import {
+  createBlankLabelStudioTemplate,
   createElementId,
   defaultShippingTemplate,
   isBarcodeElement,
@@ -70,9 +72,18 @@ function elementSummary(el: LabelStudioElement): string {
   return `Text: ${preview}`
 }
 
+function initialStudioState(): { templates: LabelStudioTemplate[]; template: LabelStudioTemplate } {
+  const templates = loadLabelStudioTemplates()
+  const template = templates[0] ?? createBlankLabelStudioTemplate()
+  return { templates, template }
+}
+
 export default function LabelStudio() {
-  const [templates, setTemplates] = useState<LabelStudioTemplate[]>(() => loadLabelStudioTemplates())
-  const [template, setTemplate] = useState<LabelStudioTemplate>(() => loadLabelStudioTemplates()[0])
+  const [templates, setTemplates] = useState<LabelStudioTemplate[]>(
+    () => initialStudioState().templates
+  )
+  const [template, setTemplate] = useState<LabelStudioTemplate>(() => initialStudioState().template)
+  const templateIsSaved = isLabelStudioTemplateSaved(template.id)
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [items, setItems] = useState<LabelStudioItem[]>([])
   const [inventoryTotal, setInventoryTotal] = useState<number | null>(null)
@@ -368,7 +379,9 @@ export default function LabelStudio() {
   const handleSaveTemplate = () => {
     const toSave = { ...template, updatedAt: new Date().toISOString() }
     saveLabelStudioTemplate(toSave)
-    setTemplates(loadLabelStudioTemplates())
+    const next = loadLabelStudioTemplates()
+    setTemplates(next)
+    setTemplate(normalizeStudioTemplate(toSave))
     setStatus({ kind: 'ok', text: `Saved “${toSave.name}” on this browser.` })
   }
 
@@ -391,11 +404,25 @@ export default function LabelStudio() {
   }
 
   const handleDeleteTemplate = () => {
+    if (!templateIsSaved) {
+      setStatus({ kind: 'info', text: 'This template is not saved yet — nothing to delete.' })
+      return
+    }
     if (!window.confirm(`Delete saved template “${template.name}”?`)) return
     deleteLabelStudioTemplate(template.id)
     const next = loadLabelStudioTemplates()
     setTemplates(next)
-    setTemplate(next[0] ?? defaultShippingTemplate())
+    if (next.length > 0) {
+      const picked = normalizeStudioTemplate(next[0])
+      setTemplate(picked)
+      setSelectedElementId(picked.elements[0]?.id ?? null)
+      setStatus({ kind: 'ok', text: `Deleted “${template.name}”.` })
+    } else {
+      const blank = createBlankLabelStudioTemplate()
+      setTemplate(blank)
+      setSelectedElementId(null)
+      setStatus({ kind: 'ok', text: 'All saved templates deleted. Start a new layout or save when ready.' })
+    }
   }
 
   const toggleItemSelection = (item: LabelStudioItem) => {
@@ -683,7 +710,8 @@ export default function LabelStudio() {
                 <span className="ls-field-label">Saved template</span>
                 <select
                   className="ls-select"
-                  value={template.id}
+                  value={templateIsSaved ? template.id : ''}
+                  disabled={templates.length === 0}
                   onChange={(e) => {
                     const t = templates.find((x) => x.id === e.target.value)
                     if (t) {
@@ -693,12 +721,27 @@ export default function LabelStudio() {
                     }
                   }}
                 >
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
+                  {templates.length === 0 ? (
+                    <option value="">No saved templates</option>
+                  ) : (
+                    templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))
+                  )}
                 </select>
+                {templates.length === 0 && (
+                  <span className="ls-field-hint">
+                    No saved templates on this browser. Edit the layout below, then click Save template.
+                    {!templateIsSaved && template.name ? ` (editing: ${template.name})` : ''}
+                  </span>
+                )}
+                {templates.length > 0 && !templateIsSaved && (
+                  <span className="ls-field-hint">
+                    Current layout is not saved yet — pick a saved template above or click Save template.
+                  </span>
+                )}
               </label>
               <label className="ls-field">
                 <span className="ls-field-label">Template name</span>
@@ -718,7 +761,7 @@ export default function LabelStudio() {
                 >
                   {DYMO_PAPER_TEMPLATES.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.paperName}
+                      {p.catalogSku ? `${p.paperName} (${p.catalogSku})` : p.paperName}
                     </option>
                   ))}
                 </select>
@@ -737,7 +780,13 @@ export default function LabelStudio() {
                 <button type="button" className="ls-btn ls-btn-secondary" onClick={handleDuplicateTemplate}>
                   Duplicate
                 </button>
-                <button type="button" className="ls-btn ls-btn-danger" onClick={handleDeleteTemplate}>
+                <button
+                  type="button"
+                  className="ls-btn ls-btn-danger"
+                  onClick={handleDeleteTemplate}
+                  disabled={!templateIsSaved}
+                  title={templateIsSaved ? 'Remove from saved templates' : 'Save the template first'}
+                >
                   Delete
                 </button>
               </div>

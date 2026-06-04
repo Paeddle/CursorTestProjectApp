@@ -95,6 +95,17 @@ export const LABEL_STUDIO_MERGE_FIELDS: { key: string; label: string; example: s
 
 export const DEFAULT_PAPER_TEMPLATE_ID = 'Shipping'
 
+/** Unsaved working template (not in localStorage until Save). */
+export function createBlankLabelStudioTemplate(): LabelStudioTemplate {
+  return {
+    id: `draft-${Date.now().toString(36)}`,
+    name: 'Untitled template',
+    paperTemplateId: DEFAULT_PAPER_TEMPLATE_ID,
+    elements: [],
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 export function createElementId(): string {
   return `el-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 }

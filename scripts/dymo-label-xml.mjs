@@ -24,6 +24,16 @@ export const DYMO_PAPER_TEMPLATES = [
     boundsHeight: 1481,
   },
   {
+    id: 'Durable1933085',
+    paperName: '1933085 LW Durable 3/4 in x 2-1/2 in',
+    drawWidth: 3628,
+    drawHeight: 1077,
+    boundsX: 127,
+    boundsY: 34,
+    boundsWidth: 3374,
+    boundsHeight: 1009,
+  },
+  {
     id: 'Address',
     paperName: '30252 Address',
     drawWidth: 1581,

@@ -1,5 +1,5 @@
 import type { LabelStudioTemplate } from '../types/labelStudio'
-import { defaultShippingTemplate, normalizeStudioTemplate } from '../types/labelStudio'
+import { normalizeStudioTemplate } from '../types/labelStudio'
 
 const STORAGE_KEY = 'label-studio-templates-v1'
 
@@ -27,12 +27,13 @@ function writeAll(templates: LabelStudioTemplate[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(templates))
 }
 
+/** Saved templates only (empty array when none — no auto-inserted presets). */
 export function loadLabelStudioTemplates(): LabelStudioTemplate[] {
-  const saved = readAll()
-  if (saved.length === 0) {
-    return [defaultShippingTemplate()]
-  }
-  return saved
+  return readAll()
+}
+
+export function isLabelStudioTemplateSaved(id: string): boolean {
+  return readAll().some((t) => t.id === id)
 }
 
 export function saveLabelStudioTemplate(template: LabelStudioTemplate): void {

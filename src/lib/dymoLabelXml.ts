@@ -22,6 +22,8 @@ export function mmToTwips(mm: number): number {
 export type DymoPaperTemplate = {
   id: string
   paperName: string
+  /** DYMO catalog / SKU shown in UI (e.g. 1933085). */
+  catalogSku?: string
   /** Physical label face width in mm (what you see on the sticker). */
   widthMm: number
   /** Physical label face height in mm. */
@@ -59,6 +61,20 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     boundsY: 50,
     boundsWidth: 5411,
     boundsHeight: 1481,
+  },
+  {
+    id: 'Durable1933085',
+    paperName: '1933085 LW Durable 3/4 in x 2-1/2 in',
+    catalogSku: '1933085',
+    /** 3/4" × 2-1/2" durable (19×64 mm), landscape on LabelWriter. */
+    widthMm: 64,
+    heightMm: 19,
+    drawWidth: mmToTwips(64),
+    drawHeight: mmToTwips(19),
+    boundsX: 127,
+    boundsY: 34,
+    boundsWidth: 3374,
+    boundsHeight: 1009,
   },
   {
     id: 'Address',
