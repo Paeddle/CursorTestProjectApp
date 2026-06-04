@@ -87,4 +87,8 @@ static_sites:
         scope: BUILD_TIME
         type: SECRET
         value: "__VITE_SERPER_API_KEY__"
+      - key: VITE_APP_ACCESS_PASSWORD
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_APP_ACCESS_PASSWORD__"
 

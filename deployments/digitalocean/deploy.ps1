@@ -125,14 +125,19 @@ $metabaseSiteUrl = Get-Setting $config 'VITE_METABASE_SITE_URL' $null
 $metabaseSecretKey = Get-Setting $config 'VITE_METABASE_SECRET_KEY' $null
 $metabaseQuestionId = Get-Setting $config 'VITE_METABASE_QUESTION_ID' $null
 $serperKey = Get-Setting $config 'VITE_SERPER_API_KEY' $null
+$appAccessPassword = Get-Setting $config 'VITE_APP_ACCESS_PASSWORD' $null
 foreach ($envPath in @((Join-Path $repoRoot '.env'), (Join-Path $repoRoot 'scanner-app\.env'))) {
   if (Test-Path $envPath) {
     $envConfig = Load-Config $envPath
     if (-not $serperKey) { $serperKey = Get-Setting $envConfig 'VITE_SERPER_API_KEY' $null }
-    if ($serperKey) { break }
+    if (-not $appAccessPassword) { $appAccessPassword = Get-Setting $envConfig 'VITE_APP_ACCESS_PASSWORD' $null }
+    if ($serperKey -and $appAccessPassword) { break }
   }
 }
 if (-not $serperKey) { $serperKey = '' }
+if (-not $appAccessPassword) {
+  throw "Missing VITE_APP_ACCESS_PASSWORD. Add it to deployments/digitalocean/.env.deploy or your project .env"
+}
 $appName = Get-Setting $config 'DO_APP_NAME' 'cursor-test-project-app'
 $region = Get-Setting $config 'DO_REGION' 'nyc'
 $githubRepo = Get-Setting $config 'DO_GITHUB_REPO' 'Paeddle/CursorTestProjectApp'
@@ -161,6 +166,7 @@ $replacements = @{
   '__VITE_METABASE_SECRET_KEY__' = if ($metabaseSecretKey) { $metabaseSecretKey } else { '' }
   '__VITE_METABASE_QUESTION_ID__' = if ($metabaseQuestionId) { $metabaseQuestionId } else { '' }
   '__VITE_SERPER_API_KEY__' = if ($serperKey) { $serperKey } else { '' }
+  '__VITE_APP_ACCESS_PASSWORD__' = $appAccessPassword
   '__GITHUB_REPO__' = $githubRepo
   '__GITHUB_BRANCH__' = $githubBranch
 }
