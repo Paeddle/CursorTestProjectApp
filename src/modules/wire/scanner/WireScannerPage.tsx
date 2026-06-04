@@ -411,14 +411,14 @@ export default function WireScannerPage() {
 
   if (!isSupabaseConfigured) {
     return (
-      <div className="app">
-        <header className="app-header">
+      <div className="wire-scanner">
+        <header className="wire-scanner-header">
           <Link className="wire-scanner-back" to="/" state={{ page: 'wire' }}>
             ← Wire Tracker
           </Link>
           <h1>Wire Box Scanner</h1>
         </header>
-        <div className="section section-error">
+        <div className="wire-scanner-section wire-scanner-section-error">
           <p>
             Supabase is not configured. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your
             host&apos;s environment variables (e.g. DigitalOcean app env) and redeploy.
@@ -434,8 +434,8 @@ export default function WireScannerPage() {
   }
 
   return (
-    <div className="app">
-      <header className="app-header">
+    <div className="wire-scanner">
+      <header className="wire-scanner-header">
         <Link className="wire-scanner-back" to="/" state={{ page: 'wire' }}>
           ← Wire Tracker
         </Link>
@@ -448,9 +448,9 @@ export default function WireScannerPage() {
         </div>
       )}
 
-      <main className="app-main">
+      <main className="wire-scanner-main">
         {!boxId ? (
-          <section className="section">
+          <section className="wire-scanner-section">
             <div className="form-field">
               <span className="label" id="check-type-label-idle">
                 Check in / Check out
@@ -485,7 +485,7 @@ export default function WireScannerPage() {
             </button>
           </section>
         ) : (
-          <form onSubmit={handleSubmit} className="section form-section">
+          <form onSubmit={handleSubmit} className="wire-scanner-section form-section">
             {boxMetaLoading && (
               <p className="box-meta-loading">Checking this box in the database…</p>
             )}

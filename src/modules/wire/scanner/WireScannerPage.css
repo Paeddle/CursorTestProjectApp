@@ -1,11 +1,12 @@
-.app {
+.wire-scanner {
   min-height: 100vh;
   padding: 1rem;
   max-width: 480px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
-.app-header {
+.wire-scanner-header {
   margin-bottom: 1.5rem;
 }
 
@@ -22,43 +23,43 @@
   text-decoration: underline;
 }
 
-.app-header h1 {
+.wire-scanner-header h1 {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0 0 0.25rem 0;
   color: #f1f5f9;
 }
 
-.app-subtitle {
+.wire-scanner-subtitle {
   margin: 0;
   font-size: 0.9rem;
   color: #94a3b8;
 }
 
-.app-main {
+.wire-scanner-main {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
-.section {
+.wire-scanner-section {
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 10px;
   padding: 1.25rem;
 }
 
-.section-error {
+.wire-scanner-section-error {
   color: #fecaca;
 }
 
-.section-error .hint {
+.wire-scanner-section-error .hint {
   margin-top: 0.75rem;
   font-size: 0.85rem;
   color: #94a3b8;
 }
 
-.section-error code {
+.wire-scanner-section-error code {
   background: #334155;
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
