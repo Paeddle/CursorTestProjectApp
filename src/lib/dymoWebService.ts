@@ -3,15 +3,13 @@ import {
   assertDymoPrintSucceeded,
   buildLabelXmlCandidatesForRow,
 } from './dymoLabelXml'
+import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
 
 export type DymoServiceEndpoint = { host: string; port: number }
 
 const SERVICE_PATH = 'DYMO/DLS/Printing'
 const HOSTS = ['127.0.0.1', 'localhost'] as const
 
-/** Explicit copy count — empty params can default to 2 on some DYMO Connect builds. */
-const LABEL_WRITER_PRINT_PARAMS_XML =
-  '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
 const PORT_START = 41951
 const PORT_END = 41960
 
@@ -138,12 +136,13 @@ async function renderLabelOk(
 async function printOneLabelXml(
   service: DymoServiceEndpoint,
   printerName: string,
-  labelXml: string
+  labelXml: string,
+  twinTurboRoll?: DymoTwinTurboRoll
 ): Promise<void> {
   const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', {
     printerName,
     labelXml,
-    printParamsXml: LABEL_WRITER_PRINT_PARAMS_XML,
+    printParamsXml: buildLabelWriterPrintParamsXml({ twinTurboRoll }),
     labelSetXml: '',
   })
   assertDymoPrintSucceeded(result, 'PrintLabel2')
@@ -152,7 +151,8 @@ async function printOneLabelXml(
 async function printOneLabel(
   service: DymoServiceEndpoint,
   printerName: string,
-  row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>
+  row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>,
+  twinTurboRoll?: DymoTwinTurboRoll
 ): Promise<void> {
   const candidates = buildLabelXmlCandidatesForRow(row)
   const errors: string[] = []
@@ -163,7 +163,7 @@ async function printOneLabel(
       continue
     }
     try {
-      await printOneLabelXml(service, printerName, labelXml)
+      await printOneLabelXml(service, printerName, labelXml, twinTurboRoll)
       return
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e))
@@ -171,7 +171,7 @@ async function printOneLabel(
   }
 
   try {
-    await printOneLabelXml(service, printerName, candidates[0])
+    await printOneLabelXml(service, printerName, candidates[0], twinTurboRoll)
     return
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
@@ -183,7 +183,8 @@ async function printOneLabel(
 /** Direct HTTP print (print agent). Works in browser when local network access is allowed. */
 export async function printRowsViaWebService(
   rows: PoLabelPrintRow[],
-  printerName?: string
+  printerName?: string,
+  twinTurboRoll?: DymoTwinTurboRoll
 ): Promise<{ printed: number; printer: string; service: DymoServiceEndpoint }> {
   if (rows.length === 0) throw new Error('No labels to print.')
 
@@ -196,7 +197,7 @@ export async function printRowsViaWebService(
 
   const printer = await resolveDymoWebPrinter(service, printerName)
   for (const row of rows) {
-    await printOneLabel(service, printer, row)
+    await printOneLabel(service, printer, row, twinTurboRoll)
   }
   return { printed: rows.length, printer, service }
 }

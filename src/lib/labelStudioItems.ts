@@ -189,3 +189,22 @@ export function filterLabelStudioItems(items: LabelStudioItem[], query: string):
     return Object.values(item.fields).some((v) => v.toLowerCase().includes(q))
   })
 }
+
+export type LabelStudioInventorySortKey = 'name' | 'part_number' | 'manufacturer'
+export type LabelStudioSortDirection = 'asc' | 'desc'
+
+function sortValue(item: LabelStudioItem, key: LabelStudioInventorySortKey): string {
+  if (key === 'name') return item.fields.item ?? ''
+  return item.fields[key] ?? ''
+}
+
+export function sortLabelStudioItems(
+  items: LabelStudioItem[],
+  key: LabelStudioInventorySortKey,
+  direction: LabelStudioSortDirection
+): LabelStudioItem[] {
+  const sign = direction === 'asc' ? 1 : -1
+  return [...items].sort(
+    (a, b) => sign * sortValue(a, key).localeCompare(sortValue(b, key), undefined, { sensitivity: 'base' })
+  )
+}

@@ -5,7 +5,17 @@ import {
   fetchLabelStudioInventoryItems,
   filterLabelStudioItems,
   searchLabelStudioInventoryItems,
+  sortLabelStudioItems,
+  type LabelStudioInventorySortKey,
+  type LabelStudioSortDirection,
 } from '../lib/labelStudioItems'
+import {
+  dymoTwinTurboRollLabel,
+  loadDymoTwinTurboRoll,
+  saveDymoTwinTurboRoll,
+  type DymoTwinTurboRoll,
+} from '../lib/dymoPrintParams'
+import DymoTwinTurboRollPicker from './DymoTwinTurboRollPicker'
 import { printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
@@ -73,6 +83,9 @@ export default function LabelStudio() {
   const fullInventoryRef = useRef<LabelStudioItem[] | null>(null)
   const [qrPreviewByElementId, setQrPreviewByElementId] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<LabelStudioInventorySortKey>('name')
+  const [sortDir, setSortDir] = useState<LabelStudioSortDirection>('asc')
+  const [twinTurboRoll, setTwinTurboRoll] = useState<DymoTwinTurboRoll>(() => loadDymoTwinTurboRoll())
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
   const [selectedItemsById, setSelectedItemsById] = useState<Map<string, LabelStudioItem>>(new Map())
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
@@ -88,9 +101,9 @@ export default function LabelStudio() {
 
   const searchTrimmed = search.trim()
   const filteredItems = useMemo(() => {
-    if (searchTrimmed) return items
-    return filterLabelStudioItems(items, search)
-  }, [items, search, searchTrimmed])
+    const matched = searchTrimmed ? items : filterLabelStudioItems(items, search)
+    return sortLabelStudioItems(matched, sortKey, sortDir)
+  }, [items, search, searchTrimmed, sortKey, sortDir])
 
   const previewItem = useMemo(() => {
     const id = previewItemId ?? [...selectedItemIds][0] ?? filteredItems[0]?.id
@@ -450,7 +463,7 @@ export default function LabelStudio() {
     setPrinting(true)
     setStatus({ kind: 'info', text: `Sending ${toPrint.length} label(s) to the printer…` })
     try {
-      const result = await printStudioLabels(template, toPrint)
+      const result = await printStudioLabels(template, toPrint, { twinTurboRoll })
       setStatus({
         kind: 'ok',
         text: `Printed ${result.printed} label${result.printed !== 1 ? 's' : ''}.`,
@@ -523,8 +536,8 @@ export default function LabelStudio() {
             <li>
               <span className="ls-step-num">2</span>
               <span>
-                <strong>Choose what to print</strong> — check inventory rows on the left (name, part #,
-                manufacturer, barcode, picture).
+                <strong>Choose what to print</strong> — search and check inventory rows above the layout
+                (name, part #, manufacturer, barcode, picture).
               </span>
             </li>
             <li>
@@ -578,9 +591,17 @@ export default function LabelStudio() {
                 : 'No items selected'}
           </strong>
           <span className="ls-print-bar-meta">
-            Template: {template.name} · Roll: {paperName}
+            Template: {template.name} · Paper: {paperName} · Feed: {dymoTwinTurboRollLabel(twinTurboRoll)}
           </span>
         </div>
+        <DymoTwinTurboRollPicker
+          className="ls-print-bar-roll"
+          value={twinTurboRoll}
+          onChange={(roll) => {
+            setTwinTurboRoll(roll)
+            saveDymoTwinTurboRoll(roll)
+          }}
+        />
         <button
           type="button"
           className="ls-btn ls-btn-primary ls-btn-print"
@@ -591,51 +612,76 @@ export default function LabelStudio() {
         </button>
       </div>
 
-      <div className="label-studio-grid">
-        <aside className="label-studio-panel ls-panel-items">
-          <div className="ls-panel-head">
-            <span className="ls-step-badge">Step 2</span>
-            <h2>Choose items to print</h2>
-          </div>
+      <section className="label-studio-panel ls-panel-items ls-panel-items-top">
+        <div className="ls-panel-head">
+          <h2>Choose items to print</h2>
+        </div>
 
-          <p className="ls-field-hint ls-inventory-source-hint">{INVENTORY_SOURCE_HINT}</p>
+        <p className="ls-field-hint ls-inventory-source-hint">{INVENTORY_SOURCE_HINT}</p>
 
+        <div className="ls-items-toolbar">
           <button
             type="button"
-            className="ls-btn ls-btn-secondary ls-btn-block"
+            className="ls-btn ls-btn-secondary"
             onClick={() => void loadInventoryItems()}
             disabled={loadingItems || searchingItems}
           >
-            {loadProgress ?? (loadingItems ? 'Loading inventory…' : 'Reload inventory')}
+            {loadProgress ?? (loadingItems ? 'Loading…' : 'Reload')}
           </button>
 
           {inventoryTotal != null && !searchTrimmed && !loadingItems && (
-            <p className="ls-inventory-count">
-              {inventoryTotal.toLocaleString()} item{inventoryTotal !== 1 ? 's' : ''} loaded
-            </p>
+            <span className="ls-inventory-count">
+              {inventoryTotal.toLocaleString()} loaded
+            </span>
           )}
 
-          <input
-            className="label-studio-search"
-            type="search"
-            placeholder="Search entire inventory (name, part, description…)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {searchingItems && <p className="ls-field-hint">Searching inventory…</p>}
+          <label className="ls-sort-field">
+            <span className="ls-field-label">Sort by</span>
+            <select
+              className="ls-select"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as LabelStudioInventorySortKey)}
+            >
+              <option value="name">Name</option>
+              <option value="part_number">Part number</option>
+              <option value="manufacturer">Manufacturer</option>
+            </select>
+          </label>
 
-          <div className="ls-item-actions">
-            <button type="button" className="ls-btn ls-btn-secondary" onClick={selectAllVisible}>
-              Select all shown
-            </button>
-            <button type="button" className="ls-btn ls-btn-secondary" onClick={clearSelection}>
-              Clear
-            </button>
-          </div>
+          <label className="ls-sort-field">
+            <span className="ls-field-label">Order</span>
+            <select
+              className="ls-select"
+              value={sortDir}
+              onChange={(e) => setSortDir(e.target.value as LabelStudioSortDirection)}
+            >
+              <option value="asc">A → Z</option>
+              <option value="desc">Z → A</option>
+            </select>
+          </label>
+        </div>
 
-          {itemsError && <p className="ls-error">{itemsError}</p>}
+        <input
+          className="label-studio-search"
+          type="search"
+          placeholder="Search entire inventory (name, part, description…)"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {searchingItems && <p className="ls-field-hint">Searching inventory…</p>}
 
-          <div className="label-studio-item-list" role="listbox" aria-label="Inventory items to print">
+        <div className="ls-item-actions">
+          <button type="button" className="ls-btn ls-btn-secondary" onClick={selectAllVisible}>
+            Select all shown
+          </button>
+          <button type="button" className="ls-btn ls-btn-secondary" onClick={clearSelection}>
+            Clear
+          </button>
+        </div>
+
+        {itemsError && <p className="ls-error">{itemsError}</p>}
+
+        <div className="label-studio-item-list" role="listbox" aria-label="Inventory items to print">
             {filteredItems.map((item) => {
               const row = inventoryItemDisplay(item)
               return (
@@ -684,12 +730,12 @@ export default function LabelStudio() {
                   : 'No inventory rows loaded yet.'}
               </p>
             )}
-          </div>
-        </aside>
+        </div>
+      </section>
 
+      <div className="label-studio-design-row">
         <section className="label-studio-panel label-studio-canvas-wrap">
           <div className="ls-panel-head">
-            <span className="ls-step-badge">Step 1</span>
             <h2>Label layout</h2>
           </div>
 
@@ -1104,8 +1150,8 @@ export default function LabelStudio() {
             <div className="ls-props-empty">
               <p>Click a box on the label preview, or pick a field from the chips above the preview.</p>
               <p className="ls-field-hint">
-                Not sure where to start? Use <strong>Item + barcode</strong> quick start, load inventory on the
-                left, check a few rows, and hit Print.
+                Not sure where to start? Use <strong>Item + barcode</strong> quick start, pick inventory rows
+                above, and hit Print.
               </p>
             </div>
           )}

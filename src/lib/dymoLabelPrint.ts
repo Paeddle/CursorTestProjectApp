@@ -5,6 +5,7 @@ import {
   labelTextLinesForRow,
   LABEL_XML_TEMPLATE,
 } from './dymoLabelXml'
+import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
 import { printRowsViaWebService } from './dymoWebService'
 
 export {
@@ -268,7 +269,8 @@ function browserLabelParts(row: PoLabelPrintRow): {
 
 async function printRowsViaFramework(
   rows: PoLabelPrintRow[],
-  printerName?: string
+  printerName?: string,
+  twinTurboRoll?: DymoTwinTurboRoll
 ): Promise<{ printed: number; printer: string }> {
   await loadDymoSdk()
   await initDymoFramework()
@@ -284,8 +286,7 @@ async function printRowsViaFramework(
       : printers.find((n) => /labelwriter|dymo/i.test(n)) ?? printers[0]
   if (!target) throw new Error('No DYMO LabelWriter printer found.')
 
-  const printParams =
-    '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
+  const printParams = buildLabelWriterPrintParamsXml({ twinTurboRoll })
 
   for (const row of rows) {
     const candidates = buildLabelXmlCandidatesForRow(row)
@@ -330,21 +331,22 @@ function formatDymoPrintErrors(errors: string[]): string {
  */
 export async function printLabelsDirect(
   rows: PoLabelPrintRow[],
-  printerName?: string
+  printerName?: string,
+  twinTurboRoll?: DymoTwinTurboRoll
 ): Promise<{ printed: number; method: 'dymo-web' | 'dymo-framework' }> {
   if (rows.length === 0) throw new Error('No labels to print.')
 
   const errors: string[] = []
 
   try {
-    await printRowsViaWebService(rows, printerName)
+    await printRowsViaWebService(rows, printerName, twinTurboRoll)
     return { printed: rows.length, method: 'dymo-web' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
   try {
-    const result = await printRowsViaFramework(rows, printerName)
+    const result = await printRowsViaFramework(rows, printerName, twinTurboRoll)
     return { printed: result.printed, method: 'dymo-framework' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))

@@ -12,6 +12,12 @@ import {
   loadDymoSdk,
   printLabelsDirect,
 } from '../lib/dymoLabelPrint'
+import {
+  loadDymoTwinTurboRoll,
+  saveDymoTwinTurboRoll,
+  type DymoTwinTurboRoll,
+} from '../lib/dymoPrintParams'
+import DymoTwinTurboRollPicker from './DymoTwinTurboRollPicker'
 import { formatPoDisplay } from '../lib/poIpointMatch'
 import {
   countPendingLabels,
@@ -37,6 +43,7 @@ export function LabelPrintStation() {
   const [pendingCount, setPendingCount] = useState(0)
   const [failedCount, setFailedCount] = useState(0)
   const [autoPrint, setAutoPrint] = useState(true)
+  const [twinTurboRoll, setTwinTurboRoll] = useState<DymoTwinTurboRoll>(() => loadDymoTwinTurboRoll())
   const [processing, setProcessing] = useState(false)
   const [statusLine, setStatusLine] = useState('Starting…')
   const [recent, setRecent] = useState<LabelPrintQueueRecord[]>([])
@@ -137,7 +144,7 @@ export function LabelPrintStation() {
         setStatusLine(`Printing ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po}…`)
 
         const printRows = rows.map(queueRecordToPrintRow)
-        await printLabelsDirect(printRows, printerNames[0])
+        await printLabelsDirect(printRows, printerNames[0], twinTurboRoll)
         await markBatchStatus(batchId, 'printing', 'done')
         setStatusLine(
           `Printed ${rows.length} label${rows.length !== 1 ? 's' : ''} for ${po} on ${printerNames[0]}.`
@@ -166,7 +173,7 @@ export function LabelPrintStation() {
         }
       }
     },
-    [autoPrint, dymoReady, printerNames, recordError, refreshCounts, refreshDymo]
+    [autoPrint, dymoReady, printerNames, recordError, refreshCounts, refreshDymo, twinTurboRoll]
   )
 
   useEffect(() => {
@@ -290,6 +297,13 @@ export function LabelPrintStation() {
           ) : (
             <p className="print-station-warn">Not connected — click Connect printer above.</p>
           )}
+          <DymoTwinTurboRollPicker
+            value={twinTurboRoll}
+            onChange={(roll) => {
+              setTwinTurboRoll(roll)
+              saveDymoTwinTurboRoll(roll)
+            }}
+          />
         </section>
 
         <section className="print-station-card">

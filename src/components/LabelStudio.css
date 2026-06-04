@@ -183,6 +183,22 @@
   color: #666;
 }
 
+.ls-print-bar-roll {
+  margin-bottom: 0;
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
+.ls-print-bar-roll .dymo-roll-picker-hint {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .ls-print-bar-roll .dymo-roll-picker-hint {
+    display: block;
+  }
+}
+
 /* Buttons */
 .ls-btn {
   padding: 0.45rem 0.8rem;
@@ -261,16 +277,49 @@
   color: #0d47a1;
 }
 
-/* Grid */
-.label-studio-grid {
+/* Layout: inventory on top, canvas + properties below */
+.ls-panel-items-top {
+  margin-bottom: 1rem;
+}
+
+.ls-items-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.ls-sort-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ls-sort-field .ls-select {
+  min-width: 8.5rem;
+}
+
+.ls-panel-items-top .ls-inventory-count {
+  margin: 0;
+  align-self: center;
+  font-size: 0.82rem;
+  color: #555;
+}
+
+.ls-panel-items-top .label-studio-item-list {
+  max-height: 240px;
+}
+
+.label-studio-design-row {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) 1fr minmax(260px, 300px);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   gap: 1rem;
   align-items: start;
 }
 
 @media (max-width: 1050px) {
-  .label-studio-grid {
+  .label-studio-design-row {
     grid-template-columns: 1fr;
   }
 
@@ -538,13 +587,18 @@
 .label-studio-canvas-wrap {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+}
+
+.label-studio-canvas-wrap .ls-canvas-hint,
+.label-studio-canvas-wrap .ls-live-preview {
+  max-width: none;
 }
 
 .label-studio-canvas {
   position: relative;
   width: 100%;
-  max-width: 400px;
+  max-width: none;
   aspect-ratio: 102 / 59;
   background: #fff;
   border: 2px solid #bbb;
@@ -570,13 +624,11 @@
   font-size: 0.82rem;
   color: #666;
   text-align: center;
-  max-width: 400px;
   margin: 0.5rem 0 0;
 }
 
 .ls-live-preview {
   width: 100%;
-  max-width: 400px;
   margin-top: 0.75rem;
   padding: 0.55rem 0.65rem;
   background: #f5f5f5;

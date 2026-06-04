@@ -5,14 +5,21 @@ import {
   getDymoPrinterNames,
 } from './dymoLabelPrint'
 import { assertDymoPrintSucceeded } from './dymoLabelXml'
+import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
 import { findDymoWebService, resolveDymoWebPrinter } from './dymoWebService'
 import { buildLabelXmlFromStudioForPrint } from './labelStudioXml'
 import type { LabelStudioItem, LabelStudioTemplate } from '../types/labelStudio'
 
-const PRINT_PARAMS =
-  '<LabelWriterPrintParams><Copies>1</Copies><PrintQuality>Text</PrintQuality></LabelWriterPrintParams>'
+export type PrintStudioLabelsOptions = {
+  printerName?: string
+  twinTurboRoll?: DymoTwinTurboRoll
+}
 
-async function printXmlViaWebService(xmlList: string[], printerName?: string): Promise<number> {
+async function printXmlViaWebService(
+  xmlList: string[],
+  printerName?: string,
+  twinTurboRoll?: DymoTwinTurboRoll
+): Promise<number> {
   const service = await findDymoWebService()
   if (!service) throw new Error('DYMO Connect is not reachable on this PC.')
 
@@ -27,7 +34,7 @@ async function printXmlViaWebService(xmlList: string[], printerName?: string): P
         body: new URLSearchParams({
           printerName: printer,
           labelXml,
-          printParamsXml: PRINT_PARAMS,
+          printParamsXml: buildLabelWriterPrintParamsXml({ twinTurboRoll }),
           labelSetXml: '',
         }),
       }
@@ -40,7 +47,11 @@ async function printXmlViaWebService(xmlList: string[], printerName?: string): P
   return xmlList.length
 }
 
-async function printXmlViaFramework(xmlList: string[], printerName?: string): Promise<number> {
+async function printXmlViaFramework(
+  xmlList: string[],
+  printerName?: string,
+  twinTurboRoll?: DymoTwinTurboRoll
+): Promise<number> {
   await loadDymoSdk()
   await initDymoFramework()
   const fw = window.dymo?.label?.framework
@@ -58,7 +69,7 @@ async function printXmlViaFramework(xmlList: string[], printerName?: string): Pr
     let lastErr = 'DYMO rejected label'
     if (fw.printLabel) {
       try {
-        fw.printLabel(target, PRINT_PARAMS, labelXml, '')
+        fw.printLabel(target, buildLabelWriterPrintParamsXml({ twinTurboRoll }), labelXml, '')
         printed = true
       } catch (e) {
         lastErr = e instanceof Error ? e.message : String(e)
@@ -84,8 +95,10 @@ async function printXmlViaFramework(xmlList: string[], printerName?: string): Pr
 export async function printStudioLabels(
   template: LabelStudioTemplate,
   items: LabelStudioItem[],
-  printerName?: string
+  options?: PrintStudioLabelsOptions
 ): Promise<{ printed: number; method: 'dymo-web' | 'dymo-framework' }> {
+  const printerName = options?.printerName
+  const twinTurboRoll = options?.twinTurboRoll
   if (items.length === 0) throw new Error('No items selected to print.')
 
   const xmlPerItem: string[] = []
@@ -95,14 +108,14 @@ export async function printStudioLabels(
 
   const errors: string[] = []
   try {
-    const printed = await printXmlViaWebService(xmlPerItem, printerName)
+    const printed = await printXmlViaWebService(xmlPerItem, printerName, twinTurboRoll)
     return { printed, method: 'dymo-web' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
   try {
-    const printed = await printXmlViaFramework(xmlPerItem, printerName)
+    const printed = await printXmlViaFramework(xmlPerItem, printerName, twinTurboRoll)
     return { printed, method: 'dymo-framework' }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
