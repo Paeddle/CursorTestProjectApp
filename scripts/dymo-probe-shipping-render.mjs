@@ -25,16 +25,25 @@ const HYBRID_SHIPPING = {
   boundsHeight: large.boundsHeight,
 }
 
-/** Match src/lib/labelStudioGeometry.ts pctToDymoShippingHybridBounds */
-function pctDrawFace(el, t) {
-  const pad = 50
-  const axisX = t.drawWidth - pad * 2
-  const axisY = t.drawHeight - pad * 2
-  const width = Math.max(60, Math.round((el.heightPct / 100) * axisX))
-  const height = Math.max(80, Math.round((el.widthPct / 100) * axisY))
+function poInnerBounds(t) {
+  const padX = Math.round(t.boundsWidth * 0.04)
+  const padY = Math.round(t.boundsHeight * 0.06)
   return {
-    x: pad + Math.round((el.yPct / 100) * (axisX - width)),
-    y: pad + Math.round((el.xPct / 100) * (axisY - height)),
+    x: t.boundsX + padX,
+    y: t.boundsY + padY,
+    width: t.boundsWidth - padX * 2,
+    height: t.boundsHeight - padY * 2,
+  }
+}
+
+/** Match src/lib/labelStudioGeometry.ts pctToPoInnerBounds */
+function pctPoInner(el, t) {
+  const base = poInnerBounds(t)
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  return {
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
     width,
     height,
   }
@@ -71,7 +80,7 @@ function pctSwapFace(el, t) {
   }
 }
 
-function studioInventoryXml(t, mapPct = pctDrawFace) {
+function studioInventoryXml(t, mapPct = pctPoInner) {
   const item = mapPct({ xPct: 12, yPct: 8, widthPct: 76, heightPct: 32 }, t)
   const barcode = mapPct({ xPct: 22, yPct: 48, widthPct: 56, heightPct: 44 }, t)
   const text = (name, lines, b, size) =>
@@ -170,7 +179,7 @@ async function main() {
   const variants = [
     ['po-current', current, 'po', null],
     ['studio-catalog', current, 'studio', pctToBounds],
-    ['studio-hybrid-draw-face', HYBRID_SHIPPING, 'studio', pctDrawFace],
+    ['studio-hybrid-po-inner', HYBRID_SHIPPING, 'studio', pctPoInner],
   ]
 
   for (const [name, template, kind, mapPct] of variants) {

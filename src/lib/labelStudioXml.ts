@@ -322,13 +322,11 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred)
-  if (preferred.id !== 'Shipping') {
-    const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)
-    const more = await Promise.all(rest.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper)))
-    return [hybrid, ...more]
+  if (preferred.id === 'Shipping') {
+    /** Catalog 30323 twips print tiny top-left labels; do not silently fall back. */
+    return [hybrid]
   }
-  const catalog = await buildLabelXmlFromStudioForPrint(template, item, preferred, {
-    catalogTwips: true,
-  })
-  return hybrid === catalog ? [hybrid] : [hybrid, catalog]
+  const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)
+  const more = await Promise.all(rest.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper)))
+  return [hybrid, ...more]
 }

@@ -6,8 +6,11 @@ import {
 } from './dymoLabelPrint'
 import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
 import { printLabelXmlViaWebService } from './dymoWebService'
+import { LABEL_STUDIO_PRINT_GEOMETRY_REV } from './labelStudioGeometry'
 import { buildLabelXmlCandidatesFromStudioForPrint } from './labelStudioXml'
 import type { LabelStudioItem, LabelStudioTemplate } from '../types/labelStudio'
+
+export { LABEL_STUDIO_PRINT_GEOMETRY_REV }
 
 export type PrintStudioLabelsOptions = {
   printerName?: string
@@ -100,7 +103,11 @@ export async function printStudioLabels(
   template: LabelStudioTemplate,
   items: LabelStudioItem[],
   options?: PrintStudioLabelsOptions
-): Promise<{ printed: number; method: 'dymo-web' | 'dymo-framework' }> {
+): Promise<{
+  printed: number
+  method: 'dymo-web' | 'dymo-framework'
+  geometryRev: number
+}> {
   if (items.length === 0) throw new Error('No items selected to print.')
 
   let method: 'dymo-web' | 'dymo-framework' = 'dymo-web'
@@ -108,5 +115,5 @@ export async function printStudioLabels(
     method = await printOneStudioItem(template, item, options)
   }
 
-  return { printed: items.length, method }
+  return { printed: items.length, method, geometryRev: LABEL_STUDIO_PRINT_GEOMETRY_REV }
 }

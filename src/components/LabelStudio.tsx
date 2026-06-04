@@ -16,7 +16,7 @@ import {
   type DymoTwinTurboRoll,
 } from '../lib/dymoPrintParams'
 import DymoTwinTurboRollPicker from './DymoTwinTurboRollPicker'
-import { printStudioLabels } from '../lib/labelStudioPrint'
+import { LABEL_STUDIO_PRINT_GEOMETRY_REV, printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
   mergedImageUrlForElement,
@@ -498,7 +498,7 @@ export default function LabelStudio() {
       const result = await printStudioLabels(template, toPrint, { twinTurboRoll })
       setStatus({
         kind: 'ok',
-        text: `Printed ${result.printed} label${result.printed !== 1 ? 's' : ''}.`,
+        text: `Printed ${result.printed} label${result.printed !== 1 ? 's' : ''} (print layout rev ${LABEL_STUDIO_PRINT_GEOMETRY_REV}, ${result.method}).`,
       })
     } catch (e) {
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Print failed' })
