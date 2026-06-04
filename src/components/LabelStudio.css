@@ -784,6 +784,19 @@
   min-height: 100%;
 }
 
+.label-studio-canvas-barcode.ls-barcode-has-caption .label-studio-barcode-bars,
+.label-studio-canvas-barcode.ls-barcode-has-caption .ls-canvas-qr {
+  flex: 1 1 calc(100% - var(--ls-caption-band, 22%));
+  min-height: 0;
+  max-height: calc(100% - var(--ls-caption-band, 22%));
+}
+
+.label-studio-canvas-barcode.ls-barcode-has-caption .label-studio-barcode-caption {
+  flex: 0 0 var(--ls-caption-band, 22%);
+  font-size: var(--ls-caption-font, 10px);
+  line-height: 1.1;
+}
+
 .label-studio-barcode-bars {
   flex: 1;
   width: 92%;
@@ -828,14 +841,10 @@
 .ls-canvas-qr {
   flex: 1;
   width: 100%;
-  max-height: calc(100% - 1.1em);
+  max-height: 100%;
   object-fit: contain;
   display: block;
   pointer-events: none;
-}
-
-.ls-canvas-qr.ls-canvas-qr-full {
-  max-height: 100%;
 }
 
 /* Right: properties */

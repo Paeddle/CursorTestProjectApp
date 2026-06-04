@@ -39,6 +39,8 @@ export type LabelStudioBarcodeElement = LabelStudioElementBase & {
   barcodeType: LabelStudioBarcodeType
   size: LabelStudioBarcodeSize
   textPosition: LabelStudioBarcodeTextPosition
+  /** Human-readable caption under/above barcode (pt); used when textPosition is not None. */
+  textFontSize?: number
 }
 
 export type LabelStudioImageScaleMode = 'Uniform' | 'Fill'
@@ -121,7 +123,14 @@ export function isImageElement(el: LabelStudioElement): el is LabelStudioImageEl
 
 /** Upgrade templates saved before barcode support. */
 export function normalizeStudioElement(raw: LegacyLabelStudioElement | LabelStudioElement): LabelStudioElement {
-  if (raw.kind === 'barcode') return raw as LabelStudioBarcodeElement
+  if (raw.kind === 'barcode') {
+    const b = raw as LabelStudioBarcodeElement
+    return {
+      ...b,
+      textFontSize: b.textFontSize ?? 10,
+      size: b.size ?? 'Medium',
+    }
+  }
   if (raw.kind === 'image') return raw as LabelStudioImageElement
   if (raw.kind === 'text') return raw as LabelStudioTextElement
   const legacy = raw as LegacyLabelStudioElement
@@ -247,6 +256,7 @@ export function defaultInventoryTemplate(): LabelStudioTemplate {
         barcodeType: 'Auto',
         size: 'Medium',
         textPosition: 'Bottom',
+        textFontSize: 10,
       },
     ],
   }

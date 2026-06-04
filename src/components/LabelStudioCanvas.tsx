@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { DYMO_PAPER_TEMPLATES } from '../lib/dymoLabelXml'
+import { barcodeCaptionHeightPct, previewBarcodeCaptionFontPx } from '../lib/labelStudioBarcodeLayout'
 import {
   printableMetricsForTemplate,
   previewFontSizePx,
@@ -150,6 +151,11 @@ export default function LabelStudioCanvas({
           const isSelected = selectedElementId === el.id
           const isBarcode = isBarcodeElement(el)
           const barcodeShowText = isBarcode && el.textPosition !== 'None'
+          const captionBandPct = isBarcode && barcodeShowText ? barcodeCaptionHeightPct(el.textFontSize ?? 10) : 0
+          const captionFontPx =
+            isBarcode && barcodeShowText
+              ? previewBarcodeCaptionFontPx(el.textFontSize ?? 10, el.heightPct, printableHeightPx, paper)
+              : 0
           const isImage = isImageElement(el)
           const preview = renderPreview(el) || '(empty)'
           const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
@@ -161,13 +167,19 @@ export default function LabelStudioCanvas({
           return (
             <div
               key={el.id}
-              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
+              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}${barcodeShowText ? ' ls-barcode-has-caption' : ''}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,
                 width: `${el.widthPct}%`,
                 height: `${el.heightPct}%`,
                 zIndex: zIndex + 1,
+                ...(barcodeShowText
+                  ? ({
+                      '--ls-caption-band': `${captionBandPct}%`,
+                      '--ls-caption-font': `${captionFontPx}px`,
+                    } as React.CSSProperties)
+                  : {}),
                 ...(textEl
                   ? {
                       fontSize: `${previewFontSizePx(textEl, printableHeightPx, paper, textLineCount?.(el))}px`,
@@ -184,11 +196,7 @@ export default function LabelStudioCanvas({
               {isBarcode ? (
                 qrSrc ? (
                   <>
-                    <img
-                      className={`ls-canvas-qr${barcodeShowText ? '' : ' ls-canvas-qr-full'}`}
-                      src={qrSrc}
-                      alt=""
-                    />
+                    <img className="ls-canvas-qr" src={qrSrc} alt="" />
                     {barcodeShowText && (
                       <span className="label-studio-barcode-caption">{preview}</span>
                     )}

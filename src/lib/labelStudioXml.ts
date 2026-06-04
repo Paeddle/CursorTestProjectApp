@@ -1,5 +1,6 @@
 import { DYMO_PAPER_TEMPLATES, escapeXmlText, type DymoPaperTemplate } from './dymoLabelXml'
 import { barcodeTextForPrint, dymoBarcodeSymbologyXml, resolveBarcodeType } from './labelStudioBarcode'
+import { DEFAULT_BARCODE_TEXT_FONT_SIZE, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import type {
@@ -84,13 +85,12 @@ function buildTextObjectXml(
 
 function buildBarcodeObjectXml(
   el: LabelStudioBarcodeElement,
-  text: string,
+  encoded: string,
+  symbology: Exclude<LabelStudioBarcodeElement['barcodeType'], 'Auto'>,
   bounds: DymoLabelBounds
 ): string {
-  const symbology = resolveBarcodeType(el.barcodeType, text)
-  const encoded = barcodeTextForPrint(text, symbology)
-  if (!encoded) return ''
   const dymoType = dymoBarcodeSymbologyXml(symbology)
+  const captionPt = el.textFontSize ?? DEFAULT_BARCODE_TEXT_FONT_SIZE
 
   return (
     `<ObjectInfo>` +
@@ -105,9 +105,9 @@ function buildBarcodeObjectXml(
     `<Text>${escapeXmlText(encoded)}</Text>` +
     `<Type>${dymoType}</Type>` +
     `<Size>${el.size}</Size>` +
-    `<TextPosition>${el.textPosition}</TextPosition>` +
-    `<TextFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
-    `<CheckSumFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<TextPosition>None</TextPosition>` +
+    `<TextFont Family="Arial" Size="${captionPt}" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<CheckSumFont Family="Arial" Size="${captionPt}" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
     `<TextEmbedding>None</TextEmbedding>` +
     `<ECLevel>0</ECLevel>` +
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
@@ -116,6 +116,32 @@ function buildBarcodeObjectXml(
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
     `</ObjectInfo>`
   )
+}
+
+/** Barcode symbology + optional human-readable caption as a separate TextObject (reliable for QR). */
+function buildBarcodePrintXml(
+  el: LabelStudioBarcodeElement,
+  displayText: string,
+  bounds: DymoLabelBounds
+): string {
+  const symbology = resolveBarcodeType(el.barcodeType, displayText)
+  const encoded = barcodeTextForPrint(displayText, symbology)
+  if (!encoded) return ''
+
+  const captionPt = el.textFontSize ?? DEFAULT_BARCODE_TEXT_FONT_SIZE
+  const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition, captionPt)
+  const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, barcode)
+
+  if (!caption || el.textPosition === 'None') return barcodeXml
+
+  const captionXml = buildTextObjectXml(
+    `${el.id}_caption`,
+    [displayText],
+    captionPt,
+    caption,
+    { align: 'Center', bold: false, textFitMode: 'None' }
+  )
+  return barcodeXml + captionXml
 }
 
 function buildImageObjectXml(
@@ -155,7 +181,7 @@ async function buildElementXmlAsync(
   const bounds = pctToDymoPrintBounds(el, template)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
-    return buildBarcodeObjectXml(el, value, bounds)
+    return buildBarcodePrintXml(el, value, bounds)
   }
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
@@ -180,7 +206,7 @@ function buildElementXml(el: LabelStudioElement, item: LabelStudioItem, template
   const bounds = pctToDymoPrintBounds(el, template)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
-    return buildBarcodeObjectXml(el, value, bounds)
+    return buildBarcodePrintXml(el, value, bounds)
   }
   if (isImageElement(el)) {
     return ''

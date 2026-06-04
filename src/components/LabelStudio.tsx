@@ -339,6 +339,7 @@ export default function LabelStudio() {
       barcodeType: 'Auto',
       size: 'Medium',
       textPosition: 'Bottom',
+      textFontSize: 10,
     }
     setTemplate((t) => ({ ...t, elements: [...t.elements, el] }))
     setSelectedElementId(el.id)
@@ -1027,6 +1028,26 @@ export default function LabelStudio() {
                       <option value="None">No, barcode only</option>
                     </select>
                   </label>
+                  {selectedElement.textPosition !== 'None' && (
+                    <label className="ls-field">
+                      <span className="ls-field-label">Number font size</span>
+                      <input
+                        className="ls-input"
+                        type="number"
+                        min={6}
+                        max={24}
+                        value={selectedElement.textFontSize ?? 10}
+                        onChange={(e) =>
+                          updateElement(selectedElement.id, {
+                            textFontSize: Number(e.target.value) || 10,
+                          })
+                        }
+                      />
+                      <p className="ls-field-hint">
+                        Shown under or above the code in the studio and on the printed label.
+                      </p>
+                    </label>
+                  )}
                 </div>
               ) : isTextElement(selectedElement) ? (
                 <div className="ls-prop-group">
