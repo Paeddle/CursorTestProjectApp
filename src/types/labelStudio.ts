@@ -84,23 +84,13 @@ export type LabelStudioItem = {
   fields: Record<string, string>
 }
 
+/** Merge fields shown in Label Studio — matches inventory picker columns only. */
 export const LABEL_STUDIO_MERGE_FIELDS: { key: string; label: string; example: string }[] = [
   { key: 'item', label: 'Item name', example: 'HDMI Cable 6ft' },
   { key: 'part_number', label: 'Part number', example: 'ABC-123' },
   { key: 'manufacturer', label: 'Manufacturer', example: 'Lutron' },
   { key: 'barcode', label: 'Barcode', example: '012345678901' },
-  { key: 'description', label: 'Description', example: 'Customer description' },
-  { key: 'category', label: 'Category', example: 'Wire' },
-  { key: 'vendor', label: 'Vendor', example: 'ADI' },
-  { key: 'location', label: 'Location / room', example: 'Master BR Closet' },
-  { key: 'job', label: 'Job / customer', example: 'Smith Residence' },
-  { key: 'po_number', label: 'PO number', example: 'PO-4152' },
-  { key: 'ref_number', label: 'Job ref #', example: '4152' },
-  { key: 'quantity', label: 'Quantity', example: '4' },
-  { key: 'price', label: 'Unit price', example: '12.99' },
-  { key: 'color', label: 'Color', example: 'White' },
-  { key: 'unit', label: 'Unit', example: 'EA' },
-  { key: 'picture', label: 'Product image (stored)', example: '(image on label)' },
+  { key: 'picture', label: 'Product image', example: '(image on label)' },
 ]
 
 export const DEFAULT_PAPER_TEMPLATE_ID = 'Shipping'

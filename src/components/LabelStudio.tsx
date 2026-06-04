@@ -641,15 +641,20 @@ export default function LabelStudio() {
                     )}
                     <div className="ls-item-meta">
                       <div className="ls-item-name">{row.name}</div>
-                      <div className="ls-item-detail">
-                        <span className="ls-item-label">Part</span> {row.partNumber}
-                      </div>
-                      <div className="ls-item-detail">
-                        <span className="ls-item-label">Mfg</span> {row.manufacturer}
-                      </div>
-                      <div className="ls-item-detail">
-                        <span className="ls-item-label">Barcode</span> {row.barcode}
-                      </div>
+                      <dl className="ls-item-details-grid">
+                        <div className="ls-item-detail-cell">
+                          <dt>Part #</dt>
+                          <dd>{row.partNumber}</dd>
+                        </div>
+                        <div className="ls-item-detail-cell">
+                          <dt>Manufacturer</dt>
+                          <dd>{row.manufacturer}</dd>
+                        </div>
+                        <div className="ls-item-detail-cell ls-item-detail-cell-wide">
+                          <dt>Barcode</dt>
+                          <dd>{row.barcode}</dd>
+                        </div>
+                      </dl>
                     </div>
                   </div>
                 </div>
