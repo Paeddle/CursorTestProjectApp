@@ -3,7 +3,7 @@ import {
   escapeXmlText,
   type DymoPaperTemplate,
 } from './dymoLabelXml'
-import { barcodeTextForPrint, resolveBarcodeType } from './labelStudioBarcode'
+import { barcodeTextForPrint, dymoBarcodeSymbologyXml, resolveBarcodeType } from './labelStudioBarcode'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import type {
@@ -91,6 +91,7 @@ function buildBarcodeObjectXml(
   const symbology = resolveBarcodeType(el.barcodeType, text)
   const encoded = barcodeTextForPrint(text, symbology)
   if (!encoded) return ''
+  const dymoType = dymoBarcodeSymbologyXml(symbology)
 
   return (
     `<ObjectInfo>` +
@@ -103,7 +104,7 @@ function buildBarcodeObjectXml(
     `<IsMirrored>False</IsMirrored>` +
     `<IsVariable>False</IsVariable>` +
     `<Text>${escapeXmlText(encoded)}</Text>` +
-    `<Type>${symbology}</Type>` +
+    `<Type>${dymoType}</Type>` +
     `<Size>${el.size}</Size>` +
     `<TextPosition>${el.textPosition}</TextPosition>` +
     `<TextFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
@@ -134,6 +135,7 @@ function buildImageObjectXml(
     `<Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored>` +
     `<IsVariable>False</IsVariable>` +
+    `<ImageLocation/>` +
     `<Image>${base64Png}</Image>` +
     `<ScaleMode>${el.scaleMode ?? 'Uniform'}</ScaleMode>` +
     `<BorderWidth>0</BorderWidth>` +

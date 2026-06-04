@@ -148,36 +148,57 @@ async function printOneLabelXml(
   assertDymoPrintSucceeded(result, 'PrintLabel2')
 }
 
-async function printOneLabel(
-  service: DymoServiceEndpoint,
-  printerName: string,
-  row: Pick<PoLabelPrintRow, 'job_name' | 'item_name' | 'location_name'>,
+function formatDymoLabelXmlPrintFailure(errors: string[]): string {
+  const last = errors[errors.length - 1] ?? 'PrintLabel2 failed'
+  if (/diecutlabel|not declared/i.test(last)) {
+    return (
+      `${last}\n\n` +
+      'DYMO could not read this label XML. In DYMO Connect, add the roll size that matches ' +
+      '“Label roll in printer” in Label Studio (usually 30323 Shipping), reload the printer, then try again.'
+    )
+  }
+  return last
+}
+
+/** Try each label XML until RenderLabel + PrintLabel2 succeed (PO and Label Studio). */
+export async function printLabelXmlViaWebService(
+  candidates: string[],
+  printerName?: string,
   twinTurboRoll?: DymoTwinTurboRoll
-): Promise<void> {
-  const candidates = buildLabelXmlCandidatesForRow(row)
+): Promise<{ printer: string; service: DymoServiceEndpoint }> {
+  if (candidates.length === 0) throw new Error('No label XML to print.')
+
+  const service = await findDymoWebService()
+  if (!service) {
+    throw new Error(
+      'Cannot reach DYMO Connect on this PC. Open DYMO Connect, connect the LabelWriter, then try again.'
+    )
+  }
+
+  const printer = await resolveDymoWebPrinter(service, printerName)
   const errors: string[] = []
 
   for (const labelXml of candidates) {
-    if (!(await renderLabelOk(service, printerName, labelXml))) {
+    if (!(await renderLabelOk(service, printer, labelXml))) {
       errors.push('RenderLabel rejected template')
       continue
     }
     try {
-      await printOneLabelXml(service, printerName, labelXml, twinTurboRoll)
-      return
+      await printOneLabelXml(service, printer, labelXml, twinTurboRoll)
+      return { printer, service }
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e))
     }
   }
 
   try {
-    await printOneLabelXml(service, printerName, candidates[0], twinTurboRoll)
-    return
+    await printOneLabelXml(service, printer, candidates[0], twinTurboRoll)
+    return { printer, service }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
-  throw new Error(errors[errors.length - 1] ?? 'PrintLabel2 failed')
+  throw new Error(formatDymoLabelXmlPrintFailure(errors))
 }
 
 /** Direct HTTP print (print agent). Works in browser when local network access is allowed. */
@@ -188,16 +209,19 @@ export async function printRowsViaWebService(
 ): Promise<{ printed: number; printer: string; service: DymoServiceEndpoint }> {
   if (rows.length === 0) throw new Error('No labels to print.')
 
-  const service = await findDymoWebService()
-  if (!service) {
-    throw new Error(
-      'Cannot reach DYMO Connect on this PC. Open DYMO Connect, connect the LabelWriter, then click “Connect printer” on this page.'
-    )
-  }
-
-  const printer = await resolveDymoWebPrinter(service, printerName)
+  let printer = ''
+  let service: DymoServiceEndpoint | null = null
   for (const row of rows) {
-    await printOneLabel(service, printer, row, twinTurboRoll)
+    const result = await printLabelXmlViaWebService(
+      buildLabelXmlCandidatesForRow(row),
+      printerName || printer || undefined,
+      twinTurboRoll
+    )
+    printer = result.printer
+    service = result.service
+  }
+  if (!service) {
+    throw new Error('Cannot reach DYMO Connect on this PC.')
   }
   return { printed: rows.length, printer, service }
 }

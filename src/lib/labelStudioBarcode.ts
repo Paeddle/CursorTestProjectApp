@@ -15,6 +15,14 @@ export function resolveBarcodeType(
   return inferBarcodeType(value)
 }
 
+/** Symbology name as required in DYMO label XML (&lt;Type&gt;). */
+export function dymoBarcodeSymbologyXml(
+  type: Exclude<LabelStudioBarcodeType, 'Auto'>
+): string {
+  if (type === 'QrCode') return 'QRCode'
+  return type
+}
+
 /** Normalize barcode payload for the selected symbology. */
 export function barcodeTextForPrint(
   value: string,
