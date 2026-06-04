@@ -5,12 +5,12 @@ alwaysApply: true
 
 # DigitalOcean auto-deploy (user enabled)
 
-The user requested **automatic production deploy** for every agent session that changes the deployed app. Do **not** wait for a separate “please deploy” message.
+The user requested **automatic commit, push, and production deploy** for agent sessions (see also **auto-commit-push**). Do **not** wait for separate “please commit”, “please push”, or “please deploy” messages.
 
 When you finish changes that affect the **deployed** app (root `src/`, `scanner-app/`, `wire-scanner-app/`, shared `lib/`, or DigitalOcean spec/scripts), in the **same session** and before marking the task done:
 
 1. **Commit** only files for that task (never commit secrets, `.env`, or unrelated local data unless the user asked).
-2. **`git push origin main`** (or the branch in `deployments/digitalocean/.env.deploy` as `DO_GITHUB_BRANCH`). This also triggers **GitHub Actions** (`.github/workflows/deploy-digitalocean.yml`) when repo secrets are set — see `deployments/digitalocean/DEPLOY_SIMPLE.md` §4.
+2. **`git push origin main`** (or the branch in `deployments/digitalocean/.env.deploy` as `DO_GITHUB_BRANCH`). This triggers **GitHub Actions** on push to `main` (`.github/workflows/deploy-digitalocean.yml`) when repo secrets are set — see `deployments/digitalocean/DEPLOY_SIMPLE.md` §4.
 3. **Run DigitalOcean deploy from the repo root** (after push when possible):
    - **`npm run deploy:do`** (runs `deployments/digitalocean/deploy.ps1`), or
    - **`powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1`**

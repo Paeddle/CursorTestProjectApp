@@ -1,0 +1,16 @@
+---
+description: Always commit and push session changes to GitHub (user enabled)
+alwaysApply: true
+---
+
+# Auto commit and push (user enabled)
+
+The user wants **every completed agent task** to land on GitHub without a separate “please commit” or “please push” message. This overrides generic “only commit when asked” guidance **for this repository**.
+
+When you finish work that changed tracked project files:
+
+1. **Commit** only files for that task. Never commit secrets, `.env`, `deployments/digitalocean/.env.deploy`, local audit dumps (`scripts/audit-*.json`), render probe output (`scripts/dymo-probe-out/`), or `supabase/.temp/` unless the user asked.
+2. **`git push origin main`** (or the branch named in `deployments/digitalocean/.env.deploy` as `DO_GITHUB_BRANCH`). Pushing `main` triggers **GitHub Actions** deploy (`.github/workflows/deploy-digitalocean.yml`) when repo secrets are configured.
+3. If the change affects the **deployed app** (`src/`, `scanner-app/`, `wire-scanner-app/`, shared `lib/`, DigitalOcean spec/scripts), also follow **digitalocean-redeploy** (run `npm run deploy:do` after push when possible).
+
+Do **not** skip commit/push because the user did not repeat “commit” in the latest message. Only skip if they **explicitly opt out** for that task (e.g. “do not commit yet”). If push fails, report the error and retry or fix.
