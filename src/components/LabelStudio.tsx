@@ -1,13 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
-import {
-  fetchLabelStudioBarcodeItems,
-  fetchLabelStudioInventoryItems,
-  fetchLabelStudioLocationItems,
-  fetchLabelStudioPoLineItems,
-  filterLabelStudioItems,
-} from '../lib/labelStudioItems'
+import { fetchLabelStudioInventoryItems, filterLabelStudioItems } from '../lib/labelStudioItems'
 import { printStudioLabels } from '../lib/labelStudioPrint'
 import {
   mergedBarcodeForElement,
@@ -16,7 +10,7 @@ import {
   resolveMergeTemplate,
   normalizeMergedText,
 } from '../lib/labelStudioMerge'
-import { parseLabelItemsXlsx } from '../lib/parseLabelItemsXlsx'
+import { qrPreviewDataUrl } from '../lib/labelStudioQr'
 import {
   deleteLabelStudioTemplate,
   duplicateLabelStudioTemplate,
@@ -35,43 +29,27 @@ import {
   type LabelStudioBarcodeType,
   type LabelStudioElement,
   type LabelStudioItem,
-  type LabelStudioItemSource,
   type LabelStudioTemplate,
 } from '../types/labelStudio'
 import LabelStudioCanvas from './LabelStudioCanvas'
 import { alignElement } from '../lib/labelStudioCanvasGeometry'
 import './LabelStudio.css'
 
-type DataSource = LabelStudioItemSource | 'excel'
-
 const GUIDE_STORAGE_KEY = 'label-studio-guide-dismissed'
 
-const SOURCE_OPTIONS: {
-  id: DataSource
-  label: string
-  hint: string
-}[] = [
-  {
-    id: 'inventory',
-    label: 'Inventory',
-    hint: 'Items from your inventory upload (Purchase List page). Good for part labels with barcodes.',
-  },
-  {
-    id: 'barcode',
-    label: 'Barcode catalog',
-    hint: 'Saved barcode lookups (manufacturer, part number, UPC).',
-  },
-  {
-    id: 'location',
-    label: 'Room locations',
-    hint: 'iPoint location sheets — room name + product per row.',
-  },
-  {
-    id: 'po_line',
-    label: 'PO lines',
-    hint: 'Open purchase order lines (PO number + item name).',
-  },
-]
+const INVENTORY_SOURCE_HINT =
+  'Rows from your Supabase inventory table (Inventory page). Fields: name, part number, manufacturer, barcode, picture.'
+
+function inventoryItemDisplay(item: LabelStudioItem) {
+  const f = item.fields
+  return {
+    name: f.item || '—',
+    partNumber: f.part_number || '—',
+    manufacturer: f.manufacturer || '—',
+    barcode: f.barcode || '—',
+    picture: f.picture || null,
+  }
+}
 
 function elementSummary(el: LabelStudioElement): string {
   const short = el.content.replace(/\{\{|\}\}/g, '').trim() || '(empty)'
@@ -85,9 +63,8 @@ export default function LabelStudio() {
   const [templates, setTemplates] = useState<LabelStudioTemplate[]>(() => loadLabelStudioTemplates())
   const [template, setTemplate] = useState<LabelStudioTemplate>(() => loadLabelStudioTemplates()[0])
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
-  const [dataSource, setDataSource] = useState<DataSource>('inventory')
   const [items, setItems] = useState<LabelStudioItem[]>([])
-  const [excelItems, setExcelItems] = useState<LabelStudioItem[]>([])
+  const [qrPreviewByElementId, setQrPreviewByElementId] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
   const [previewItemId, setPreviewItemId] = useState<string | null>(null)
@@ -100,11 +77,7 @@ export default function LabelStudio() {
     () => localStorage.getItem(GUIDE_STORAGE_KEY) !== '1'
   )
 
-  const activeItems = dataSource === 'excel' ? excelItems : items
-  const filteredItems = useMemo(
-    () => filterLabelStudioItems(activeItems, search),
-    [activeItems, search]
-  )
+  const filteredItems = useMemo(() => filterLabelStudioItems(items, search), [items, search])
 
   const previewItem = useMemo(() => {
     const id = previewItemId ?? [...selectedItemIds][0] ?? filteredItems[0]?.id
@@ -116,22 +89,17 @@ export default function LabelStudio() {
   const paperName =
     DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId)?.paperName ?? '30323 Shipping'
 
-  const loadItemsForSource = useCallback(async (source: DataSource) => {
-    if (source === 'excel') return
+  const loadInventoryItems = useCallback(async () => {
     setLoadingItems(true)
     setItemsError(null)
     try {
-      let loaded: LabelStudioItem[] = []
-      if (source === 'inventory') loaded = await fetchLabelStudioInventoryItems()
-      else if (source === 'location') loaded = await fetchLabelStudioLocationItems()
-      else if (source === 'barcode') loaded = await fetchLabelStudioBarcodeItems()
-      else if (source === 'po_line') loaded = await fetchLabelStudioPoLineItems()
+      const loaded = await fetchLabelStudioInventoryItems()
       setItems(loaded)
       if (loaded.length === 0) {
-        setItemsError(`No rows found. Upload data on the relevant page first (e.g. Purchase List for inventory).`)
+        setItemsError('No inventory rows found. Add items on the Inventory page first.')
       }
     } catch (e) {
-      setItemsError(e instanceof Error ? e.message : 'Failed to load items')
+      setItemsError(e instanceof Error ? e.message : 'Failed to load inventory')
       setItems([])
     } finally {
       setLoadingItems(false)
@@ -139,8 +107,30 @@ export default function LabelStudio() {
   }, [])
 
   useEffect(() => {
-    if (dataSource !== 'excel') void loadItemsForSource(dataSource)
-  }, [dataSource, loadItemsForSource])
+    void loadInventoryItems()
+  }, [loadInventoryItems])
+
+  useEffect(() => {
+    if (!previewItem) {
+      setQrPreviewByElementId({})
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const next: Record<string, string> = {}
+      for (const el of template.elements) {
+        if (!isBarcodeElement(el) || el.barcodeType !== 'QrCode') continue
+        const text = mergedBarcodeForElement(el.content, previewItem)
+        if (!text) continue
+        const url = await qrPreviewDataUrl(text)
+        if (url) next[el.id] = url
+      }
+      if (!cancelled) setQrPreviewByElementId(next)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [previewItem, template.elements])
 
   useEffect(() => {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
@@ -217,7 +207,7 @@ export default function LabelStudio() {
       text:
         preset === 'inventory'
           ? 'Loaded “image + item + barcode” layout. Store images on the Inventory page, then print.'
-          : 'Loaded “job + location” layout. Select location or PO items on the left, then print.',
+          : 'Loaded “job + location” layout. Pick inventory rows on the left, then print.',
     })
   }
 
@@ -393,25 +383,6 @@ export default function LabelStudio() {
     }
   }
 
-  const handleExcelUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    try {
-      const buf = await file.arrayBuffer()
-      const parsed = parseLabelItemsXlsx(buf)
-      if (parsed.length === 0) throw new Error('No rows found in the spreadsheet.')
-      setExcelItems(parsed)
-      setDataSource('excel')
-      setStatus({
-        kind: 'ok',
-        text: `Loaded ${parsed.length} rows from Excel. Column headers become fields like {{item}}, {{barcode}}, etc.`,
-      })
-    } catch (err) {
-      setStatus({ kind: 'err', text: err instanceof Error ? err.message : 'Excel import failed' })
-    }
-  }
-
   const canvasImagePreviewUrl = useCallback(
     (el: LabelStudioElement): string | null => {
       if (!isImageElement(el) || !previewItem) return null
@@ -421,6 +392,14 @@ export default function LabelStudio() {
     [previewItem]
   )
 
+  const canvasBarcodePreviewUrl = useCallback(
+    (el: LabelStudioElement): string | null => {
+      if (!isBarcodeElement(el) || el.barcodeType !== 'QrCode') return null
+      return qrPreviewByElementId[el.id] ?? null
+    },
+    [qrPreviewByElementId]
+  )
+
   const canvasPreviewText = (el: LabelStudioElement): string => {
     if (!previewItem) return el.content.replace(/\{\{[^}]+\}\}/g, '…')
     if (isBarcodeElement(el)) {
@@ -428,11 +407,6 @@ export default function LabelStudio() {
     }
     return normalizeMergedText(resolveMergeTemplate(el.content, previewItem.fields))
   }
-
-  const currentSourceHint =
-    dataSource === 'excel'
-      ? 'Using your uploaded spreadsheet — each column is a merge field.'
-      : SOURCE_OPTIONS.find((s) => s.id === dataSource)?.hint ?? ''
 
   return (
     <div className="label-studio">
@@ -470,8 +444,8 @@ export default function LabelStudio() {
             <li>
               <span className="ls-step-num">2</span>
               <span>
-                <strong>Choose what to print</strong> — check items in the list on the left (inventory,
-                barcodes, locations, or upload Excel like Label Live).
+                <strong>Choose what to print</strong> — check inventory rows on the left (name, part #,
+                manufacturer, barcode, picture).
               </span>
             </li>
             <li>
@@ -545,42 +519,16 @@ export default function LabelStudio() {
             <h2>Choose items to print</h2>
           </div>
 
-          <label className="ls-field">
-            <span className="ls-field-label">Data source</span>
-            <select
-              className="ls-select"
-              value={dataSource === 'excel' ? 'excel' : dataSource}
-              onChange={(e) => {
-                const v = e.target.value as DataSource
-                setDataSource(v)
-              }}
-            >
-              {SOURCE_OPTIONS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-              {excelItems.length > 0 && <option value="excel">Excel upload ({excelItems.length} rows)</option>}
-            </select>
-            <span className="ls-field-hint">{currentSourceHint}</span>
-          </label>
+          <p className="ls-field-hint ls-inventory-source-hint">{INVENTORY_SOURCE_HINT}</p>
 
-          {dataSource !== 'excel' && (
-            <button
-              type="button"
-              className="ls-btn ls-btn-secondary ls-btn-block"
-              onClick={() => void loadItemsForSource(dataSource)}
-              disabled={loadingItems}
-            >
-              {loadingItems ? 'Loading…' : 'Reload list'}
-            </button>
-          )}
-
-          <div className="ls-excel-upload">
-            <span className="ls-field-label">Or import from Excel</span>
-            <p className="ls-field-hint">Same idea as Label Live — first row = column names.</p>
-            <input type="file" accept=".xlsx,.xls" onChange={(e) => void handleExcelUpload(e)} />
-          </div>
+          <button
+            type="button"
+            className="ls-btn ls-btn-secondary ls-btn-block"
+            onClick={() => void loadInventoryItems()}
+            disabled={loadingItems}
+          >
+            {loadingItems ? 'Loading inventory…' : 'Reload inventory'}
+          </button>
 
           <input
             className="label-studio-search"
@@ -601,27 +549,50 @@ export default function LabelStudio() {
 
           {itemsError && <p className="ls-error">{itemsError}</p>}
 
-          <div className="label-studio-item-list" role="listbox" aria-label="Items to print">
-            {filteredItems.map((item) => (
-              <div
-                key={item.id}
-                role="option"
-                aria-selected={selectedItemIds.has(item.id)}
-                className={`label-studio-item-row${selectedItemIds.has(item.id) ? ' selected' : ''}`}
-                onClick={(ev) => toggleItemSelection(item.id, ev.ctrlKey || ev.metaKey)}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedItemIds.has(item.id)}
-                  onChange={() => toggleItemSelection(item.id, false)}
-                  onClick={(ev) => ev.stopPropagation()}
-                  aria-label={`Print ${item.title}`}
-                />
-                <span>{item.title}</span>
-              </div>
-            ))}
+          <div className="label-studio-item-list" role="listbox" aria-label="Inventory items to print">
+            {filteredItems.map((item) => {
+              const row = inventoryItemDisplay(item)
+              return (
+                <div
+                  key={item.id}
+                  role="option"
+                  aria-selected={selectedItemIds.has(item.id)}
+                  className={`label-studio-item-row${selectedItemIds.has(item.id) ? ' selected' : ''}`}
+                  onClick={(ev) => toggleItemSelection(item.id, ev.ctrlKey || ev.metaKey)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedItemIds.has(item.id)}
+                    onChange={() => toggleItemSelection(item.id, false)}
+                    onClick={(ev) => ev.stopPropagation()}
+                    aria-label={`Print ${row.name}`}
+                  />
+                  <div className="ls-item-row-body">
+                    {row.picture ? (
+                      <img className="ls-item-thumb" src={row.picture} alt="" />
+                    ) : (
+                      <span className="ls-item-thumb ls-item-thumb-empty" aria-hidden>
+                        —
+                      </span>
+                    )}
+                    <div className="ls-item-meta">
+                      <div className="ls-item-name">{row.name}</div>
+                      <div className="ls-item-detail">
+                        <span className="ls-item-label">Part</span> {row.partNumber}
+                      </div>
+                      <div className="ls-item-detail">
+                        <span className="ls-item-label">Mfg</span> {row.manufacturer}
+                      </div>
+                      <div className="ls-item-detail">
+                        <span className="ls-item-label">Barcode</span> {row.barcode}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
             {!loadingItems && filteredItems.length === 0 && (
-              <p className="ls-empty">No items match your search.</p>
+              <p className="ls-empty">No inventory rows match your search.</p>
             )}
           </div>
         </aside>
@@ -775,6 +746,7 @@ export default function LabelStudio() {
             onUpdateRect={updateElementRect}
             renderPreview={canvasPreviewText}
             imagePreviewUrl={canvasImagePreviewUrl}
+            barcodePreviewUrl={canvasBarcodePreviewUrl}
           />
 
           <p className="ls-canvas-hint">
@@ -885,6 +857,12 @@ export default function LabelStudio() {
                       <option value="Code39">Code 39</option>
                       <option value="QrCode">QR code</option>
                     </select>
+                    {selectedElement.barcodeType === 'QrCode' && (
+                      <p className="ls-field-hint">
+                        QR encodes the full merged text from the field above (any characters), not only
+                        numeric UPC/EAN.
+                      </p>
+                    )}
                   </label>
                   <label className="ls-field">
                     <span className="ls-field-label">Barcode height</span>

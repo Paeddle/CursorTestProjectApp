@@ -22,6 +22,7 @@ export function barcodeTextForPrint(
 ): string {
   const trimmed = value.trim()
   if (!trimmed) return ''
+  if (type === 'QrCode') return trimmed
   if (type === 'UpcA') return trimmed.replace(/\D/g, '').slice(0, 12)
   if (type === 'Ean13') return trimmed.replace(/\D/g, '').slice(0, 13)
   return trimmed

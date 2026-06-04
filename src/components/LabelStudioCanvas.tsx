@@ -34,6 +34,8 @@ export type LabelStudioCanvasProps = {
   onUpdateRect: (id: string, rect: ElementRect) => void
   renderPreview: (el: LabelStudioElement) => string
   imagePreviewUrl?: (el: LabelStudioElement) => string | null
+  /** When set (e.g. QR symbology), shown instead of linear barcode bars. */
+  barcodePreviewUrl?: (el: LabelStudioElement) => string | null
 }
 
 function rectFromElement(el: LabelStudioElement): ElementRect {
@@ -47,6 +49,7 @@ export default function LabelStudioCanvas({
   onUpdateRect,
   renderPreview,
   imagePreviewUrl,
+  barcodePreviewUrl,
 }: LabelStudioCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -126,6 +129,7 @@ export default function LabelStudioCanvas({
         const isImage = isImageElement(el)
         const preview = renderPreview(el) || '(empty)'
         const imgSrc = isImage && imagePreviewUrl ? imagePreviewUrl(el) : null
+        const qrSrc = isBarcode && barcodePreviewUrl ? barcodePreviewUrl(el) : null
         const textFitShrink =
           isTextElement(el) && (el.textFitMode === 'ShrinkToFit' || el.textFitMode == null)
 
@@ -153,10 +157,19 @@ export default function LabelStudioCanvas({
             }}
           >
             {isBarcode ? (
-              <>
-                <div className="label-studio-barcode-bars" aria-hidden />
-                <span className="label-studio-barcode-caption">{preview}</span>
-              </>
+              qrSrc ? (
+                <>
+                  <img className="ls-canvas-qr" src={qrSrc} alt="" />
+                  {el.textPosition !== 'None' && (
+                    <span className="label-studio-barcode-caption">{preview}</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="label-studio-barcode-bars" aria-hidden />
+                  <span className="label-studio-barcode-caption">{preview}</span>
+                </>
+              )
             ) : isImage ? (
               imgSrc ? (
                 <img className="ls-canvas-image" src={imgSrc} alt="" />
