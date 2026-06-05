@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { DYMO_PAPER_TEMPLATES, LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from '../lib/dymoLabelXml'
+import {
+  DYMO_PAPER_TEMPLATES,
+  labelStudioPaperTemplates,
+  LABEL_HEIGHT_MM,
+  LABEL_WIDTH_MM,
+} from '../lib/dymoLabelXml'
 import { getDymoDiagnostics } from '../lib/dymoLabelPrint'
 import {
   fetchLabelStudioItems,
@@ -788,18 +793,15 @@ export default function LabelStudio() {
                   value={template.paperTemplateId}
                   onChange={(e) => updateTemplate({ paperTemplateId: e.target.value })}
                 >
-                  {DYMO_PAPER_TEMPLATES.map((p) => (
+                  {labelStudioPaperTemplates().map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.catalogSku ? `${p.paperName} (${p.catalogSku})` : p.paperName}
+                      {p.studioLabel ?? p.paperName}
                     </option>
                   ))}
                 </select>
                 <span className="ls-field-hint">
                   Must match your loaded roll in DYMO Connect. Preview size is the real sticker face (
                   {paperTemplate.widthMm}×{paperTemplate.heightMm} mm).
-                  {paperTemplate.id === 'Address30251'
-                    ? ' 30251 uses the same print envelope as 30252 Address in DYMO (identical 3½×1⅛ in face).'
-                    : ''}
                 </span>
               </label>
               <div className="ls-btn-row">

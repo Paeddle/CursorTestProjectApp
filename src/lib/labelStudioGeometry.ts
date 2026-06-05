@@ -15,7 +15,6 @@ const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set([
   'Shipping',
   'Durable1933085',
   'Address30251',
-  'Address',
 ])
 
 /** Hybrid bounds origin differs from 30323 catalog — anchor from catalog face like the canvas. */

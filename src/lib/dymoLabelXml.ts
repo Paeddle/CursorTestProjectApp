@@ -22,8 +22,12 @@ export function mmToTwips(mm: number): number {
 export type DymoPaperTemplate = {
   id: string
   paperName: string
-  /** DYMO catalog / SKU shown in UI (e.g. 1933085). */
+  /** DYMO catalog / SKU (e.g. 30251). */
   catalogSku?: string
+  /** Label Studio roll picker label. */
+  studioLabel?: string
+  /** When false, omitted from Label Studio roll list (PO print may still use the template). */
+  studioVisible?: boolean
   /** Physical label face width in mm (what you see on the sticker). */
   widthMm: number
   /** Physical label face height in mm. */
@@ -41,6 +45,8 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   {
     id: 'LargeShipping',
     paperName: '30256 Shipping',
+    catalogSku: '30256',
+    studioLabel: 'Large Shipping Labels',
     widthMm: 59,
     heightMm: 102,
     drawWidth: 3331,
@@ -53,6 +59,8 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   {
     id: 'Shipping',
     paperName: '30323 Shipping',
+    catalogSku: '30323',
+    studioLabel: '30323 Shipping Labels',
     widthMm: LABEL_WIDTH_MM,
     heightMm: LABEL_HEIGHT_MM,
     /** Must match DYMO Connect 30323 Shipping schema (do not use mmToTwips here — driver rejects XML). */
@@ -67,6 +75,7 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     id: 'Durable1933085',
     paperName: '1933085 LW Durable 3/4 in x 2-1/2 in',
     catalogSku: '1933085',
+    studioLabel: 'LW Durable Labels',
     /** 3/4" × 2-1/2" durable (19×64 mm), landscape on LabelWriter. */
     widthMm: 64,
     heightMm: 19,
@@ -81,21 +90,8 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     id: 'Address30251',
     paperName: '30252 Address',
     catalogSku: '30251',
-    /** 3½×1⅛ in address (89×28 mm landscape) — same face as 30252; DYMO schema uses 30252 Address. */
-    widthMm: 89,
-    heightMm: 28,
-    drawWidth: 1581,
-    drawHeight: 5040,
-    boundsX: 332,
-    boundsY: 150,
-    boundsWidth: 4455,
-    boundsHeight: 1260,
-  },
-  {
-    id: 'Address',
-    paperName: '30252 Address',
-    catalogSku: '30252',
-    /** 1⅛×3½ in address (89×28 mm landscape). */
+    studioLabel: '30251 Address Labels',
+    /** 3½×1⅛ in address (89×28 mm landscape) — DYMO driver schema is 30252 Address. */
     widthMm: 89,
     heightMm: 28,
     drawWidth: 1581,
@@ -106,6 +102,13 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     boundsHeight: 1260,
   },
 ] as const
+
+/** Rolls shown in Label Studio roll picker. */
+export function labelStudioPaperTemplates(
+  templates: readonly DymoPaperTemplate[] = DYMO_PAPER_TEMPLATES
+): readonly DymoPaperTemplate[] {
+  return templates.filter((t) => t.studioVisible !== false)
+}
 
 /**
  * PO labels try templates in array order; LargeShipping (30256) validates first and uses a

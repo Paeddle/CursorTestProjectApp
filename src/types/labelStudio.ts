@@ -267,5 +267,10 @@ export function paperTemplateById(
   id: string,
   templates: readonly DymoPaperTemplate[]
 ): DymoPaperTemplate {
-  return templates.find((t) => t.id === id) ?? templates[0]
+  const resolvedId = id === 'Address' ? 'Address30251' : id
+  return (
+    templates.find((t) => t.id === resolvedId) ??
+    templates.find((t) => t.id === 'Shipping') ??
+    templates[0]
+  )
 }
