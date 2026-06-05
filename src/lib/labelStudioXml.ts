@@ -272,7 +272,7 @@ async function buildElementXmlAsync(
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
     if (!imageUrl) return ''
-    const base64 = await fetchUrlAsPngBase64(imageUrl)
+    const base64 = await fetchUrlAsPngBase64(imageUrl, bounds)
     if (!base64) return ''
     return buildImageObjectXml(el, base64, bounds)
   }

@@ -6,11 +6,14 @@ const MAX_PRINT_QR_PX = 320
 /** Crisp-enough preview raster; canvas CSS scales this to the resized element box. */
 const QR_PREVIEW_RASTER_PX = 256
 
-/** Map DYMO twips on the printed square edge → PNG pixel width (96 dpi). */
-export function qrRasterPxForTwips(sideTwips: number): number {
+/** Map DYMO twips on a printed edge → PNG pixel width (96 dpi). */
+export function labelRasterPxForTwips(sideTwips: number): number {
   const px = Math.round((sideTwips * 96) / 1440)
   return Math.max(64, Math.min(MAX_PRINT_QR_PX, px))
 }
+
+/** @deprecated Use labelRasterPxForTwips */
+export const qrRasterPxForTwips = labelRasterPxForTwips
 
 /** PNG base64 for DYMO ImageObject — raster sized to the print bounds edge. */
 export async function qrPngBase64ForPrint(
@@ -19,7 +22,7 @@ export async function qrPngBase64ForPrint(
 ): Promise<string | null> {
   const trimmed = text.trim()
   if (!trimmed) return null
-  const width = sideTwips != null ? qrRasterPxForTwips(sideTwips) : MAX_PRINT_QR_PX
+  const width = sideTwips != null ? labelRasterPxForTwips(sideTwips) : MAX_PRINT_QR_PX
   try {
     const dataUrl = await QRCode.toDataURL(trimmed, {
       margin: 1,

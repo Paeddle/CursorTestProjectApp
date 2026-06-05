@@ -8,7 +8,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 32
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 33
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -19,12 +19,6 @@ const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set([
   'Durable1933085',
   'Address30251',
 ])
-
-/** Hybrid bounds origin differs from 30323 catalog — anchor from catalog face like the canvas. */
-const SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN = true
-const SHIPPING_HYBRID_Y_FROM_DESIGN_ORIGIN = true
-/** Legacy Y calibration — disabled so print matches the canvas (rev 30). */
-const SHIPPING_PRINT_Y_UP_FRAC = 0
 
 function usesStudioFacePrint(template: DymoPaperTemplate): boolean {
   return STUDIO_FACE_PRINT_TEMPLATE_IDS.has(template.id)
@@ -72,49 +66,6 @@ function pctToCanvasFaceBounds(
     width,
     height,
   }
-}
-
-/** Scale catalog-face bounds into the print envelope (30256 hybrid on 30323 rolls). */
-function scaleFaceBoundsToPrintTemplate(
-  bounds: DymoLabelBounds,
-  designTemplate: DymoPaperTemplate,
-  printTemplate: DymoPaperTemplate
-): DymoLabelBounds {
-  const design = studioFaceBounds(designTemplate)
-  const print = studioFaceBounds(printTemplate)
-  if (
-    design.x === print.x &&
-    design.y === print.y &&
-    design.width === print.width &&
-    design.height === print.height
-  ) {
-    return bounds
-  }
-  const scaleX = print.width / design.width
-  const scaleY = print.height / design.height
-  const x =
-    SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN
-      ? design.x + Math.round((bounds.x - design.x) * scaleX)
-      : print.x + Math.round((bounds.x - design.x) * scaleX)
-  const y =
-    SHIPPING_HYBRID_Y_FROM_DESIGN_ORIGIN
-      ? design.y + Math.round((bounds.y - design.y) * scaleY)
-      : print.y + Math.round((bounds.y - design.y) * scaleY)
-  return {
-    x,
-    y,
-    width: Math.max(80, Math.round(bounds.width * scaleX)),
-    height: Math.max(60, Math.round(bounds.height * scaleY)),
-  }
-}
-
-function nudgeShippingPrintYUp(
-  bounds: DymoLabelBounds,
-  printTemplate: DymoPaperTemplate
-): DymoLabelBounds {
-  const face = studioFaceBounds(printTemplate)
-  const up = Math.round(face.height * SHIPPING_PRINT_Y_UP_FRAC)
-  return { ...bounds, y: bounds.y - up }
 }
 
 function clampWithinFace(bounds: DymoLabelBounds, face: DymoLabelBounds): DymoLabelBounds {
@@ -190,17 +141,7 @@ export function pctToDymoPrintBounds(
 
   const designTemplate = options?.designTemplate ?? printTemplate
   const onCanvas = pctToCanvasFaceBounds(el, designTemplate)
-
-  const face = studioFaceBounds(printTemplate)
-  let mapped: DymoLabelBounds
-  if (printTemplate.id === 'Shipping') {
-    const scaled = scaleFaceBoundsToPrintTemplate(onCanvas, designTemplate, printTemplate)
-    mapped = nudgeShippingPrintYUp(scaled, printTemplate)
-  } else {
-    mapped = onCanvas
-  }
-
-  return clampWithinFace(mapped, face)
+  return clampWithinFace(onCanvas, studioFaceBounds(printTemplate))
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */

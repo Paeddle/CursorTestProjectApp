@@ -974,6 +974,7 @@
 }
 
 .label-studio-canvas-image .ls-element-inset {
+  inset: 0;
   padding: 0;
 }
 

@@ -1,13 +1,22 @@
+import { labelRasterPxForTwips } from './labelStudioQr'
+
 /** Keep embedded label images small so DYMO Connect accepts the XML. */
 const MAX_PRINT_IMAGE_PX = 320
 
 /** Fetch an image URL and return PNG bytes as base64 for DYMO ImageObject XML. */
-export async function fetchUrlAsPngBase64(url: string): Promise<string | null> {
+export async function fetchUrlAsPngBase64(
+  url: string,
+  boundsTwips?: { width: number; height: number }
+): Promise<string | null> {
   try {
     const res = await fetch(url)
     if (!res.ok) return null
     const blob = await res.blob()
-    return blobToPngBase64(blob, MAX_PRINT_IMAGE_PX)
+    const maxPx =
+      boundsTwips != null
+        ? labelRasterPxForTwips(Math.min(boundsTwips.width, boundsTwips.height))
+        : MAX_PRINT_IMAGE_PX
+    return blobToPngBase64(blob, maxPx)
   } catch {
     return null
   }

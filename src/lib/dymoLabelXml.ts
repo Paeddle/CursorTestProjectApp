@@ -111,23 +111,11 @@ export function labelStudioPaperTemplates(
 }
 
 /**
- * PO labels try templates in array order; LargeShipping (30256) validates first and uses a
- * tall draw area (~full label height). For Label Studio on 30323 rolls, print with the same
- * twips while keeping PaperName/Id = 30323 Shipping (probe: scripts/dymo-probe-po-vs-studio.mjs).
+ * Label Studio prints on the same 30323 catalog face as the designer canvas.
+ * (30256 hybrid bounds scaled content inward on physical 30323 stickers.)
  */
 export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
-  if (template.id !== 'Shipping') return template
-  const large = DYMO_PAPER_TEMPLATES.find((p) => p.id === 'LargeShipping')
-  if (!large) return template
-  return {
-    ...template,
-    drawWidth: large.drawWidth,
-    drawHeight: large.drawHeight,
-    boundsX: large.boundsX,
-    boundsY: large.boundsY,
-    boundsWidth: large.boundsWidth,
-    boundsHeight: large.boundsHeight,
-  }
+  return template
 }
 
 /** Inner printable rectangle (same padding as PO job/location split). */
