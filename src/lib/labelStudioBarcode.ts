@@ -66,7 +66,8 @@ const BARCODE_SIZE_ORDER: readonly LabelStudioBarcodeSize[] = [
 export function dymoBarcodeSizeForStudioPrint(
   bounds: DymoLabelBounds,
   symbology: Exclude<LabelStudioBarcodeType, 'Auto'>,
-  configured: LabelStudioBarcodeSize
+  configured: LabelStudioBarcodeSize,
+  paperId?: string
 ): LabelStudioBarcodeSize {
   const fromBounds = dymoBarcodeSizeForBounds(bounds, symbology)
   const configuredRank = Math.max(0, BARCODE_SIZE_ORDER.indexOf(configured))
@@ -74,6 +75,9 @@ export function dymoBarcodeSizeForStudioPrint(
   let rank = Math.max(configuredRank, boundsRank)
   if (symbology === 'QrCode') {
     rank = Math.max(rank, BARCODE_SIZE_ORDER.indexOf('Large'))
+    if (paperId === 'Shipping') {
+      rank = Math.max(rank, BARCODE_SIZE_ORDER.indexOf('Large'))
+    }
   }
   return BARCODE_SIZE_ORDER[Math.min(BARCODE_SIZE_ORDER.length - 1, rank)] ?? 'ExtraLarge'
 }

@@ -71,16 +71,15 @@ function buildTextObjectXml(
     textFitMode: LabelStudioTextElement['textFitMode']
   }
 ): string {
-  const shrink = options.textFitMode !== 'None'
-  const dymoFitMode = shrink ? 'ShrinkToFit' : 'None'
-  const pt = shrink
-    ? fontSize
-    : studioPrintTextFontSizePt(
-        fontSize,
-        Math.max(1, lines.length),
-        studioPrintTextVerticalTwips(bounds, paper),
-        options.textFitMode
-      )
+  const flowTwips = studioPrintTextVerticalTwips(bounds, paper)
+  const pt = studioPrintTextFontSizePt(
+    fontSize,
+    Math.max(1, lines.length),
+    flowTwips,
+    options.textFitMode
+  )
+  // 30323: ShrinkToFit shrinks to the thin XML height band — size along the text axis instead.
+  const dymoFitMode = paper.id === 'Shipping' ? 'None' : options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -108,10 +107,11 @@ function buildBarcodeObjectXml(
   el: LabelStudioBarcodeElement,
   encoded: string,
   symbology: Exclude<LabelStudioBarcodeElement['barcodeType'], 'Auto'>,
-  bounds: DymoLabelBounds
+  bounds: DymoLabelBounds,
+  paper: DymoPaperTemplate
 ): string {
   const dymoType = dymoBarcodeSymbologyXml(symbology)
-  const dymoSize = dymoBarcodeSizeForStudioPrint(bounds, symbology, el.size)
+  const dymoSize = dymoBarcodeSizeForStudioPrint(bounds, symbology, el.size, paper.id)
 
   return (
     `<ObjectInfo>` +
@@ -151,7 +151,7 @@ function buildBarcodePrintXml(
   if (!encoded) return ''
 
   const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition)
-  const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, barcode)
+  const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, barcode, paper)
 
   if (!caption || el.textPosition === 'None') return barcodeXml
 

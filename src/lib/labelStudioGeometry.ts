@@ -8,11 +8,12 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 16
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 17
 
 /** Physical 30323 prints sit slightly left/up vs designer — twips added after % mapping. */
 const SHIPPING_PRINT_NUDGE_X_FRAC = 0.03
-const SHIPPING_PRINT_NUDGE_Y_FRAC = 0.035
+/** Push stacked content down — hardware compresses XML Y into the top half of the face. */
+const SHIPPING_FACE_Y_OFFSET_FRAC = 0.1
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -50,9 +51,22 @@ function pctToStudioPrintBounds(
   }
 }
 
+function clampShippingBounds(
+  bounds: DymoLabelBounds,
+  base: DymoLabelBounds
+): DymoLabelBounds {
+  const maxX = base.x + base.width - bounds.width
+  const maxY = base.y + base.height - bounds.height
+  return {
+    ...bounds,
+    x: Math.max(base.x, Math.min(maxX, bounds.x)),
+    y: Math.max(base.y, Math.min(maxY, bounds.y)),
+  }
+}
+
 /**
- * 30323: map designer % to full catalog bounds (same grid as canvas / RenderLabel preview).
- * Keep wide XML boxes; face-linear Y so stacked text + QR use the full 59 mm face.
+ * 30323: catalog face + face-linear Y + hardware Y offset/height gain.
+ * Wide XML boxes keep correct landscape orientation on LabelWriter.
  */
 function pctToShippingPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
@@ -64,15 +78,18 @@ function pctToShippingPrintBounds(
   const maxX = base.x + base.width - width
   const maxY = base.y + base.height - height
   const x = base.x + Math.round((el.xPct / 100) * (base.width - width))
-  const y = Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY)
+  const yAnchor = base.y + Math.round((el.yPct / 100) * (base.height - height))
+  const y = Math.min(maxY, yAnchor + Math.round(base.height * SHIPPING_FACE_Y_OFFSET_FRAC))
   const nudgeX = Math.round(base.width * SHIPPING_PRINT_NUDGE_X_FRAC)
-  const nudgeY = Math.round(base.height * SHIPPING_PRINT_NUDGE_Y_FRAC)
-  return {
-    x: Math.min(maxX, x + nudgeX),
-    y: Math.min(maxY, y + nudgeY),
-    width,
-    height,
-  }
+  return clampShippingBounds(
+    {
+      x: Math.min(maxX, x + nudgeX),
+      y: Math.min(maxY, y),
+      width,
+      height,
+    },
+    base
+  )
 }
 
 /** Map studio 0–100% to DYMO object bounds for print XML. */

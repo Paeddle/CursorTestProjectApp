@@ -1,5 +1,5 @@
 /**
- * Print PO vs studio rev 15 (catalog bounds + face-linear Y + ShrinkToFit).
+ * Print PO vs studio rev 17 (larger text, lower stack, bigger QR).
  * node scripts/dymo-print-po-vs-studio.mjs
  */
 import { buildLabelXml, DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
@@ -9,30 +9,47 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const ITEM = "1' Cat6 Patch Cable"
 
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+}
+
+const NUDGE_X = 0.03
+const Y_OFFSET = 0.1
+
 function faceBounds(t) {
   return { x: t.boundsX, y: t.boundsY, width: t.boundsWidth, height: t.boundsHeight }
 }
 
-/** Rev 16: catalog face + face-linear Y + hardware nudge. */
-const NUDGE_X = 0.03
-const NUDGE_Y = 0.035
+function clamp(bounds, base) {
+  const maxX = base.x + base.width - bounds.width
+  const maxY = base.y + base.height - bounds.height
+  return {
+    ...bounds,
+    x: Math.max(base.x, Math.min(maxX, bounds.x)),
+    y: Math.max(base.y, Math.min(maxY, bounds.y)),
+  }
+}
 
-function mapRev16(el, base) {
+function mapRev17(el, base) {
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
   const maxX = base.x + base.width - width
   const maxY = base.y + base.height - height
   const x = base.x + Math.round((el.xPct / 100) * (base.width - width))
-  const y = Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY)
-  return {
-    x: Math.min(maxX, x + Math.round(base.width * NUDGE_X)),
-    y: Math.min(maxY, y + Math.round(base.height * NUDGE_Y)),
-    width,
-    height,
-  }
+  const yAnchor = base.y + Math.round((el.yPct / 100) * (base.height - height))
+  const y = Math.min(maxY, yAnchor + Math.round(base.height * Y_OFFSET))
+  return clamp(
+    {
+      x: Math.min(maxX, x + Math.round(base.width * NUDGE_X)),
+      y: Math.min(maxY, y),
+      width,
+      height,
+    },
+    base
+  )
 }
 
-function textXml(tag, lines, bounds, size, fit) {
+function textXml(tag, lines, bounds, size) {
   return (
     `<ObjectInfo><TextObject><Name>TXT</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
@@ -40,9 +57,9 @@ function textXml(tag, lines, bounds, size, fit) {
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored><IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>${fit}</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
+    `<TextFitMode>None</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized><StyledText>` +
-    `<Element><String>${tag} ${lines}</String><Attributes>` +
+    `<Element><String>${esc(`${tag} ${lines}`)}</String><Attributes>` +
     `<Font Family="Arial" Size="${size}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/></Attributes></Element>` +
     `</StyledText></TextObject>` +
@@ -81,9 +98,9 @@ function dieCut(objects) {
 
 function studioXml() {
   const base = faceBounds(catalog)
-  const textB = mapRev16({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev16({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  return dieCut(textXml('STUDIO', ITEM, textB, 18, 'ShrinkToFit') + qrXml(qrB))
+  const textB = mapRev17({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev17({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  return dieCut(textXml('STUDIO', ITEM, textB, 18) + qrXml(qrB))
 }
 
 async function dymoRequest(endpoint, form) {
@@ -109,20 +126,20 @@ async function printXml(name, labelXml) {
   })
   const ok = print.ok && String(print.body).trim().toLowerCase() !== 'false'
   console.log(`${ok ? 'PRINTED' : 'FAIL'} ${name}`)
+  if (!ok) console.log(String(print.body).slice(0, 400))
 }
 
 async function main() {
   const base = faceBounds(catalog)
-  const textB = mapRev16({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev16({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  console.log('rev16 catalog face', base)
-  console.log('text', textB, 'qr', qrB)
+  const textB = mapRev17({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev17({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  console.log('rev17 text', textB, 'qr', qrB)
   const poXml = buildLabelXml(
     { jobFontSize: 22, locationFontSize: 14, jobLines: [`PO ${ITEM}`], locationLines: [] },
     catalog
   )
   await printXml('PO-label', poXml)
-  await printXml('STUDIO-rev16', studioXml())
+  await printXml('STUDIO-rev17', studioXml())
 }
 
 main().catch((e) => {
