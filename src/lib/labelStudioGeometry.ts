@@ -8,13 +8,13 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 10
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 11
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
 export type StudioPrintBoundsOptions = { /** @deprecated Unused — kept for call-site compatibility. */ catalogTwips?: boolean }
 
-/** DYMO printable face for the roll template — same grid as the studio canvas (0–100%). */
+/** Canvas/preview face (0–100% of 102×59 mm). */
 function studioPrintFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
   return {
     x: template.boundsX,
@@ -24,7 +24,7 @@ function studioPrintFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
   }
 }
 
-/** Map studio 0–100% (label face) to DYMO object bounds for print XML. */
+/** Direct map — matches DYMO RenderLabel preview, not this LabelWriter's physical feed. */
 function pctToStudioFaceBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
@@ -40,13 +40,42 @@ function pctToStudioFaceBounds(
   }
 }
 
+/**
+ * 30323 Landscape on LabelWriter: studio vertical% → XML X, horizontal% → XML Y (probe + PrintLabel2).
+ * RenderLabel preview looks side-by-side; physical output matches the stacked studio layout.
+ */
+function pctToShippingLandscapePrintBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  const base = studioPrintFaceBounds(template)
+  const width = Math.max(80, Math.round((el.heightPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.widthPct / 100) * base.height))
+  return {
+    x: base.x + Math.round((el.yPct / 100) * (base.width - width)),
+    y: base.y + Math.round((el.xPct / 100) * (base.height - height)),
+    width,
+    height,
+  }
+}
+
 /** Map studio 0–100% to DYMO object bounds for print XML. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate,
   _options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
+  if (template.id === 'Shipping') return pctToShippingLandscapePrintBounds(el, template)
   return pctToStudioFaceBounds(el, template)
+}
+
+/** Twips along the text line-height axis after print-axis mapping. */
+export function studioPrintTextBoxVerticalTwips(
+  bounds: DymoLabelBounds,
+  template: DymoPaperTemplate
+): number {
+  if (template.id === 'Shipping') return bounds.width
+  return bounds.height
 }
 
 export type LabelPrintableMetrics = {
@@ -73,18 +102,17 @@ export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
 
 const LINE_HEIGHT_TWIPS_PER_PT = 28
 
-/** PO-style fixed print size — ShrinkToFit previews correctly in RenderLabel but prints tiny on hardware. */
+/** PO-style fixed print size for hardware (ShrinkToFit previews OK in RenderLabel only). */
 export function studioPrintTextFontSizePt(
   fontSize: number,
   lineCount: number,
-  boxHeightTwips: number,
+  boxVerticalTwips: number,
   textFitMode: LabelStudioTextFitMode | undefined
 ): number {
-  if (textFitMode === 'None') return fontSize
   const lines = Math.max(1, lineCount)
   const needed = lines * fontSize * LINE_HEIGHT_TWIPS_PER_PT
-  if (needed <= boxHeightTwips) return fontSize
-  return Math.max(8, Math.floor((fontSize * boxHeightTwips) / needed))
+  if (textFitMode === 'None' || needed <= boxVerticalTwips) return fontSize
+  return Math.max(8, Math.floor((fontSize * boxVerticalTwips) / needed))
 }
 
 /** @deprecated Use studioPrintTextFontSizePt for print XML. */
