@@ -698,6 +698,63 @@
   overflow: hidden;
 }
 
+.ls-printable-area-grid {
+  background-color: #fff;
+  background-image:
+    linear-gradient(to right, rgba(26, 95, 180, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 95, 180, 0.12) 1px, transparent 1px);
+  background-size: var(--ls-grid-step, 5%) var(--ls-grid-step, 5%);
+}
+
+.ls-grid-controls {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ls-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  margin-right: 0.5rem;
+}
+
+.ls-grid-step-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  margin-right: 0.5rem;
+}
+
+.ls-grid-step-label select {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.ls-align-ref-row {
+  margin-top: 0.5rem;
+}
+
+.ls-align-ref-label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+
+.ls-align-ref-label select {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 0.2rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
 .ls-canvas-empty {
   position: absolute;
   inset: 0;
@@ -976,12 +1033,18 @@
 .label-studio-canvas-image .ls-element-inset {
   inset: 0;
   padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ls-canvas-image {
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
+  object-position: center;
   display: block;
   pointer-events: none;
 }

@@ -55,7 +55,14 @@ import {
   type LabelStudioTemplate,
 } from '../types/labelStudio'
 import LabelStudioCanvas from './LabelStudioCanvas'
-import { alignElement } from '../lib/labelStudioCanvasGeometry'
+import {
+  alignElement,
+  alignElementToReference,
+  DEFAULT_GRID_STEP_PCT,
+  GRID_STEP_OPTIONS_PCT,
+  snapRectToGrid,
+  type AlignToReferenceMode,
+} from '../lib/labelStudioCanvasGeometry'
 import './LabelStudio.css'
 
 const INVENTORY_SOURCE_HINT =
@@ -113,6 +120,15 @@ export default function LabelStudio() {
   const [itemsError, setItemsError] = useState<string | null>(null)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [printing, setPrinting] = useState(false)
+  const [showGrid, setShowGrid] = useState(() => localStorage.getItem('ls-show-grid') === '1')
+  const [snapToGrid, setSnapToGrid] = useState(() => localStorage.getItem('ls-snap-grid') !== '0')
+  const [gridStepPct, setGridStepPct] = useState(() => {
+    const n = Number(localStorage.getItem('ls-grid-step'))
+    return GRID_STEP_OPTIONS_PCT.includes(n as (typeof GRID_STEP_OPTIONS_PCT)[number])
+      ? n
+      : DEFAULT_GRID_STEP_PCT
+  })
+  const [alignReferenceId, setAlignReferenceId] = useState<string>('')
   const [dymoSummary, setDymoSummary] = useState<string | null>(null)
 
   const searchTrimmed = search.trim()
@@ -266,6 +282,44 @@ export default function LabelStudio() {
     updateElement(id, rect)
   }
 
+  const snapElementNow = () => {
+    if (!selectedElement || !snapToGrid || gridStepPct <= 0) return
+    updateElementRect(
+      selectedElement.id,
+      snapRectToGrid(
+        {
+          xPct: selectedElement.xPct,
+          yPct: selectedElement.yPct,
+          widthPct: selectedElement.widthPct,
+          heightPct: selectedElement.heightPct,
+        },
+        gridStepPct
+      )
+    )
+  }
+
+  const alignSelectedToReference = (mode: AlignToReferenceMode) => {
+    if (!selectedElement || !alignReferenceId) return
+    const ref = template.elements.find((e) => e.id === alignReferenceId)
+    if (!ref || ref.id === selectedElement.id) return
+    const rect = alignElementToReference(
+      {
+        xPct: selectedElement.xPct,
+        yPct: selectedElement.yPct,
+        widthPct: selectedElement.widthPct,
+        heightPct: selectedElement.heightPct,
+      },
+      {
+        xPct: ref.xPct,
+        yPct: ref.yPct,
+        widthPct: ref.widthPct,
+        heightPct: ref.heightPct,
+      },
+      mode
+    )
+    updateElementRect(selectedElement.id, rect)
+  }
+
   const duplicateSelectedElement = () => {
     if (!selectedElement) return
     const copy = {
@@ -384,18 +438,31 @@ export default function LabelStudio() {
         deleteSelectedElement()
         return
       }
+      const nudge = (patch: { xPct?: number; yPct?: number }) => {
+        const next = {
+          xPct: patch.xPct ?? el.xPct,
+          yPct: patch.yPct ?? el.yPct,
+          widthPct: el.widthPct,
+          heightPct: el.heightPct,
+        }
+        if (snapToGrid && gridStepPct > 0) {
+          updateElementRect(el.id, snapRectToGrid(next, gridStepPct))
+        } else {
+          updateElement(el.id, patch)
+        }
+      }
       if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        updateElement(el.id, { xPct: el.xPct - step })
+        nudge({ xPct: el.xPct - step })
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
-        updateElement(el.id, { xPct: el.xPct + step })
+        nudge({ xPct: el.xPct + step })
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        updateElement(el.id, { yPct: el.yPct - step })
+        nudge({ yPct: el.yPct - step })
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        updateElement(el.id, { yPct: el.yPct + step })
+        nudge({ yPct: el.yPct + step })
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault()
         duplicateSelectedElement()
@@ -403,7 +470,7 @@ export default function LabelStudio() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedElementId, template.elements])
+  }, [selectedElementId, template.elements, snapToGrid, gridStepPct])
 
   const handleSaveTemplate = () => {
     const toSave = { ...template, updatedAt: new Date().toISOString() }
@@ -860,16 +927,71 @@ export default function LabelStudio() {
             </div>
           </div>
 
+          <div className="ls-layout-tools">
+            <span className="ls-field-label">Grid &amp; snap</span>
+            <div className="ls-btn-row ls-grid-controls">
+              <label className="ls-check-label">
+                <input
+                  type="checkbox"
+                  checked={showGrid}
+                  onChange={(e) => {
+                    setShowGrid(e.target.checked)
+                    localStorage.setItem('ls-show-grid', e.target.checked ? '1' : '0')
+                  }}
+                />
+                Show grid
+              </label>
+              <label className="ls-check-label">
+                <input
+                  type="checkbox"
+                  checked={snapToGrid}
+                  onChange={(e) => {
+                    setSnapToGrid(e.target.checked)
+                    localStorage.setItem('ls-snap-grid', e.target.checked ? '1' : '0')
+                  }}
+                />
+                Snap to grid
+              </label>
+              <label className="ls-grid-step-label">
+                Step
+                <select
+                  value={gridStepPct}
+                  onChange={(e) => {
+                    const n = Number(e.target.value)
+                    setGridStepPct(n)
+                    localStorage.setItem('ls-grid-step', String(n))
+                  }}
+                  disabled={!showGrid && !snapToGrid}
+                >
+                  {GRID_STEP_OPTIONS_PCT.map((n) => (
+                    <option key={n} value={n}>
+                      {n}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="ls-btn ls-btn-secondary"
+                onClick={snapElementNow}
+                disabled={!selectedElement || !snapToGrid}
+                title="Snap selected field to grid now"
+              >
+                Snap now
+              </button>
+            </div>
+          </div>
+
           {selectedElement && (
             <div className="ls-layout-tools">
               <span className="ls-field-label">Align on label</span>
               <div className="ls-btn-row">
-                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('left')} title="Align left">⬅</button>
-                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('centerH')} title="Center horizontally">↔</button>
-                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('right')} title="Align right">➡</button>
-                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('top')} title="Align top">⬆</button>
-                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('centerV')} title="Center vertically">↕</button>
-                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('bottom')} title="Align bottom">⬇</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('left')} title="Align left edge to label">⬅</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('centerH')} title="Center horizontally on label">↔</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('right')} title="Align right edge to label">➡</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('top')} title="Align top to label">⬆</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('centerV')} title="Center vertically on label">↕</button>
+                <button type="button" className="ls-btn ls-btn-secondary ls-btn-icon" onClick={() => alignSelected('bottom')} title="Align bottom to label">⬇</button>
                 <button type="button" className="ls-btn ls-btn-secondary" onClick={() => moveElementLayer('up')} title="Bring forward">
                   ↑ Layer
                 </button>
@@ -877,6 +999,49 @@ export default function LabelStudio() {
                   ↓ Layer
                 </button>
               </div>
+              {template.elements.length > 1 && (
+                <div className="ls-align-ref-row">
+                  <label className="ls-align-ref-label">
+                    Align to field
+                    <select
+                      value={alignReferenceId}
+                      onChange={(e) => setAlignReferenceId(e.target.value)}
+                    >
+                      <option value="">Choose field…</option>
+                      {template.elements
+                        .filter((e) => e.id !== selectedElement.id)
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {elementSummary(e)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <div className="ls-btn-row">
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('left')}>
+                      Match left
+                    </button>
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('centerH')}>
+                      Match center
+                    </button>
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('right')}>
+                      Match right
+                    </button>
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('top')}>
+                      Match top
+                    </button>
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('centerV')}>
+                      Match middle
+                    </button>
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('matchWidth')}>
+                      Same width
+                    </button>
+                    <button type="button" className="ls-btn ls-btn-secondary" disabled={!alignReferenceId} onClick={() => alignSelectedToReference('matchHeight')}>
+                      Same height
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -908,13 +1073,17 @@ export default function LabelStudio() {
             imagePreviewUrl={canvasImagePreviewUrl}
             barcodePreview={canvasBarcodePreview}
             onPrintableSizeChange={setPrintableSizePx}
+            showGrid={showGrid}
+            gridStepPct={gridStepPct}
+            snapToGrid={snapToGrid}
           />
 
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face — print uses the same
             catalog bounds on 30323.{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
-            field.
+            field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow
+            keys.
           </p>
 
           {previewItem && (

@@ -7,9 +7,27 @@ export type ElementRect = {
 
 export type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
+export const GRID_STEP_OPTIONS_PCT = [2, 5, 10] as const
+export const DEFAULT_GRID_STEP_PCT = 5
+
 const MIN_W = 5
 const MIN_H = 5
 const PAD = 0
+
+export function snapValueToGrid(value: number, stepPct: number): number {
+  if (stepPct <= 0) return value
+  return Math.round(value / stepPct) * stepPct
+}
+
+export function snapRectToGrid(rect: ElementRect, stepPct: number): ElementRect {
+  if (stepPct <= 0) return rect
+  return clampRect({
+    xPct: snapValueToGrid(rect.xPct, stepPct),
+    yPct: snapValueToGrid(rect.yPct, stepPct),
+    widthPct: Math.max(MIN_W, snapValueToGrid(rect.widthPct, stepPct)),
+    heightPct: Math.max(MIN_H, snapValueToGrid(rect.heightPct, stepPct)),
+  })
+}
 
 function clampRect(r: ElementRect): ElementRect {
   let { xPct, yPct, widthPct, heightPct } = r
@@ -93,6 +111,44 @@ export function alignElement(
       return clampRect({ ...rect, yPct: (100 - rect.heightPct) / 2 })
     case 'bottom':
       return clampRect({ ...rect, yPct: 100 - margin - rect.heightPct })
+    default:
+      return rect
+  }
+}
+
+export type AlignToReferenceMode =
+  | 'left'
+  | 'centerH'
+  | 'right'
+  | 'top'
+  | 'centerV'
+  | 'bottom'
+  | 'matchWidth'
+  | 'matchHeight'
+
+/** Align the selected field to another field on the label. */
+export function alignElementToReference(
+  rect: ElementRect,
+  ref: ElementRect,
+  mode: AlignToReferenceMode
+): ElementRect {
+  switch (mode) {
+    case 'left':
+      return clampRect({ ...rect, xPct: ref.xPct })
+    case 'right':
+      return clampRect({ ...rect, xPct: ref.xPct + ref.widthPct - rect.widthPct })
+    case 'centerH':
+      return clampRect({ ...rect, xPct: ref.xPct + (ref.widthPct - rect.widthPct) / 2 })
+    case 'top':
+      return clampRect({ ...rect, yPct: ref.yPct })
+    case 'bottom':
+      return clampRect({ ...rect, yPct: ref.yPct + ref.heightPct - rect.heightPct })
+    case 'centerV':
+      return clampRect({ ...rect, yPct: ref.yPct + (ref.heightPct - rect.heightPct) / 2 })
+    case 'matchWidth':
+      return clampRect({ ...rect, widthPct: ref.widthPct })
+    case 'matchHeight':
+      return clampRect({ ...rect, heightPct: ref.heightPct })
     default:
       return rect
   }

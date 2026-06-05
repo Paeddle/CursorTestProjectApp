@@ -9,6 +9,7 @@ import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePrevi
 import {
   applyMove,
   applyResize,
+  snapRectToGrid,
   type ElementRect,
   type ResizeHandle,
   RESIZE_HANDLES,
@@ -42,6 +43,9 @@ export type LabelStudioCanvasProps = {
   imagePreviewUrl?: (el: LabelStudioElement) => string | null
   barcodePreview?: (el: LabelStudioElement) => LabelStudioBarcodePreview | null
   onPrintableSizeChange?: (size: { width: number; height: number }) => void
+  showGrid?: boolean
+  gridStepPct?: number
+  snapToGrid?: boolean
 }
 
 function rectFromElement(el: LabelStudioElement): ElementRect {
@@ -58,6 +62,9 @@ export default function LabelStudioCanvas({
   imagePreviewUrl,
   barcodePreview,
   onPrintableSizeChange,
+  showGrid = false,
+  gridStepPct = 5,
+  snapToGrid = false,
 }: LabelStudioCanvasProps) {
   const printableRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
@@ -104,8 +111,15 @@ export default function LabelStudioCanvas({
   )
 
   const endDrag = useCallback(() => {
+    const drag = dragRef.current
+    if (drag && snapToGrid && gridStepPct > 0) {
+      const el = elements.find((e) => e.id === drag.elementId)
+      if (el) {
+        onUpdateRect(drag.elementId, snapRectToGrid(rectFromElement(el), gridStepPct))
+      }
+    }
     dragRef.current = null
-  }, [])
+  }, [elements, snapToGrid, gridStepPct, onUpdateRect])
 
   const startMove = (el: LabelStudioElement, ev: React.PointerEvent) => {
     if ((ev.target as HTMLElement).classList.contains('ls-resize-handle')) return
@@ -147,7 +161,17 @@ export default function LabelStudioCanvas({
       onPointerLeave={endDrag}
       onPointerDown={() => onSelect(null)}
     >
-      <div ref={printableRef} className="ls-printable-area">
+      <div
+        ref={printableRef}
+        className={`ls-printable-area${showGrid ? ' ls-printable-area-grid' : ''}`}
+        style={
+          showGrid && gridStepPct > 0
+            ? ({
+                '--ls-grid-step': `${gridStepPct}%`,
+              } as React.CSSProperties)
+            : undefined
+        }
+      >
         {elements.length === 0 && (
           <p className="ls-canvas-empty">Add text, image, or a barcode. Positions match what will print.</p>
         )}
@@ -220,7 +244,12 @@ export default function LabelStudioCanvas({
                   </>
                 ) : isImage ? (
                   imgSrc ? (
-                    <img className="ls-canvas-image" src={imgSrc} alt="" />
+                    <img
+                      className="ls-canvas-image"
+                      src={imgSrc}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                    />
                   ) : (
                     <span className="ls-element-text">No image</span>
                   )

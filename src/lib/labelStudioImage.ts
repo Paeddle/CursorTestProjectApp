@@ -1,32 +1,51 @@
-import { labelRasterPxForTwips } from './labelStudioQr'
+import { supabase } from './supabase'
+import { labelRasterPxForTwips, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 
-/** Keep embedded label images small so DYMO Connect accepts the XML. */
-const MAX_PRINT_IMAGE_PX = 320
+/** Parse Supabase public storage URL → bucket + object path. */
+export function parseSupabaseStoragePublicUrl(url: string): { bucket: string; path: string } | null {
+  try {
+    const u = new URL(url)
+    const m = u.pathname.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
+    if (!m) return null
+    return { bucket: decodeURIComponent(m[1]), path: decodeURIComponent(m[2]) }
+  } catch {
+    return null
+  }
+}
+
+async function loadImageBlob(url: string): Promise<Blob | null> {
+  const storage = parseSupabaseStoragePublicUrl(url)
+  if (storage && supabase) {
+    const { data, error } = await supabase.storage.from(storage.bucket).download(storage.path)
+    if (!error && data) return data
+  }
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.blob()
+  } catch {
+    return null
+  }
+}
 
 /** Fetch an image URL and return PNG bytes as base64 for DYMO ImageObject XML. */
 export async function fetchUrlAsPngBase64(
   url: string,
   boundsTwips?: { width: number; height: number }
 ): Promise<string | null> {
-  try {
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const blob = await res.blob()
-    const maxPx =
-      boundsTwips != null
-        ? labelRasterPxForTwips(Math.min(boundsTwips.width, boundsTwips.height))
-        : MAX_PRINT_IMAGE_PX
-    return blobToPngBase64(blob, maxPx)
-  } catch {
-    return null
-  }
+  const maxPx =
+    boundsTwips != null
+      ? labelRasterPxForTwips(Math.min(boundsTwips.width, boundsTwips.height))
+      : MAX_LABEL_RASTER_PX
+  const blob = await loadImageBlob(url)
+  if (!blob) return null
+  return blobToPngBase64(blob, maxPx)
 }
 
-export function blobToPngBase64(blob: Blob, maxPx = MAX_PRINT_IMAGE_PX): Promise<string | null> {
+export function blobToPngBase64(blob: Blob, maxPx = MAX_LABEL_RASTER_PX): Promise<string | null> {
   return new Promise((resolve) => {
     const objectUrl = URL.createObjectURL(blob)
     const img = new Image()
-    img.crossOrigin = 'anonymous'
     img.onload = () => {
       try {
         let w = Math.max(1, img.naturalWidth)
@@ -44,7 +63,7 @@ export function blobToPngBase64(blob: Blob, maxPx = MAX_PRINT_IMAGE_PX): Promise
           resolve(null)
           return
         }
-        ctx.drawImage(img, 0, 0)
+        ctx.drawImage(img, 0, 0, w, h)
         const dataUrl = canvas.toDataURL('image/png')
         resolve(dataUrl.replace(/^data:image\/png;base64,/, ''))
       } catch {
