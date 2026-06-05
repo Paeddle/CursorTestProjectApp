@@ -19,7 +19,7 @@ import type {
 import {
   pctToDymoPrintBounds,
   studioPrintTextFontSizePt,
-  studioPrintTextVerticalTwips,
+  studioPrintTextFontBoxTwips,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -71,14 +71,14 @@ function buildTextObjectXml(
     textFitMode: LabelStudioTextElement['textFitMode']
   }
 ): string {
-  const flowTwips = studioPrintTextVerticalTwips(bounds, paper)
+  const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
   const pt = studioPrintTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
-    flowTwips,
+    fontBoxTwips,
     options.textFitMode
   )
-  // 30323: ShrinkToFit shrinks to the thin XML height band — size along the text axis instead.
+  // 30323: DYMO ShrinkToFit uses the thin height band and shrinks text to illegible size.
   const dymoFitMode = paper.id === 'Shipping' ? 'None' : options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (

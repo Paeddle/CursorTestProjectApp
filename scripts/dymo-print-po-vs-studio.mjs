@@ -1,20 +1,18 @@
 /**
- * Print PO vs studio rev 17 (larger text, lower stack, bigger QR).
+ * Print studio layout matching web app rev 18 (item + QR, designer font scale).
  * node scripts/dymo-print-po-vs-studio.mjs
  */
-import { buildLabelXml, DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
+import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const ITEM = "1' Cat6 Patch Cable"
+const Y_OFFSET = 0.15
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
-
-const NUDGE_X = 0.03
-const Y_OFFSET = 0.1
 
 function faceBounds(t) {
   return { x: t.boundsX, y: t.boundsY, width: t.boundsWidth, height: t.boundsHeight }
@@ -30,18 +28,16 @@ function clamp(bounds, base) {
   }
 }
 
-function mapRev17(el, base) {
+function mapRev18(el, base) {
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  const maxX = base.x + base.width - width
   const maxY = base.y + base.height - height
-  const x = base.x + Math.round((el.xPct / 100) * (base.width - width))
   const yAnchor = base.y + Math.round((el.yPct / 100) * (base.height - height))
   const y = Math.min(maxY, yAnchor + Math.round(base.height * Y_OFFSET))
   return clamp(
     {
-      x: Math.min(maxX, x + Math.round(base.width * NUDGE_X)),
-      y: Math.min(maxY, y),
+      x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+      y,
       width,
       height,
     },
@@ -49,9 +45,9 @@ function mapRev17(el, base) {
   )
 }
 
-function textXml(tag, lines, bounds, size) {
+function textXml(lines, bounds, size) {
   return (
-    `<ObjectInfo><TextObject><Name>TXT</Name>` +
+    `<ObjectInfo><TextObject><Name>ITEM</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
@@ -59,7 +55,7 @@ function textXml(tag, lines, bounds, size) {
     `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Middle</VerticalAlignment>` +
     `<TextFitMode>None</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized><StyledText>` +
-    `<Element><String>${esc(`${tag} ${lines}`)}</String><Attributes>` +
+    `<Element><String>${esc(lines)}</String><Attributes>` +
     `<Font Family="Arial" Size="${size}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/></Attributes></Element>` +
     `</StyledText></TextObject>` +
@@ -96,11 +92,12 @@ function dieCut(objects) {
   )
 }
 
+/** Typical saved template: item name top, QR below (matches web app screenshot). */
 function studioXml() {
   const base = faceBounds(catalog)
-  const textB = mapRev17({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev17({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  return dieCut(textXml('STUDIO', ITEM, textB, 18) + qrXml(qrB))
+  const textB = mapRev18({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev18({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  return dieCut(textXml(ITEM, textB, 17) + qrXml(qrB))
 }
 
 async function dymoRequest(endpoint, form) {
@@ -131,15 +128,10 @@ async function printXml(name, labelXml) {
 
 async function main() {
   const base = faceBounds(catalog)
-  const textB = mapRev17({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev17({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  console.log('rev17 text', textB, 'qr', qrB)
-  const poXml = buildLabelXml(
-    { jobFontSize: 22, locationFontSize: 14, jobLines: [`PO ${ITEM}`], locationLines: [] },
-    catalog
-  )
-  await printXml('PO-label', poXml)
-  await printXml('STUDIO-rev17', studioXml())
+  const textB = mapRev18({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev18({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  console.log('rev18 text', textB, 'qr', qrB)
+  await printXml('STUDIO-rev18', studioXml())
 }
 
 main().catch((e) => {

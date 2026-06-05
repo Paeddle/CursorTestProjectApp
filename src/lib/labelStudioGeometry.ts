@@ -8,12 +8,10 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 17
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 18
 
-/** Physical 30323 prints sit slightly left/up vs designer — twips added after % mapping. */
-const SHIPPING_PRINT_NUDGE_X_FRAC = 0.03
 /** Push stacked content down — hardware compresses XML Y into the top half of the face. */
-const SHIPPING_FACE_Y_OFFSET_FRAC = 0.1
+const SHIPPING_FACE_Y_OFFSET_FRAC = 0.15
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -65,8 +63,7 @@ function clampShippingBounds(
 }
 
 /**
- * 30323: catalog face + face-linear Y + hardware Y offset/height gain.
- * Wide XML boxes keep correct landscape orientation on LabelWriter.
+ * 30323: catalog face, wide XML boxes (landscape text), face-linear Y + downward offset.
  */
 function pctToShippingPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
@@ -75,16 +72,13 @@ function pctToShippingPrintBounds(
   const base = studioFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  const maxX = base.x + base.width - width
   const maxY = base.y + base.height - height
-  const x = base.x + Math.round((el.xPct / 100) * (base.width - width))
-  const yAnchor = base.y + Math.round((el.yPct / 100) * (base.height - height))
-  const y = Math.min(maxY, yAnchor + Math.round(base.height * SHIPPING_FACE_Y_OFFSET_FRAC))
-  const nudgeX = Math.round(base.width * SHIPPING_PRINT_NUDGE_X_FRAC)
+  const yLinear = base.y + Math.round((el.yPct / 100) * (base.height - height))
+  const y = Math.min(maxY, yLinear + Math.round(base.height * SHIPPING_FACE_Y_OFFSET_FRAC))
   return clampShippingBounds(
     {
-      x: Math.min(maxX, x + nudgeX),
-      y: Math.min(maxY, y),
+      x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+      y,
       width,
       height,
     },
@@ -102,13 +96,20 @@ export function pctToDymoPrintBounds(
   return pctToStudioPrintBounds(el, template)
 }
 
-/** Text flow axis in print XML (30323 wide Bounds.Width is along the readable edge). */
+/** Twips used to size print font — match canvas (element height band on 30323). */
+export function studioPrintTextFontBoxTwips(
+  bounds: DymoLabelBounds,
+  _template: DymoPaperTemplate
+): number {
+  return bounds.height
+}
+
+/** @deprecated Use studioPrintTextFontBoxTwips */
 export function studioPrintTextVerticalTwips(
   bounds: DymoLabelBounds,
   template: DymoPaperTemplate
 ): number {
-  if (template.id === 'Shipping') return bounds.width
-  return bounds.height
+  return studioPrintTextFontBoxTwips(bounds, template)
 }
 
 export type LabelPrintableMetrics = {
