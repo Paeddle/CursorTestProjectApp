@@ -12,11 +12,15 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 7
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 8
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
 export type StudioPrintBoundsOptions = { /** Use short 30323 catalog twips (fallback if hybrid rejected). */ catalogTwips?: boolean }
+
+/** Photo calibration — hybrid 30323 prints land slightly left/up on the sticker face. */
+const SHIPPING_PRINT_X_NUDGE_PCT = 3
+const SHIPPING_PRINT_Y_NUDGE_PCT = 3.5
 
 function pctToCatalogBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
@@ -44,6 +48,17 @@ function pctToCatalogBounds(
  * on the hybrid 30323 template (tall draw + large bounds). Direct x/y — wide text boxes so
  * ShrinkToFit is not crushed by a narrow width.
  */
+function applyShippingPrintNudge(bounds: DymoLabelBounds, template: DymoPaperTemplate): DymoLabelBounds {
+  if (template.id !== 'Shipping') return bounds
+  const base = poInnerBoundsForTemplate(template)
+  return {
+    x: bounds.x + Math.round((SHIPPING_PRINT_X_NUDGE_PCT / 100) * base.width),
+    y: bounds.y + Math.round((SHIPPING_PRINT_Y_NUDGE_PCT / 100) * base.height),
+    width: bounds.width,
+    height: bounds.height,
+  }
+}
+
 function pctToPoInnerBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
@@ -51,12 +66,15 @@ function pctToPoInnerBounds(
   const base = poInnerBoundsForTemplate(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  return {
-    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-    y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
-    width,
-    height,
-  }
+  return applyShippingPrintNudge(
+    {
+      x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+      y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
+      width,
+      height,
+    },
+    template
+  )
 }
 
 /** Map studio 0–100% to DYMO object bounds for print XML. */
