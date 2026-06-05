@@ -46,8 +46,7 @@ export function dymoBarcodeSizeForBounds(
 ): LabelStudioBarcodeSize {
   const h = bounds.height
   const w = bounds.width
-  const metric =
-    symbology === 'QrCode' ? Math.min(h, w) : Math.min(h, Math.round(w / 2.5))
+  const metric = symbology === 'QrCode' ? h : Math.min(h, Math.round(w / 2.5))
 
   if (metric < 520) return 'Small'
   if (metric < 820) return 'Medium'

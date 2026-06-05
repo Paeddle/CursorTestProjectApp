@@ -1106,15 +1106,47 @@ export default function LabelStudio() {
               ) : null}
 
               <div className="ls-size-readout">
-                <span className="ls-field-label">Size on label</span>
+                <span className="ls-field-label">Position &amp; size on label</span>
                 <p className="ls-size-values">
+                  {Math.round(selectedElement.xPct)}% from left, {Math.round(selectedElement.yPct)}% from top
+                  <br />
                   {Math.round(selectedElement.widthPct)}% wide × {Math.round(selectedElement.heightPct)}% tall
-                  <span className="ls-field-hint"> — drag handles on preview to change</span>
+                  <span className="ls-field-hint"> — drag the box on the preview to move or resize</span>
                 </p>
               </div>
 
               <details className="ls-advanced">
                 <summary>Type exact position &amp; size (%)</summary>
+                <label className="ls-field">
+                  <span className="ls-field-label">From left (%)</span>
+                  <input
+                    className="ls-input"
+                    type="number"
+                    min={0}
+                    max={95}
+                    value={Math.round(selectedElement.xPct)}
+                    onChange={(e) =>
+                      updateElement(selectedElement.id, {
+                        xPct: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </label>
+                <label className="ls-field">
+                  <span className="ls-field-label">From top (%)</span>
+                  <input
+                    className="ls-input"
+                    type="number"
+                    min={0}
+                    max={95}
+                    value={Math.round(selectedElement.yPct)}
+                    onChange={(e) =>
+                      updateElement(selectedElement.id, {
+                        yPct: Number(e.target.value) || 0,
+                      })
+                    }
+                  />
+                </label>
                 <label className="ls-field">
                   <span className="ls-field-label">Width on label (%)</span>
                   <input

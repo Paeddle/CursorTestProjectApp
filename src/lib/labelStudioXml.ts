@@ -19,6 +19,7 @@ import type {
 import {
   pctToDymoPrintBounds,
   studioPrintTextFontSizePt,
+  squareShippingQrBounds,
   studioPrintTextFontBoxTwips,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
@@ -72,12 +73,15 @@ function buildTextObjectXml(
   }
 ): string {
   const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
-  const pt = studioPrintTextFontSizePt(
-    fontSize,
-    Math.max(1, lines.length),
-    fontBoxTwips,
-    options.textFitMode
-  )
+  const pt =
+    paper.id === 'Shipping'
+      ? fontSize
+      : studioPrintTextFontSizePt(
+          fontSize,
+          Math.max(1, lines.length),
+          fontBoxTwips,
+          options.textFitMode
+        )
   // 30323: DYMO ShrinkToFit uses the thin height band and shrinks text to illegible size.
   const dymoFitMode = paper.id === 'Shipping' ? 'None' : options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
@@ -151,7 +155,9 @@ function buildBarcodePrintXml(
   if (!encoded) return ''
 
   const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition)
-  const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, barcode, paper)
+  const printBarcode =
+    paper.id === 'Shipping' && symbology === 'QrCode' ? squareShippingQrBounds(barcode) : barcode
+  const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, printBarcode, paper)
 
   if (!caption || el.textPosition === 'None') return barcodeXml
 

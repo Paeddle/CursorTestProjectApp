@@ -1,5 +1,5 @@
 /**
- * Print studio rev 19 — literal designer % (face-linear Y, no nudges).
+ * Print user's template: text 10/10/80/25, QR 32/42/36/38 (rev 20).
  * node scripts/dymo-print-po-vs-studio.mjs
  */
 import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
@@ -8,6 +8,10 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const ITEM = "1' Cat6 Patch Cable"
+const Y_GAIN = 1.35
+
+const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
+const QR = { xPct: 32, yPct: 42, widthPct: 36, heightPct: 38 }
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
@@ -27,18 +31,24 @@ function clamp(bounds, base) {
   }
 }
 
-function mapRev19(el, base) {
+function mapRev20(el, base) {
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const y = base.y + Math.round((el.yPct / 100) * base.height * Y_GAIN)
   return clamp(
     {
       x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y: base.y + Math.round((el.yPct / 100) * base.height),
+      y,
       width,
       height,
     },
     base
   )
+}
+
+function squareQr(bounds) {
+  const side = Math.max(80, bounds.height)
+  return { x: bounds.x + Math.round((bounds.width - side) / 2), y: bounds.y, width: side, height: side }
 }
 
 function textXml(lines, bounds, size) {
@@ -66,7 +76,7 @@ function qrXml(bounds) {
     `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored><IsVariable>False</IsVariable>` +
-    `<Text>0012345678905</Text><Type>QRCode</Type><Size>Large</Size>` +
+    `<Text>681610503619</Text><Type>QRCode</Type><Size>Large</Size>` +
     `<TextPosition>None</TextPosition>` +
     `<TextFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
     `<CheckSumFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
@@ -86,15 +96,6 @@ function dieCut(objects) {
     objects +
     `</DieCutLabel>`
   )
-}
-
-function studioXml() {
-  const base = faceBounds(catalog)
-  const textB = mapRev19({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev19({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  const gap = qrB.y - (textB.y + textB.height)
-  console.log('XML gap text→qr (twips):', gap, gap < 0 ? 'OVERLAP' : 'ok')
-  return dieCut(textXml(ITEM, textB, 17) + qrXml(qrB))
 }
 
 async function dymoRequest(endpoint, form) {
@@ -123,7 +124,12 @@ async function printXml(name, labelXml) {
 }
 
 async function main() {
-  await printXml('STUDIO-rev19', studioXml())
+  const base = faceBounds(catalog)
+  const textB = mapRev20(TEXT, base)
+  const qrB = squareQr(mapRev20(QR, base))
+  console.log('rev20 text', textB)
+  console.log('rev20 qr', qrB, 'gap', qrB.y - (textB.y + textB.height))
+  await printXml('STUDIO-rev20-user-template', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
 }
 
 main().catch((e) => {

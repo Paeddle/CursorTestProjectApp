@@ -8,7 +8,10 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 19
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 20
+
+/** LabelWriter compresses XML Y — stretch top-edge % so fields land lower on the sticker. */
+const SHIPPING_Y_PRINT_GAIN = 1.35
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -71,15 +74,23 @@ function pctToShippingPrintBounds(
   const base = studioFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const y = base.y + Math.round((el.yPct / 100) * base.height * SHIPPING_Y_PRINT_GAIN)
   return clampShippingBounds(
     {
       x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y: base.y + Math.round((el.yPct / 100) * base.height),
+      y,
       width,
       height,
     },
     base
   )
+}
+
+/** 30323 QR: square box from element height band, centered in the designer rect. */
+export function squareShippingQrBounds(bounds: DymoLabelBounds): DymoLabelBounds {
+  const side = Math.max(80, bounds.height)
+  const x = bounds.x + Math.round((bounds.width - side) / 2)
+  return { x, y: bounds.y, width: side, height: side }
 }
 
 /** Map studio 0–100% to DYMO object bounds for print XML. */
