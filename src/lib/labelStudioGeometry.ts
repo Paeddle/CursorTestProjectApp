@@ -8,12 +8,10 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 25
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 26
 
 /** Hybrid (30256) boundsX is offset vs 30323 catalog — anchor X from catalog origin so print centers. */
 const SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN = true
-/** DYMO renders QR smaller than XML bounds on 30323 — boost square side to match canvas. */
-const SHIPPING_QR_SIDE_BOOST = 1.55
 /** Physical QR sits slightly low vs designer — nudge up within the barcode box. */
 const SHIPPING_QR_Y_NUDGE_FRAC = 0.05
 
@@ -129,10 +127,7 @@ export function shippingQrPrintBounds(
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
   const rect = pctToDymoPrintBounds(el, printTemplate, options)
-  const side = Math.max(
-    80,
-    Math.round(Math.min(rect.width, rect.height) * SHIPPING_QR_SIDE_BOOST)
-  )
+  const side = Math.max(80, Math.min(rect.width, rect.height))
   const face = studioFaceBounds(printTemplate)
   const yNudge = Math.round(rect.height * SHIPPING_QR_Y_NUDGE_FRAC)
   return clampWithinFace(

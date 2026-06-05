@@ -1,7 +1,8 @@
 /**
- * User template rev 25 — QR size + slight upward nudge.
+ * User template rev 26 — QR as embedded PNG image (fills bounds).
  * Text 10/10/80/25  QR 32/51/36/38
  */
+import QRCode from 'qrcode'
 import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
@@ -20,8 +21,8 @@ const HYBRID = {
 }
 
 const ITEM = "1' Cat6 Patch Cable"
-const QR_SIDE_BOOST = 1.55
 const QR_Y_NUDGE_FRAC = 0.05
+const BARCODE = '681610503619'
 const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
 const QR = { xPct: 32, yPct: 51, widthPct: 36, heightPct: 38 }
 
@@ -79,7 +80,7 @@ function mapRect(el) {
 
 function mapQr(el) {
   const rect = mapRect(el)
-  const side = Math.max(80, Math.round(Math.min(rect.width, rect.height) * QR_SIDE_BOOST))
+  const side = Math.max(80, Math.min(rect.width, rect.height))
   const yNudge = Math.round(rect.height * QR_Y_NUDGE_FRAC)
   return clamp(
     {
@@ -110,19 +111,20 @@ function textXml(lines, bounds, size) {
   )
 }
 
-function qrXml(bounds) {
+async function qrImageXml(bounds) {
+  const dataUrl = await QRCode.toDataURL(BARCODE, { margin: 1, width: 320, errorCorrectionLevel: 'M' })
+  const png = dataUrl.replace(/^data:image\/png;base64,/, '')
   return (
-    `<ObjectInfo><BarcodeObject><Name>QR</Name>` +
+    `<ObjectInfo><ImageObject><Name>QR</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored><IsVariable>False</IsVariable>` +
-    `<Text>681610503619</Text><Type>QRCode</Type><Size>Large</Size>` +
-    `<TextPosition>None</TextPosition>` +
-    `<TextFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
-    `<CheckSumFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
-    `<TextEmbedding>None</TextEmbedding><ECLevel>0</ECLevel><HorizontalAlignment>Center</HorizontalAlignment>` +
-    `<QuietZonesPadding Left="0" Top="0" Right="0" Bottom="0"/></BarcodeObject>` +
+    `<ImageLocation/><Image>${png}</Image>` +
+    `<ScaleMode>Uniform</ScaleMode><BorderWidth>0</BorderWidth>` +
+    `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Center</VerticalAlignment>` +
+    `</ImageObject>` +
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/></ObjectInfo>`
   )
 }
@@ -167,10 +169,10 @@ async function printXml(name, labelXml) {
 async function main() {
   const textB = mapRect(TEXT)
   const qrB = mapQr(QR)
-  console.log('rev25 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
-  console.log('rev25 hybrid text', textB)
-  console.log('rev25 hybrid qr', qrB)
-  await printXml('STUDIO-rev25-qr', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
+  console.log('rev26 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
+  console.log('rev26 hybrid text', textB)
+  console.log('rev26 hybrid qr image bounds', qrB)
+  await printXml('STUDIO-rev26-qr-img', dieCut(textXml(ITEM, textB, 18) + (await qrImageXml(qrB))))
 }
 
 main().catch((e) => {

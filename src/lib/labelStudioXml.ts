@@ -13,6 +13,7 @@ import {
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
+import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
   LabelStudioBarcodeElement,
   LabelStudioElement,
@@ -184,6 +185,35 @@ function buildBarcodePrintXml(
   return barcodeXml + captionXml
 }
 
+function buildRasterImageObjectXml(
+  objectName: string,
+  base64Png: string,
+  bounds: DymoLabelBounds
+): string {
+  if (!base64Png) return ''
+  return (
+    `<ObjectInfo>` +
+    `<ImageObject>` +
+    `<Name>${escapeXmlText(objectName)}</Name>` +
+    `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
+    `<LinkedObjectName></LinkedObjectName>` +
+    `<Rotation>Rotation0</Rotation>` +
+    `<IsMirrored>False</IsMirrored>` +
+    `<IsVariable>False</IsVariable>` +
+    `<ImageLocation/>` +
+    `<Image>${base64Png}</Image>` +
+    `<ScaleMode>Uniform</ScaleMode>` +
+    `<BorderWidth>0</BorderWidth>` +
+    `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment>` +
+    `<VerticalAlignment>Center</VerticalAlignment>` +
+    `</ImageObject>` +
+    `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
+    `</ObjectInfo>`
+  )
+}
+
 function buildImageObjectXml(
   el: LabelStudioImageElement,
   base64Png: string,
@@ -222,6 +252,15 @@ async function buildElementXmlAsync(
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
+    const symbology = resolveBarcodeType(el.barcodeType, value)
+    const encoded = barcodeTextForPrint(value, symbology)
+    if (template.id === 'Shipping' && symbology === 'QrCode' && encoded) {
+      const qrBounds = shippingQrPrintBounds(el, template, printOptions)
+      const png = await qrPngBase64ForPrint(encoded)
+      if (png) {
+        return buildRasterImageObjectXml(el.name || el.id, png, qrBounds)
+      }
+    }
     return buildBarcodePrintXml(el, value, bounds, template, printOptions)
   }
   if (isImageElement(el)) {
