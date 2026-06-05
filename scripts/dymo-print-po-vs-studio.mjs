@@ -1,5 +1,5 @@
 /**
- * User template rev 26 — QR as embedded PNG image (fills bounds).
+ * User template rev 27 — shift layout up to match designer.
  * Text 10/10/80/25  QR 32/51/36/38
  */
 import QRCode from 'qrcode'
@@ -21,7 +21,7 @@ const HYBRID = {
 }
 
 const ITEM = "1' Cat6 Patch Cable"
-const QR_Y_NUDGE_FRAC = 0.05
+const Y_UP_FRAC = 0.04
 const BARCODE = '681610503619'
 const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
 const QR = { xPct: 32, yPct: 51, widthPct: 36, heightPct: 38 }
@@ -53,7 +53,7 @@ function scaleToPrint(bounds, design, print) {
   const scaleY = p.height / d.height
   return {
     x: d.x + Math.round((bounds.x - d.x) * scaleX),
-    y: p.y + Math.round((bounds.y - d.y) * scaleY),
+    y: d.y + Math.round((bounds.y - d.y) * scaleY),
     width: Math.max(80, Math.round(bounds.width * scaleX)),
     height: Math.max(60, Math.round(bounds.height * scaleY)),
   }
@@ -75,17 +75,17 @@ function clamp(bounds, base) {
 function mapRect(el) {
   const onCanvas = canvasBounds(el, catalog)
   const scaled = scaleToPrint(onCanvas, catalog, HYBRID)
-  return clamp(scaled, face(HYBRID))
+  const up = Math.round(face(HYBRID).height * Y_UP_FRAC)
+  return clamp({ ...scaled, y: scaled.y - up }, face(HYBRID))
 }
 
 function mapQr(el) {
   const rect = mapRect(el)
   const side = Math.max(80, Math.min(rect.width, rect.height))
-  const yNudge = Math.round(rect.height * QR_Y_NUDGE_FRAC)
   return clamp(
     {
       x: rect.x + Math.round((rect.width - side) / 2),
-      y: rect.y + Math.round((rect.height - side) / 2) - yNudge,
+      y: rect.y + Math.round((rect.height - side) / 2),
       width: side,
       height: side,
     },
@@ -169,10 +169,10 @@ async function printXml(name, labelXml) {
 async function main() {
   const textB = mapRect(TEXT)
   const qrB = mapQr(QR)
-  console.log('rev26 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
-  console.log('rev26 hybrid text', textB)
-  console.log('rev26 hybrid qr image bounds', qrB)
-  await printXml('STUDIO-rev26-qr-img', dieCut(textXml(ITEM, textB, 18) + (await qrImageXml(qrB))))
+  console.log('rev27 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
+  console.log('rev27 hybrid text', textB)
+  console.log('rev27 hybrid qr image bounds', qrB)
+  await printXml('STUDIO-rev27-up', dieCut(textXml(ITEM, textB, 18) + (await qrImageXml(qrB))))
 }
 
 main().catch((e) => {

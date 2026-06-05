@@ -8,12 +8,13 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 26
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 27
 
-/** Hybrid (30256) boundsX is offset vs 30323 catalog — anchor X from catalog origin so print centers. */
+/** Hybrid bounds origin differs from 30323 catalog — anchor from catalog face like the canvas. */
 const SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN = true
-/** Physical QR sits slightly low vs designer — nudge up within the barcode box. */
-const SHIPPING_QR_Y_NUDGE_FRAC = 0.05
+const SHIPPING_HYBRID_Y_FROM_DESIGN_ORIGIN = true
+/** Physical layout sits low vs designer — nudge all elements up on the print face. */
+const SHIPPING_PRINT_Y_UP_FRAC = 0.04
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -81,12 +82,25 @@ function scaleFaceBoundsToPrintTemplate(
     SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN
       ? design.x + Math.round((bounds.x - design.x) * scaleX)
       : print.x + Math.round((bounds.x - design.x) * scaleX)
+  const y =
+    SHIPPING_HYBRID_Y_FROM_DESIGN_ORIGIN
+      ? design.y + Math.round((bounds.y - design.y) * scaleY)
+      : print.y + Math.round((bounds.y - design.y) * scaleY)
   return {
     x,
-    y: print.y + Math.round((bounds.y - design.y) * scaleY),
+    y,
     width: Math.max(80, Math.round(bounds.width * scaleX)),
     height: Math.max(60, Math.round(bounds.height * scaleY)),
   }
+}
+
+function nudgeShippingPrintYUp(
+  bounds: DymoLabelBounds,
+  printTemplate: DymoPaperTemplate
+): DymoLabelBounds {
+  const face = studioFaceBounds(printTemplate)
+  const up = Math.round(face.height * SHIPPING_PRINT_Y_UP_FRAC)
+  return { ...bounds, y: bounds.y - up }
 }
 
 function clampWithinFace(bounds: DymoLabelBounds, face: DymoLabelBounds): DymoLabelBounds {
@@ -129,11 +143,10 @@ export function shippingQrPrintBounds(
   const rect = pctToDymoPrintBounds(el, printTemplate, options)
   const side = Math.max(80, Math.min(rect.width, rect.height))
   const face = studioFaceBounds(printTemplate)
-  const yNudge = Math.round(rect.height * SHIPPING_QR_Y_NUDGE_FRAC)
   return clampWithinFace(
     {
       x: rect.x + Math.round((rect.width - side) / 2),
-      y: rect.y + Math.round((rect.height - side) / 2) - yNudge,
+      y: rect.y + Math.round((rect.height - side) / 2),
       width: side,
       height: side,
     },
@@ -152,7 +165,10 @@ export function pctToDymoPrintBounds(
   const designTemplate = options?.designTemplate ?? printTemplate
   const onCanvas = pctToCanvasFaceBounds(el, designTemplate)
   const scaled = scaleFaceBoundsToPrintTemplate(onCanvas, designTemplate, printTemplate)
-  return clampWithinFace(scaled, studioFaceBounds(printTemplate))
+  return clampWithinFace(
+    nudgeShippingPrintYUp(scaled, printTemplate),
+    studioFaceBounds(printTemplate)
+  )
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */
