@@ -63,6 +63,13 @@
   flex: 1;
 }
 
+.inv-filter-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 0.82rem;
+  color: #555;
+}
+
 .inv-btn {
   padding: 0.45rem 0.75rem;
   border: 1px solid #bbb;

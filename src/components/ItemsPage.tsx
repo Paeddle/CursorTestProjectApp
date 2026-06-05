@@ -32,7 +32,7 @@ export default function ItemsPage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<ItemBarcodeFilter>('missing')
+  const [filter, setFilter] = useState<ItemBarcodeFilter>('all')
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
@@ -65,11 +65,13 @@ export default function ItemsPage() {
     }
     setLoading(true)
     try {
+      const searchTrimmed = search.trim()
       const [s, list] = await Promise.all([
         fetchItemsStats(),
         fetchItemsList({
           search,
-          filter,
+          /** Search always scans the full table (matches Label Studio). */
+          filter: searchTrimmed ? 'all' : filter,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         }),
@@ -385,11 +387,19 @@ export default function ItemsPage() {
             setPage(0)
           }}
           aria-label="Filter"
+          title="Label Studio always lists all items; use All items here to match."
         >
           <option value="all">All items</option>
           <option value="missing">Missing barcode only</option>
           <option value="has_barcode">Has barcode</option>
         </select>
+        {filter === 'missing' && stats.hasBarcode > 0 && !search.trim() && (
+          <span className="inv-filter-hint">
+            {stats.hasBarcode.toLocaleString()} item{stats.hasBarcode !== 1 ? 's' : ''} with barcodes hidden
+            (e.g. items you print in Label Studio). Choose <strong>All items</strong> or <strong>Has barcode</strong>{' '}
+            to see them.
+          </span>
+        )}
         <button type="button" className="inv-btn" onClick={() => void refresh()} disabled={loading}>
           Refresh
         </button>
