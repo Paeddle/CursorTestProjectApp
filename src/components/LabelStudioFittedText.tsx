@@ -11,8 +11,13 @@ type LabelStudioFittedTextProps = {
   className?: string
 }
 
+const FIT_TOLERANCE_PX = 2
+
 function textFitsBox(span: HTMLSpanElement, box: HTMLElement): boolean {
-  return span.scrollHeight <= box.clientHeight + 1 && span.scrollWidth <= box.clientWidth + 1
+  return (
+    span.scrollHeight <= box.clientHeight + FIT_TOLERANCE_PX &&
+    span.scrollWidth <= box.clientWidth + FIT_TOLERANCE_PX
+  )
 }
 
 /** Binary-search font size so wrapped text fits inside the dotted element box. */
@@ -58,11 +63,18 @@ export default function LabelStudioFittedText({
       if (trySize(mid)) lo = mid
       else hi = mid - 1
     }
-    setFontPx(Math.max(4, Math.floor(lo * 0.96)))
-  }, [text, maxFontSizePx, shrink])
+    setFontPx(Math.max(4, lo))
+  }, [text, maxFontSizePx, shrink, align])
+
+  const hostJustify =
+    align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'
 
   return (
-    <div ref={hostRef} className={`ls-fitted-text-host${className ? ` ${className}` : ''}`}>
+    <div
+      ref={hostRef}
+      className={`ls-fitted-text-host${className ? ` ${className}` : ''}`}
+      style={{ justifyContent: hostJustify }}
+    >
       <span
         ref={textRef}
         className="ls-element-text"

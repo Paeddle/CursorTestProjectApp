@@ -28,6 +28,7 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintTextFontBoxTwips,
+  studioPrintVerticalAlignment,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -88,14 +89,14 @@ function buildTextObjectXml(
 ): string {
   const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
   const shrink = options.textFitMode !== 'None'
+  const fitMode = shrink ? 'ShrinkToFit' : 'None'
   const pt = studioPrintTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
     fontBoxTwips,
-    shrink ? 'ShrinkToFit' : 'None'
+    fitMode
   )
-  /** Font size is pre-matched to the canvas; avoid DYMO shrinking again. */
-  const dymoFitMode = 'None'
+  const dymoFitMode = fitMode
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -108,7 +109,7 @@ function buildTextObjectXml(
     `<IsMirrored>False</IsMirrored>` +
     `<IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>${options.align}</HorizontalAlignment>` +
-    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    `<VerticalAlignment>${studioPrintVerticalAlignment(options.align)}</VerticalAlignment>` +
     `<TextFitMode>${dymoFitMode}</TextFitMode>` +
     `<UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized>` +

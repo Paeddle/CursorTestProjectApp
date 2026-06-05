@@ -172,7 +172,7 @@ export default function LabelStudioCanvas({
           return (
             <div
               key={el.id}
-              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}${barcodeShowText ? ' ls-barcode-has-caption' : ''}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
+              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}${barcodeShowText ? ' ls-barcode-has-caption' : ''}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textEl ? ` label-studio-canvas-text ls-text-align-${textEl.align.toLowerCase()}` : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,

@@ -8,16 +8,10 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 30
-
-/** Typical printable canvas width in Label Studio (used to convert 6px inset → twips). */
-const STUDIO_CANVAS_REF_WIDTH_PX = 360
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 31
 
 /** Match `.ls-canvas-qr` max-width/max-height in Label Studio.css. */
 const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
-
-/** Match LabelStudioFittedText shrink ceiling (`previewMaxFontSizePx` × 0.96). */
-const STUDIO_PRINT_SHRINK_FONT_SCALE = 0.94 * 0.96
 
 /** Rolls that map designer % on the catalog face (same grid as the Label Studio canvas). */
 const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set([
@@ -123,26 +117,6 @@ function nudgeShippingPrintYUp(
   return { ...bounds, y: bounds.y - up }
 }
 
-/** Shrink print bounds by the same 6px inset used inside each canvas element box. */
-function applyStudioContentInset(
-  bounds: DymoLabelBounds,
-  el: Pick<LabelStudioElement, 'widthPct' | 'heightPct'>,
-  face: DymoLabelBounds
-): DymoLabelBounds {
-  const faceAspect = face.height / face.width
-  const elementWidthPx = Math.max(1, (el.widthPct / 100) * STUDIO_CANVAS_REF_WIDTH_PX)
-  const elementHeightPx = Math.max(1, (el.heightPct / 100) * STUDIO_CANVAS_REF_WIDTH_PX * faceAspect)
-  const insetX = Math.round(bounds.width * (LABEL_STUDIO_CONTENT_INSET_PX / elementWidthPx))
-  const insetY = Math.round(bounds.height * (LABEL_STUDIO_CONTENT_INSET_PX / elementHeightPx))
-  if (insetX <= 0 && insetY <= 0) return bounds
-  return {
-    x: bounds.x + insetX,
-    y: bounds.y + insetY,
-    width: Math.max(40, bounds.width - insetX * 2),
-    height: Math.max(40, bounds.height - insetY * 2),
-  }
-}
-
 function clampWithinFace(bounds: DymoLabelBounds, face: DymoLabelBounds): DymoLabelBounds {
   const width = Math.min(bounds.width, face.width)
   const height = Math.min(bounds.height, face.height)
@@ -226,7 +200,7 @@ export function pctToDymoPrintBounds(
     mapped = onCanvas
   }
 
-  return clampWithinFace(applyStudioContentInset(mapped, el, face), face)
+  return clampWithinFace(mapped, face)
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */
@@ -277,14 +251,13 @@ export function studioPrintTextFontSizePt(
 ): number {
   const lines = Math.max(1, lineCount)
   const needed = lines * fontSize * LINE_HEIGHT_TWIPS_PER_PT
-  let pt = fontSize
-  if (textFitMode !== 'None' && needed > boxVerticalTwips) {
-    pt = Math.max(8, Math.floor((fontSize * boxVerticalTwips) / needed))
-  }
-  if (textFitMode !== 'None') {
-    pt = Math.max(8, Math.floor(pt * STUDIO_PRINT_SHRINK_FONT_SCALE))
-  }
-  return pt
+  if (textFitMode === 'None' || needed <= boxVerticalTwips) return fontSize
+  return Math.max(8, Math.floor((fontSize * boxVerticalTwips) / needed))
+}
+
+/** DYMO vertical alignment for studio text (wrap + shrink like the canvas). */
+export function studioPrintVerticalAlignment(align: LabelStudioTextElement['align']): string {
+  return align === 'Center' ? 'Middle' : 'Top'
 }
 
 export function previewMaxFontSizePx(
@@ -294,11 +267,8 @@ export function previewMaxFontSizePx(
 ): number {
   const studioH = studioBoundsHeightTwips(template)
   const boxHeightTwips = (el.heightPct / 100) * studioH
-  const boxHeightPx = Math.max(
-    8,
-    (el.heightPct / 100) * printableAreaHeightPx - LABEL_STUDIO_CONTENT_INSET_PX * 2
-  )
+  const boxHeightPx = Math.max(8, (el.heightPct / 100) * printableAreaHeightPx)
   if (boxHeightPx <= 0 || boxHeightTwips <= 0) return Math.max(8, el.fontSize * 0.75)
   const px = (el.fontSize * LABEL_TWIPS_PER_PT * boxHeightPx) / boxHeightTwips
-  return Math.max(6, Math.floor(px * 0.94))
+  return Math.max(6, Math.floor(px))
 }

@@ -745,6 +745,11 @@
   font-family: Arial, sans-serif;
 }
 
+.label-studio-canvas-text {
+  overflow: hidden;
+  text-align: left;
+}
+
 .label-studio-canvas-element.active {
   border-color: #1a5fb4;
   background: rgba(26, 95, 180, 0.08);
@@ -763,9 +768,27 @@
   min-height: 0;
 }
 
-.label-studio-canvas-element.ls-text-shrink .ls-element-inset {
-  align-items: stretch;
+.label-studio-canvas-text .ls-element-inset {
+  inset: 0;
+}
+
+.label-studio-canvas-text.ls-text-shrink .ls-element-inset {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.label-studio-canvas-text.ls-text-align-center.ls-text-shrink .ls-element-inset {
+  align-items: flex-start;
   justify-content: center;
+}
+
+.label-studio-canvas-text.ls-text-align-right.ls-text-shrink .ls-element-inset {
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.label-studio-canvas-text.ls-text-shrink .ls-fitted-text-host {
+  align-items: flex-start;
 }
 
 .label-studio-canvas-element .ls-element-text {
@@ -789,11 +812,12 @@
   overflow: hidden;
 }
 
-.label-studio-canvas-element.ls-text-shrink .ls-element-text {
+.label-studio-canvas-text.ls-text-shrink .ls-element-text {
   line-height: 1.1;
   overflow: hidden;
   width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Resize handles (Label Live style) */
