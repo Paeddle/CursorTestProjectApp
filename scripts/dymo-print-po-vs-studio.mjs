@@ -1,7 +1,6 @@
 /**
- * Print exact user template (rev 21).
- * Text: 10/10/80/25  QR: 32/51/36/38
- * node scripts/dymo-print-po-vs-studio.mjs
+ * User template rev 22 — calibrated size/Y scale.
+ * Text 10/10/80/25  QR 32/51/36/38
  */
 import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
 
@@ -9,6 +8,9 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const ITEM = "1' Cat6 Patch Cable"
+const WIDTH_SCALE = 1.45
+const HEIGHT_SCALE = 1.25
+const Y_POSITION_SCALE = 1.28
 
 const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
 const QR = { xPct: 32, yPct: 51, widthPct: 36, heightPct: 38 }
@@ -22,22 +24,26 @@ function faceBounds(t) {
 }
 
 function clamp(bounds, base) {
-  const maxX = base.x + base.width - bounds.width
-  const maxY = base.y + base.height - bounds.height
+  const width = Math.min(bounds.width, base.width)
+  const height = Math.min(bounds.height, base.height)
+  const maxX = base.x + base.width - width
+  const maxY = base.y + base.height - height
   return {
-    ...bounds,
     x: Math.max(base.x, Math.min(maxX, bounds.x)),
     y: Math.max(base.y, Math.min(maxY, bounds.y)),
+    width,
+    height,
   }
 }
 
 function mapRect(el, base) {
-  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
-  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width * WIDTH_SCALE))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height * HEIGHT_SCALE))
+  const y = base.y + Math.round((el.yPct / 100) * base.height * Y_POSITION_SCALE)
   return clamp(
     {
       x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y: base.y + Math.round((el.yPct / 100) * base.height),
+      y,
       width,
       height,
     },
@@ -45,18 +51,13 @@ function mapRect(el, base) {
   )
 }
 
-const QR_SCALE = 1.25
-
 function mapQr(el, base) {
   const rect = mapRect(el, base)
-  const side = Math.min(
-    rect.width,
-    Math.max(80, Math.round((el.heightPct / 100) * base.height * QR_SCALE))
-  )
+  const side = Math.max(80, Math.min(rect.width, rect.height))
   return clamp(
     {
       x: rect.x + Math.round((rect.width - side) / 2),
-      y: side <= rect.height ? rect.y + Math.round((rect.height - side) / 2) : rect.y,
+      y: rect.y + Math.round((rect.height - side) / 2),
       width: side,
       height: side,
     },
@@ -72,7 +73,7 @@ function textXml(lines, bounds, size) {
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored><IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>ShrinkToFit</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
+    `<TextFitMode>None</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized><StyledText>` +
     `<Element><String>${esc(lines)}</String><Attributes>` +
     `<Font Family="Arial" Size="${size}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
@@ -140,9 +141,9 @@ async function main() {
   const base = faceBounds(catalog)
   const textB = mapRect(TEXT, base)
   const qrB = mapQr(QR, base)
-  console.log('rev21 text', textB)
-  console.log('rev21 qr', qrB, 'side twips', qrB.width)
-  await printXml('STUDIO-rev21-exact', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
+  console.log('rev22 text', textB)
+  console.log('rev22 qr', qrB)
+  await printXml('STUDIO-rev22-calibrated', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
 }
 
 main().catch((e) => {

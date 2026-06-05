@@ -84,7 +84,7 @@ function buildTextObjectXml(
           options.textFitMode
         )
   const dymoFitMode =
-    paper.id === 'Shipping' ? 'ShrinkToFit' : options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
+    paper.id === 'Shipping' ? 'None' : options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
