@@ -21,7 +21,7 @@ const HYBRID = {
 }
 
 const ITEM = "1' Cat6 Patch Cable"
-const Y_UP_FRAC = 0.04
+const Y_UP_FRAC = 0
 const BARCODE = '681610503619'
 const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
 const QR = { xPct: 32, yPct: 51, widthPct: 36, heightPct: 38 }

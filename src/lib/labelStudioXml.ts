@@ -87,14 +87,15 @@ function buildTextObjectXml(
   }
 ): string {
   const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
-  const fitMode = options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
+  const shrink = options.textFitMode !== 'None'
   const pt = studioPrintTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
     fontBoxTwips,
-    fitMode
+    shrink ? 'ShrinkToFit' : 'None'
   )
-  const dymoFitMode = fitMode
+  /** Font size is pre-matched to the canvas; avoid DYMO shrinking again. */
+  const dymoFitMode = 'None'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
