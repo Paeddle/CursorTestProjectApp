@@ -8,10 +8,10 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 20
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 21
 
-/** LabelWriter compresses XML Y — stretch top-edge % so fields land lower on the sticker. */
-const SHIPPING_Y_PRINT_GAIN = 1.35
+/** Hardware prints QR smaller than XML height band — boost square side within the designer rect. */
+const SHIPPING_QR_PRINT_SCALE = 1.25
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -74,11 +74,10 @@ function pctToShippingPrintBounds(
   const base = studioFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  const y = base.y + Math.round((el.yPct / 100) * base.height * SHIPPING_Y_PRINT_GAIN)
   return clampShippingBounds(
     {
       x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y,
+      y: base.y + Math.round((el.yPct / 100) * base.height),
       width,
       height,
     },
@@ -86,11 +85,48 @@ function pctToShippingPrintBounds(
   )
 }
 
-/** 30323 QR: square box from element height band, centered in the designer rect. */
-export function squareShippingQrBounds(bounds: DymoLabelBounds): DymoLabelBounds {
-  const side = Math.max(80, bounds.height)
-  const x = bounds.x + Math.round((bounds.width - side) / 2)
-  return { x, y: bounds.y, width: side, height: side }
+/**
+ * 30323 QR: square sized from width% (102 mm face) — hardware scales the wide XML axis.
+ * Centered inside the designer barcode rectangle.
+ */
+export function shippingQrPrintBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  const base = studioFaceBounds(template)
+  const rect = pctToShippingPrintBounds(el, template)
+  const side = Math.min(
+    rect.width,
+    Math.max(80, Math.round((el.heightPct / 100) * base.height * SHIPPING_QR_PRINT_SCALE))
+  )
+  const y =
+    side <= rect.height ? rect.y + Math.round((rect.height - side) / 2) : rect.y
+  return clampShippingBounds(
+    {
+      x: rect.x + Math.round((rect.width - side) / 2),
+      y,
+      width: side,
+      height: side,
+    },
+    base
+  )
+}
+
+/** Fit text like the canvas ShrinkToFit preview within the element box. */
+export function shippingPrintFontSizePt(
+  lines: string[],
+  fontSize: number,
+  bounds: DymoLabelBounds
+): number {
+  const byHeight = studioPrintTextFontSizePt(
+    fontSize,
+    Math.max(1, lines.length),
+    bounds.height,
+    'ShrinkToFit'
+  )
+  const chars = Math.max(1, lines.join(' ').length)
+  const byWidth = Math.max(8, Math.floor(bounds.width / (chars * 11)))
+  return Math.min(fontSize, byHeight, byWidth)
 }
 
 /** Map studio 0–100% to DYMO object bounds for print XML. */
