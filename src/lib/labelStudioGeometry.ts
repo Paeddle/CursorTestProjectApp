@@ -8,7 +8,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 9
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 10
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -71,14 +71,30 @@ export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
   return studioPrintFaceBounds(template).width
 }
 
-export function effectiveTextFontSizePt(
+const LINE_HEIGHT_TWIPS_PER_PT = 28
+
+/** PO-style fixed print size — ShrinkToFit previews correctly in RenderLabel but prints tiny on hardware. */
+export function studioPrintTextFontSizePt(
   fontSize: number,
-  _lineCount: number,
-  _boxHeightTwips: number,
+  lineCount: number,
+  boxHeightTwips: number,
   textFitMode: LabelStudioTextFitMode | undefined
 ): number {
-  if (textFitMode === 'ShrinkToFit' || textFitMode == null) return fontSize
-  return fontSize
+  if (textFitMode === 'None') return fontSize
+  const lines = Math.max(1, lineCount)
+  const needed = lines * fontSize * LINE_HEIGHT_TWIPS_PER_PT
+  if (needed <= boxHeightTwips) return fontSize
+  return Math.max(8, Math.floor((fontSize * boxHeightTwips) / needed))
+}
+
+/** @deprecated Use studioPrintTextFontSizePt for print XML. */
+export function effectiveTextFontSizePt(
+  fontSize: number,
+  lineCount: number,
+  boxHeightTwips: number,
+  textFitMode: LabelStudioTextFitMode | undefined
+): number {
+  return studioPrintTextFontSizePt(fontSize, lineCount, boxHeightTwips, textFitMode)
 }
 
 export function previewMaxFontSizePx(

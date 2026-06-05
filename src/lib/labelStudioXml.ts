@@ -17,8 +17,8 @@ import type {
   LabelStudioTextElement,
 } from '../types/labelStudio'
 import {
-  effectiveTextFontSizePt,
   pctToDymoPrintBounds,
+  studioPrintTextFontSizePt,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -69,14 +69,13 @@ function buildTextObjectXml(
     textFitMode: LabelStudioTextElement['textFitMode']
   }
 ): string {
-  const fitMode = options.textFitMode ?? 'ShrinkToFit'
-  const pt = effectiveTextFontSizePt(
+  const pt = studioPrintTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
     bounds.height,
-    fitMode
+    options.textFitMode
   )
-  const dymoFitMode = fitMode === 'None' ? 'None' : 'ShrinkToFit'
+  const dymoFitMode = 'None'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
