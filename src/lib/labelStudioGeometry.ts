@@ -8,13 +8,20 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 27
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 28
+
+/** Rolls that map designer % on the catalog face (same grid as the Label Studio canvas). */
+const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set(['Shipping', 'Durable1933085'])
 
 /** Hybrid bounds origin differs from 30323 catalog — anchor from catalog face like the canvas. */
 const SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN = true
 const SHIPPING_HYBRID_Y_FROM_DESIGN_ORIGIN = true
 /** Physical layout sits low vs designer — nudge all elements up on the print face. */
 const SHIPPING_PRINT_Y_UP_FRAC = 0.04
+
+function usesStudioFacePrint(template: DymoPaperTemplate): boolean {
+  return STUDIO_FACE_PRINT_TEMPLATE_IDS.has(template.id)
+}
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -35,9 +42,9 @@ function studioFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
   }
 }
 
-/** Printable band for preview font scaling and non-30323 rolls. */
+/** Printable band for preview font scaling — matches canvas % grid on studio rolls. */
 function studioPrintableBounds(template: DymoPaperTemplate): DymoLabelBounds {
-  if (template.id === 'Shipping') return studioFaceBounds(template)
+  if (usesStudioFacePrint(template)) return studioFaceBounds(template)
   return poInnerBoundsForTemplate(template)
 }
 
@@ -132,10 +139,8 @@ function pctToStudioPrintBounds(
   }
 }
 
-/**
- * 30323 QR: square centered in the designer barcode rectangle.
- */
-export function shippingQrPrintBounds(
+/** QR: square centered in the designer barcode rectangle (ImageObject fill on print). */
+export function studioQrPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   printTemplate: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
@@ -154,21 +159,39 @@ export function shippingQrPrintBounds(
   )
 }
 
+/** @deprecated Use studioQrPrintBounds */
+export function shippingQrPrintBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  printTemplate: DymoPaperTemplate,
+  options?: StudioPrintBoundsOptions
+): DymoLabelBounds {
+  return studioQrPrintBounds(el, printTemplate, options)
+}
+
+export function usesStudioQrImagePrint(template: DymoPaperTemplate): boolean {
+  return usesStudioFacePrint(template)
+}
+
 /** Map studio 0–100% to DYMO object bounds for print XML. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   printTemplate: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
-  if (printTemplate.id !== 'Shipping') return pctToStudioPrintBounds(el, printTemplate)
+  if (!usesStudioFacePrint(printTemplate)) return pctToStudioPrintBounds(el, printTemplate)
 
   const designTemplate = options?.designTemplate ?? printTemplate
   const onCanvas = pctToCanvasFaceBounds(el, designTemplate)
-  const scaled = scaleFaceBoundsToPrintTemplate(onCanvas, designTemplate, printTemplate)
-  return clampWithinFace(
-    nudgeShippingPrintYUp(scaled, printTemplate),
-    studioFaceBounds(printTemplate)
-  )
+
+  if (printTemplate.id === 'Shipping') {
+    const scaled = scaleFaceBoundsToPrintTemplate(onCanvas, designTemplate, printTemplate)
+    return clampWithinFace(
+      nudgeShippingPrintYUp(scaled, printTemplate),
+      studioFaceBounds(printTemplate)
+    )
+  }
+
+  return clampWithinFace(onCanvas, studioFaceBounds(printTemplate))
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */

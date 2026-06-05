@@ -25,7 +25,8 @@ import type {
 import {
   pctToDymoPrintBounds,
   studioPrintTextFontSizePt,
-  shippingQrPrintBounds,
+  studioQrPrintBounds,
+  usesStudioQrImagePrint,
   studioPrintTextFontBoxTwips,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
@@ -167,8 +168,8 @@ function buildBarcodePrintXml(
 
   const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition)
   const printBarcode =
-    paper.id === 'Shipping' && symbology === 'QrCode'
-      ? shippingQrPrintBounds(el, paper, printOptions)
+    usesStudioQrImagePrint(paper) && symbology === 'QrCode'
+      ? studioQrPrintBounds(el, paper, printOptions)
       : barcode
   const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, printBarcode, paper)
 
@@ -254,8 +255,8 @@ async function buildElementXmlAsync(
     const value = mergedBarcodeForElement(el.content, item)
     const symbology = resolveBarcodeType(el.barcodeType, value)
     const encoded = barcodeTextForPrint(value, symbology)
-    if (template.id === 'Shipping' && symbology === 'QrCode' && encoded) {
-      const qrBounds = shippingQrPrintBounds(el, template, printOptions)
+    if (usesStudioQrImagePrint(template) && symbology === 'QrCode' && encoded) {
+      const qrBounds = studioQrPrintBounds(el, template, printOptions)
       const png = await qrPngBase64ForPrint(encoded)
       if (png) {
         return buildRasterImageObjectXml(el.name || el.id, png, qrBounds)
