@@ -99,6 +99,15 @@
   background: #164a8f;
 }
 
+.inv-btn-danger {
+  border-color: #c62828;
+  color: #b71c1c;
+}
+
+.inv-btn-danger:hover:not(:disabled) {
+  background: #ffebee;
+}
+
 .inv-providers {
   margin-bottom: 1rem;
   padding: 0.65rem 0.85rem;
@@ -159,6 +168,12 @@
   background: #fff;
 }
 
+/** ~50 table rows visible, then scroll within the list. */
+.inv-table-scroll {
+  max-height: min(2000px, 72vh);
+  overflow-y: auto;
+}
+
 .inv-table {
   width: 100%;
   border-collapse: collapse;
@@ -203,13 +218,18 @@
   white-space: nowrap;
 }
 
-.inv-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+.inv-table .inv-actions .inv-btn {
+  margin-right: 0.25rem;
+}
+
+.inv-table .inv-actions .inv-btn:last-child {
+  margin-right: 0;
+}
+
+.inv-table-footer {
+  margin: 0.65rem 0 0;
   font-size: 0.88rem;
+  color: #555;
 }
 
 .inv-lookup-panel {
@@ -268,6 +288,13 @@
 .inv-modal h2 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
+}
+
+.inv-modal-hint {
+  margin: -0.35rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: #555;
+  line-height: 1.4;
 }
 
 .inv-modal label {

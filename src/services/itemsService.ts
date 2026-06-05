@@ -15,6 +15,20 @@ export type ItemsListResult = {
 
 const ITEMS_TABLE = 'items'
 
+const ITEMS_FETCH_BATCH = 1000
+
+export type NewItemInput = {
+  manufacturer?: string | null
+  part_number?: string | null
+  item?: string | null
+  description_customer?: string | null
+  barcode?: string | null
+  vendor_name?: string | null
+  category?: string | null
+  picture_url?: string | null
+  purchase_url?: string | null
+}
+
 export async function fetchItemsList(options: {
   search?: string
   filter?: ItemBarcodeFilter
@@ -56,6 +70,30 @@ export async function fetchItemsList(options: {
   return { rows: (data ?? []) as ItemRecord[], total: count ?? 0 }
 }
 
+/** Load every row matching filter/search (batched) for scrollable table UI. */
+export async function fetchAllItemsList(options: {
+  search?: string
+  filter?: ItemBarcodeFilter
+}): Promise<ItemsListResult> {
+  const rows: ItemRecord[] = []
+  let offset = 0
+  let total = 0
+
+  while (true) {
+    const batch = await fetchItemsList({
+      ...options,
+      limit: ITEMS_FETCH_BATCH,
+      offset,
+    })
+    if (offset === 0) total = batch.total
+    rows.push(...batch.rows)
+    offset += batch.rows.length
+    if (batch.rows.length < ITEMS_FETCH_BATCH || rows.length >= total) break
+  }
+
+  return { rows, total }
+}
+
 export async function fetchItemsStats(): Promise<{
   total: number
   missingBarcode: number
@@ -77,6 +115,40 @@ export async function fetchItemsStats(): Promise<{
   const total = totalRes.count ?? 0
   const missingBarcode = missingRes.count ?? 0
   return { total, missingBarcode, hasBarcode: total - missingBarcode }
+}
+
+export async function createItemRow(input: NewItemInput): Promise<ItemRecord> {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const item = input.item?.trim() || null
+  const partNumber = input.part_number?.trim() || null
+  if (!item && !partNumber) {
+    throw new Error('Item name or part number is required.')
+  }
+
+  const barcodeRaw = input.barcode?.trim()
+  const row = {
+    manufacturer: input.manufacturer?.trim() || null,
+    part_number: partNumber,
+    item,
+    description_customer: input.description_customer?.trim() || null,
+    barcode: barcodeRaw ? barcodeRaw.replace(/\D/g, '') : null,
+    vendor_name: input.vendor_name?.trim() || null,
+    category: input.category?.trim() || null,
+    picture_url: input.picture_url?.trim() || null,
+    purchase_url: input.purchase_url?.trim() || null,
+    uploaded_at: new Date().toISOString(),
+  }
+
+  const { data, error } = await supabase.from(ITEMS_TABLE).insert(row).select('*').single()
+  if (error) throw new Error(error.message)
+  return data as ItemRecord
+}
+
+export async function deleteItemRow(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { error } = await supabase.from(ITEMS_TABLE).delete().eq('id', id)
+  if (error) throw new Error(error.message)
 }
 
 export async function updateItemRow(

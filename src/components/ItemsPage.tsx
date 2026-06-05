@@ -3,10 +3,14 @@ import type { BarcodeCatalogItem } from '../types/poCheckin'
 import type { ItemBarcodeFilter, ItemRecord } from '../types/items'
 import {
   applyBarcodeLookupToItem,
+  createItemRow,
+  deleteItemRow,
+  fetchAllItemsList,
   fetchItemsAsCatalog,
   fetchItemsList,
   fetchItemsStats,
   isItemsConfigured,
+  type NewItemInput,
   updateItemRow,
 } from '../services/itemsService'
 import {
@@ -24,13 +28,20 @@ import {
 } from '../lib/itemsImageStorage'
 import './ItemsPage.css'
 
-const PAGE_SIZE = 50
+const EMPTY_NEW_ITEM: NewItemInput = {
+  manufacturer: '',
+  part_number: '',
+  item: '',
+  description_customer: '',
+  barcode: '',
+  vendor_name: '',
+  category: '',
+}
 
 export default function ItemsPage() {
   const [stats, setStats] = useState({ total: 0, missingBarcode: 0, hasBarcode: 0 })
   const [rows, setRows] = useState<ItemRecord[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ItemBarcodeFilter>('all')
   const [loading, setLoading] = useState(true)
@@ -43,7 +54,10 @@ export default function ItemsPage() {
   const [lookupLoading, setLookupLoading] = useState(false)
   const [editRow, setEditRow] = useState<ItemRecord | null>(null)
   const [editDraft, setEditDraft] = useState<Partial<ItemRecord>>({})
+  const [addOpen, setAddOpen] = useState(false)
+  const [addDraft, setAddDraft] = useState<NewItemInput>({ ...EMPTY_NEW_ITEM })
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [imageBusy, setImageBusy] = useState(false)
   const bulkCancelRef = useRef(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -68,12 +82,10 @@ export default function ItemsPage() {
       const searchTrimmed = search.trim()
       const [s, list] = await Promise.all([
         fetchItemsStats(),
-        fetchItemsList({
+        fetchAllItemsList({
           search,
           /** Search always scans the full table (matches Label Studio). */
           filter: searchTrimmed ? 'all' : filter,
-          limit: PAGE_SIZE,
-          offset: page * PAGE_SIZE,
         }),
       ])
       setStats(s)
@@ -84,7 +96,7 @@ export default function ItemsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, filter, page])
+  }, [search, filter])
 
   useEffect(() => {
     void loadCatalog()
@@ -287,6 +299,48 @@ export default function ItemsPage() {
     }
   }
 
+  const saveNewItem = async () => {
+    setSaving(true)
+    try {
+      const created = await createItemRow(addDraft)
+      setAddOpen(false)
+      setAddDraft({ ...EMPTY_NEW_ITEM })
+      setStatus({ kind: 'ok', text: `Added ${created.item || created.part_number || 'item'}.` })
+      await refresh()
+      await loadCatalog()
+    } catch (e) {
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Could not add item' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const confirmDelete = async (row: ItemRecord) => {
+    const label = row.item || row.part_number || row.id
+    if (!window.confirm(`Delete "${label}" from the database? This cannot be undone.`)) return
+
+    setDeletingId(row.id)
+    try {
+      const path = row.picture_path?.trim()
+      if (path) {
+        try {
+          await removeItemStoredPicture(row.id, path)
+        } catch {
+          /* storage cleanup is best-effort */
+        }
+      }
+      await deleteItemRow(row.id)
+      if (editRow?.id === row.id) setEditRow(null)
+      setStatus({ kind: 'ok', text: `Deleted ${label}.` })
+      await refresh()
+      await loadCatalog()
+    } catch (e) {
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Delete failed' })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const openEdit = (row: ItemRecord) => {
     setEditRow(row)
     setEditDraft({
@@ -302,8 +356,6 @@ export default function ItemsPage() {
       purchase_url: row.purchase_url ?? '',
     })
   }
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   if (!isItemsConfigured()) {
     return (
@@ -375,17 +427,11 @@ export default function ItemsPage() {
           type="search"
           placeholder="Search part #, item, manufacturer, barcode…"
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(0)
-          }}
+          onChange={(e) => setSearch(e.target.value)}
         />
         <select
           value={filter}
-          onChange={(e) => {
-            setFilter(e.target.value as ItemBarcodeFilter)
-            setPage(0)
-          }}
+          onChange={(e) => setFilter(e.target.value as ItemBarcodeFilter)}
           aria-label="Filter"
           title="Label Studio always lists all items; use All items here to match."
         >
@@ -400,6 +446,16 @@ export default function ItemsPage() {
             to see them.
           </span>
         )}
+        <button
+          type="button"
+          className="inv-btn inv-btn-primary"
+          onClick={() => {
+            setAddDraft({ ...EMPTY_NEW_ITEM })
+            setAddOpen(true)
+          }}
+        >
+          Add item
+        </button>
         <button type="button" className="inv-btn" onClick={() => void refresh()} disabled={loading}>
           Refresh
         </button>
@@ -413,7 +469,7 @@ export default function ItemsPage() {
         </button>
       </div>
 
-      <div className="inv-table-wrap">
+      <div className="inv-table-wrap inv-table-scroll">
         <table className="inv-table">
           <thead>
             <tr>
@@ -486,6 +542,14 @@ export default function ItemsPage() {
                       >
                         Find barcode
                       </button>
+                      <button
+                        type="button"
+                        className="inv-btn inv-btn-danger"
+                        onClick={() => void confirmDelete(row)}
+                        disabled={deletingId === row.id}
+                      >
+                        {deletingId === row.id ? 'Deleting…' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 )
@@ -495,30 +559,13 @@ export default function ItemsPage() {
         </table>
       </div>
 
-      <div className="inv-pagination">
-        <span>
-          Page {page + 1} of {totalPages} ({total.toLocaleString()} rows)
-        </span>
-        <div>
-          <button
-            type="button"
-            className="inv-btn"
-            disabled={page <= 0}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            className="inv-btn"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
-            style={{ marginLeft: '0.35rem' }}
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <p className="inv-table-footer">
+        {loading
+          ? 'Loading items…'
+          : `${rows.length.toLocaleString()} item${rows.length !== 1 ? 's' : ''} shown${
+              total !== rows.length ? ` (${total.toLocaleString()} match filter)` : ''
+            } — scroll the list to see more`}
+      </p>
 
       {lookupRow && (
         <div className="inv-lookup-panel">
@@ -537,6 +584,73 @@ export default function ItemsPage() {
           <button type="button" className="inv-btn" onClick={() => setLookupRow(null)} style={{ marginTop: '0.5rem' }}>
             Close
           </button>
+        </div>
+      )}
+
+      {addOpen && (
+        <div className="inv-modal-overlay" onClick={() => !saving && setAddOpen(false)}>
+          <div className="inv-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Add item</h2>
+            <p className="inv-modal-hint">Item name or part number is required. Other fields are optional.</p>
+            <label>
+              Item name
+              <input
+                value={addDraft.item ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, item: e.target.value }))}
+              />
+            </label>
+            <label>
+              Part number
+              <input
+                value={addDraft.part_number ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, part_number: e.target.value }))}
+              />
+            </label>
+            <label>
+              Manufacturer
+              <input
+                value={addDraft.manufacturer ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, manufacturer: e.target.value }))}
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                value={addDraft.description_customer ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, description_customer: e.target.value }))}
+                rows={2}
+              />
+            </label>
+            <label>
+              Barcode (UPC/EAN)
+              <input
+                value={addDraft.barcode ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, barcode: e.target.value }))}
+              />
+            </label>
+            <label>
+              Vendor
+              <input
+                value={addDraft.vendor_name ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, vendor_name: e.target.value }))}
+              />
+            </label>
+            <label>
+              Category
+              <input
+                value={addDraft.category ?? ''}
+                onChange={(e) => setAddDraft((d) => ({ ...d, category: e.target.value }))}
+              />
+            </label>
+            <div className="inv-modal-actions">
+              <button type="button" className="inv-btn" onClick={() => setAddOpen(false)} disabled={saving}>
+                Cancel
+              </button>
+              <button type="button" className="inv-btn inv-btn-primary" onClick={() => void saveNewItem()} disabled={saving}>
+                {saving ? 'Adding…' : 'Add to database'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
