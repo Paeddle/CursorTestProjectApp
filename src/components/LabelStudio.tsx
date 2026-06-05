@@ -223,7 +223,7 @@ export default function LabelStudio() {
         if (!text) continue
         const box = previewBarcodeBarsBoxPx(el, printableSizePx.width, printableSizePx.height)
         if (el.barcodeType === 'QrCode') {
-          const dataUrl = await qrPreviewDataUrl(text, Math.min(box.width, box.height))
+          const dataUrl = await qrPreviewDataUrl(text)
           if (dataUrl) next[el.id] = { format: 'qr', dataUrl }
         } else {
           const dataUrl = linearBarcodePreviewDataUrl(text, el.barcodeType, box.width, box.height)

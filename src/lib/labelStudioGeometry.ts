@@ -8,10 +8,10 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 31
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 32
 
-/** Match `.ls-canvas-qr` max-width/max-height in Label Studio.css. */
-const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
+/** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
+export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
 
 /** Rolls that map designer % on the catalog face (same grid as the Label Studio canvas). */
 const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set([

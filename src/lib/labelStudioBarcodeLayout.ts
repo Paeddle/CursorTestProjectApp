@@ -1,5 +1,4 @@
 import {
-  LABEL_STUDIO_CONTENT_INSET_PX,
   LABEL_TWIPS_PER_PT,
   studioBoundsHeightTwips,
   type DymoLabelBounds,
@@ -32,9 +31,8 @@ export function previewBarcodeBarsBoxPx(
   printableHeightPx: number
 ): { width: number; height: number } {
   const band = el.textPosition !== 'None' ? BARCODE_CAPTION_BAND_PCT : 0
-  const inset = LABEL_STUDIO_CONTENT_INSET_PX
-  const innerW = (el.widthPct / 100) * printableWidthPx - inset * 2
-  const innerH = (el.heightPct / 100) * printableHeightPx - inset * 2
+  const innerW = (el.widthPct / 100) * printableWidthPx
+  const innerH = (el.heightPct / 100) * printableHeightPx
   return {
     width: Math.max(16, innerW),
     height: Math.max(12, innerH * (1 - band / 100)),

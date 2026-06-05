@@ -259,7 +259,10 @@ async function buildElementXmlAsync(
     const encoded = barcodeTextForPrint(value, symbology)
     if (usesStudioQrImagePrint(template) && symbology === 'QrCode' && encoded) {
       const qrBounds = studioQrPrintBounds(el, template, printOptions)
-      const png = await qrPngBase64ForPrint(encoded)
+      const png = await qrPngBase64ForPrint(
+        encoded,
+        Math.min(qrBounds.width, qrBounds.height)
+      )
       if (png) {
         return buildRasterImageObjectXml(el.name || el.id, png, qrBounds)
       }
