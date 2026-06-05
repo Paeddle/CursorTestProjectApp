@@ -8,14 +8,25 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 14
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 15
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
 export type StudioPrintBoundsOptions = { /** @deprecated Unused — kept for call-site compatibility. */ catalogTwips?: boolean }
 
-/** poInner printable band (same as PO Info labels). */
+/** Full catalog printable face — matches the Label Studio canvas (102×59 mm on 30323). */
+function studioFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
+  return {
+    x: template.boundsX,
+    y: template.boundsY,
+    width: template.boundsWidth,
+    height: template.boundsHeight,
+  }
+}
+
+/** Printable band for preview font scaling and non-30323 rolls. */
 function studioPrintableBounds(template: DymoPaperTemplate): DymoLabelBounds {
+  if (template.id === 'Shipping') return studioFaceBounds(template)
   return poInnerBoundsForTemplate(template)
 }
 
@@ -36,14 +47,14 @@ function pctToStudioPrintBounds(
 }
 
 /**
- * 30323: keep wide XML boxes (text runs along the label edge — correct on this printer).
- * Use face-linear Y so designer top/bottom % match print and stacked elements do not overlap.
+ * 30323: map designer % to full catalog bounds (same grid as canvas / RenderLabel preview).
+ * Keep wide XML boxes; face-linear Y so stacked text + QR use the full 59 mm face.
  */
 function pctToShippingPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
 ): DymoLabelBounds {
-  const base = studioPrintableBounds(template)
+  const base = studioFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
   const maxY = base.y + base.height - height

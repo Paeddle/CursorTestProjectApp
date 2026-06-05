@@ -1,5 +1,5 @@
 /**
- * Print PO vs studio (rev 14: direct poInner + face-linear Y) for physical comparison.
+ * Print PO vs studio rev 15 (catalog bounds + face-linear Y + ShrinkToFit).
  * node scripts/dymo-print-po-vs-studio.mjs
  */
 import { buildLabelXml, DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
@@ -9,19 +9,12 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const ITEM = "1' Cat6 Patch Cable"
 
-function poInner(t) {
-  const padX = Math.round(t.boundsWidth * 0.04)
-  const padY = Math.round(t.boundsHeight * 0.06)
-  return {
-    x: t.boundsX + padX,
-    y: t.boundsY + padY,
-    width: t.boundsWidth - padX * 2,
-    height: t.boundsHeight - padY * 2,
-  }
+function faceBounds(t) {
+  return { x: t.boundsX, y: t.boundsY, width: t.boundsWidth, height: t.boundsHeight }
 }
 
-/** Rev 14: wide boxes + face-linear Y (no axis cross). */
-function mapShipping(el, base) {
+/** Rev 15: catalog face + face-linear Y. */
+function mapRev15(el, base) {
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
   const maxY = base.y + base.height - height
@@ -33,7 +26,7 @@ function mapShipping(el, base) {
   }
 }
 
-function textXml(tag, lines, bounds, size) {
+function textXml(tag, lines, bounds, size, fit) {
   return (
     `<ObjectInfo><TextObject><Name>TXT</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
@@ -41,7 +34,7 @@ function textXml(tag, lines, bounds, size) {
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored><IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>None</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
+    `<TextFitMode>${fit}</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized><StyledText>` +
     `<Element><String>${tag} ${lines}</String><Attributes>` +
     `<Font Family="Arial" Size="${size}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
@@ -81,10 +74,10 @@ function dieCut(objects) {
 }
 
 function studioXml() {
-  const inner = poInner(catalog)
-  const textB = mapShipping({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, inner)
-  const qrB = mapShipping({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, inner)
-  return dieCut(textXml('STUDIO', ITEM, textB, 18) + qrXml(qrB))
+  const base = faceBounds(catalog)
+  const textB = mapRev15({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev15({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  return dieCut(textXml('STUDIO', ITEM, textB, 18, 'ShrinkToFit') + qrXml(qrB))
 }
 
 async function dymoRequest(endpoint, form) {
@@ -113,16 +106,17 @@ async function printXml(name, labelXml) {
 }
 
 async function main() {
-  const inner = poInner(catalog)
-  const textB = mapShipping({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, inner)
-  const qrB = mapShipping({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, inner)
-  console.log('rev14 text', textB, 'qr', qrB)
+  const base = faceBounds(catalog)
+  const textB = mapRev15({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev15({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  console.log('rev15 catalog face', base)
+  console.log('text', textB, 'qr', qrB)
   const poXml = buildLabelXml(
     { jobFontSize: 22, locationFontSize: 14, jobLines: [`PO ${ITEM}`], locationLines: [] },
     catalog
   )
   await printXml('PO-label', poXml)
-  await printXml('STUDIO-rev14', studioXml())
+  await printXml('STUDIO-rev15', studioXml())
 }
 
 main().catch((e) => {

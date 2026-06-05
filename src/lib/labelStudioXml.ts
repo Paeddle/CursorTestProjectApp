@@ -71,13 +71,16 @@ function buildTextObjectXml(
     textFitMode: LabelStudioTextElement['textFitMode']
   }
 ): string {
-  const pt = studioPrintTextFontSizePt(
-    fontSize,
-    Math.max(1, lines.length),
-    studioPrintTextVerticalTwips(bounds, paper),
-    options.textFitMode
-  )
-  const dymoFitMode = 'None'
+  const shrink = options.textFitMode !== 'None'
+  const dymoFitMode = shrink ? 'ShrinkToFit' : 'None'
+  const pt = shrink
+    ? fontSize
+    : studioPrintTextFontSizePt(
+        fontSize,
+        Math.max(1, lines.length),
+        studioPrintTextVerticalTwips(bounds, paper),
+        options.textFitMode
+      )
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +

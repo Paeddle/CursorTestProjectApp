@@ -906,8 +906,8 @@ export default function LabelStudio() {
           />
 
           <p className="ls-canvas-hint">
-            The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face. Print uses the same
-            inner bounds as PO Info labels on that roll.{' '}
+            The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face — print uses the same
+            catalog bounds on 30323.{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field.
           </p>
