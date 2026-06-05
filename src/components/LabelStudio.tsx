@@ -797,6 +797,9 @@ export default function LabelStudio() {
                 <span className="ls-field-hint">
                   Must match your loaded roll in DYMO Connect. Preview size is the real sticker face (
                   {paperTemplate.widthMm}×{paperTemplate.heightMm} mm).
+                  {paperTemplate.id === 'Address30251'
+                    ? ' 30251 uses the same print envelope as 30252 Address in DYMO (identical 3½×1⅛ in face).'
+                    : ''}
                 </span>
               </label>
               <div className="ls-btn-row">

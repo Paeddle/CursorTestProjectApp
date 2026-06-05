@@ -8,10 +8,15 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 28
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 29
 
 /** Rolls that map designer % on the catalog face (same grid as the Label Studio canvas). */
-const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set(['Shipping', 'Durable1933085'])
+const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set([
+  'Shipping',
+  'Durable1933085',
+  'Address30251',
+  'Address',
+])
 
 /** Hybrid bounds origin differs from 30323 catalog — anchor from catalog face like the canvas. */
 const SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN = true

@@ -78,10 +78,26 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     boundsHeight: 1009,
   },
   {
+    id: 'Address30251',
+    paperName: '30252 Address',
+    catalogSku: '30251',
+    /** 3½×1⅛ in address (89×28 mm landscape) — same face as 30252; DYMO schema uses 30252 Address. */
+    widthMm: 89,
+    heightMm: 28,
+    drawWidth: 1581,
+    drawHeight: 5040,
+    boundsX: 332,
+    boundsY: 150,
+    boundsWidth: 4455,
+    boundsHeight: 1260,
+  },
+  {
     id: 'Address',
     paperName: '30252 Address',
-    widthMm: 28,
-    heightMm: 89,
+    catalogSku: '30252',
+    /** 1⅛×3½ in address (89×28 mm landscape). */
+    widthMm: 89,
+    heightMm: 28,
     drawWidth: 1581,
     drawHeight: 5040,
     boundsX: 332,

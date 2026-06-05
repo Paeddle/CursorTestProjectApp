@@ -34,6 +34,16 @@ export const DYMO_PAPER_TEMPLATES = [
     boundsHeight: 1009,
   },
   {
+    id: 'Address30251',
+    paperName: '30252 Address',
+    drawWidth: 1581,
+    drawHeight: 5040,
+    boundsX: 332,
+    boundsY: 150,
+    boundsWidth: 4455,
+    boundsHeight: 1260,
+  },
+  {
     id: 'Address',
     paperName: '30252 Address',
     drawWidth: 1581,
