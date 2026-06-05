@@ -8,21 +8,18 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 12
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 13
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
 export type StudioPrintBoundsOptions = { /** @deprecated Unused — kept for call-site compatibility. */ catalogTwips?: boolean }
 
-/**
- * Printable rectangle the LabelWriter actually uses (same poInner band as PO Info labels).
- * Studio canvas is the full 102×59 mm face; 0–100% maps into this inner bounds rect.
- */
+/** poInner printable band (same as PO Info labels). */
 function studioPrintableBounds(template: DymoPaperTemplate): DymoLabelBounds {
   return poInnerBoundsForTemplate(template)
 }
 
-/** Map studio 0–100% into poInner bounds — direct x/y, same as PO label coordinates. */
+/** Direct map for non-30323 rolls. */
 function pctToStudioPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
@@ -38,13 +35,42 @@ function pctToStudioPrintBounds(
   }
 }
 
+/**
+ * 30323 on LabelWriter: XML Width tracks the physical vertical axis and Height the horizontal.
+ * Map studio face % through poInner with axes crossed (probe: direct wide boxes print vertical).
+ */
+function pctToShippingPrintBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  template: DymoPaperTemplate
+): DymoLabelBounds {
+  const base = studioPrintableBounds(template)
+  const width = Math.max(80, Math.round((el.heightPct / 100) * base.height))
+  const height = Math.max(60, Math.round((el.widthPct / 100) * base.width))
+  return {
+    x: base.x + Math.round((el.yPct / 100) * (base.height - width)),
+    y: base.y + Math.round((el.xPct / 100) * (base.width - height)),
+    width,
+    height,
+  }
+}
+
 /** Map studio 0–100% to DYMO object bounds for print XML. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate,
   _options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
+  if (template.id === 'Shipping') return pctToShippingPrintBounds(el, template)
   return pctToStudioPrintBounds(el, template)
+}
+
+/** Line-height axis in print XML (Bounds Width on 30323 after axis cross). */
+export function studioPrintTextVerticalTwips(
+  bounds: DymoLabelBounds,
+  template: DymoPaperTemplate
+): number {
+  if (template.id === 'Shipping') return bounds.width
+  return bounds.height
 }
 
 export type LabelPrintableMetrics = {
@@ -59,29 +85,28 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
-/** Printable height in twips for preview font scaling (poInner, matches print). */
+/** Canvas preview uses face vertical (59 mm) — poInner height twips. */
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
   return studioPrintableBounds(template).height
 }
 
-/** Printable width in twips for preview font scaling. */
+/** Canvas preview uses face horizontal (102 mm) — poInner width twips. */
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
   return studioPrintableBounds(template).width
 }
 
 const LINE_HEIGHT_TWIPS_PER_PT = 28
 
-/** Fixed font size for hardware print (PO labels use TextFitMode=None the same way). */
 export function studioPrintTextFontSizePt(
   fontSize: number,
   lineCount: number,
-  boxHeightTwips: number,
+  boxVerticalTwips: number,
   textFitMode: LabelStudioTextFitMode | undefined
 ): number {
   const lines = Math.max(1, lineCount)
   const needed = lines * fontSize * LINE_HEIGHT_TWIPS_PER_PT
-  if (textFitMode === 'None' || needed <= boxHeightTwips) return fontSize
-  return Math.max(8, Math.floor((fontSize * boxHeightTwips) / needed))
+  if (textFitMode === 'None' || needed <= boxVerticalTwips) return fontSize
+  return Math.max(8, Math.floor((fontSize * boxVerticalTwips) / needed))
 }
 
 export function previewMaxFontSizePx(

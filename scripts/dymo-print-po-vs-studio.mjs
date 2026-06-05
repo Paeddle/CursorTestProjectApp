@@ -1,8 +1,8 @@
 /**
- * Print PO label vs studio poInner mapping for physical comparison.
+ * Print PO vs studio (axis-crossed poInner) for physical comparison.
  * node scripts/dymo-print-po-vs-studio.mjs
  */
-import { buildLabelXml, DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
+import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
@@ -20,33 +20,21 @@ function poInner(t) {
   }
 }
 
-function anchor(el, base, w, h) {
+/** 30323: face vertical% → XML Width, face horizontal% → XML Height. */
+function mapShipping(el, base) {
+  const width = Math.max(80, Math.round((el.heightPct / 100) * base.height))
+  const height = Math.max(60, Math.round((el.widthPct / 100) * base.width))
   return {
-    x: base.x + Math.round((el.xPct / 100) * (base.width - w)),
-    y: base.y + Math.round((el.yPct / 100) * (base.height - h)),
-    width: w,
-    height: h,
+    x: base.x + Math.round((el.yPct / 100) * (base.height - width)),
+    y: base.y + Math.round((el.xPct / 100) * (base.width - height)),
+    width,
+    height,
   }
 }
 
-function studioXml() {
-  const inner = poInner(catalog)
-  const TEXT = { xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }
-  const QR = { xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }
-  const textB = anchor(
-    TEXT,
-    inner,
-    Math.max(80, Math.round((TEXT.widthPct / 100) * inner.width)),
-    Math.max(60, Math.round((TEXT.heightPct / 100) * inner.height))
-  )
-  const qrB = anchor(
-    QR,
-    inner,
-    Math.max(80, Math.round((QR.widthPct / 100) * inner.width)),
-    Math.max(60, Math.round((QR.heightPct / 100) * inner.height))
-  )
-  const text =
-    `<ObjectInfo><TextObject><Name>ITEM</Name>` +
+function textXml(tag, lines, bounds, size) {
+  return (
+    `<ObjectInfo><TextObject><Name>TXT</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
@@ -54,12 +42,16 @@ function studioXml() {
     `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Middle</VerticalAlignment>` +
     `<TextFitMode>None</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized><StyledText>` +
-    `<Element><String>STUDIO ${ITEM}</String><Attributes>` +
-    `<Font Family="Arial" Size="18" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
+    `<Element><String>${tag} ${lines}</String><Attributes>` +
+    `<Font Family="Arial" Size="${size}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/></Attributes></Element>` +
     `</StyledText></TextObject>` +
-    `<Bounds X="${textB.x}" Y="${textB.y}" Width="${textB.width}" Height="${textB.height}"/></ObjectInfo>`
-  const qr =
+    `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/></ObjectInfo>`
+  )
+}
+
+function qrXml(bounds) {
+  return (
     `<ObjectInfo><BarcodeObject><Name>QR</Name>` +
     `<ForeColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<BackColor Alpha="0" Red="255" Green="255" Blue="255"/>` +
@@ -71,17 +63,33 @@ function studioXml() {
     `<CheckSumFont Family="Arial" Size="8" Bold="False" Italic="False" Underline="False" Strikeout="False"/>` +
     `<TextEmbedding>None</TextEmbedding><ECLevel>0</ECLevel><HorizontalAlignment>Center</HorizontalAlignment>` +
     `<QuietZonesPadding Left="0" Top="0" Right="0" Bottom="0"/></BarcodeObject>` +
-    `<Bounds X="${qrB.x}" Y="${qrB.y}" Width="${qrB.width}" Height="${qrB.height}"/></ObjectInfo>`
+    `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/></ObjectInfo>`
+  )
+}
+
+function dieCut(objects) {
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
     `<PaperOrientation>Landscape</PaperOrientation><Id>${catalog.id}</Id>` +
     `<PaperName>${catalog.paperName}</PaperName>` +
     `<DrawCommands><RoundRectangle X="0" Y="0" Width="${catalog.drawWidth}" Height="${catalog.drawHeight}" Rx="270" Ry="270"/></DrawCommands>` +
-    text +
-    qr +
+    objects +
     `</DieCutLabel>`
   )
+}
+
+function poSwappedXml() {
+  const inner = poInner(catalog)
+  const band = mapShipping({ xPct: 0, yPct: 0, widthPct: 100, heightPct: 100 }, inner)
+  return dieCut(textXml('PO', ITEM, band, 22))
+}
+
+function studioSwappedXml() {
+  const inner = poInner(catalog)
+  const textB = mapShipping({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, inner)
+  const qrB = mapShipping({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, inner)
+  return dieCut(textXml('STUDIO', ITEM, textB, 18) + qrXml(qrB))
 }
 
 async function dymoRequest(endpoint, form) {
@@ -107,18 +115,16 @@ async function printXml(name, labelXml) {
   })
   const ok = print.ok && String(print.body).trim().toLowerCase() !== 'false'
   console.log(`${ok ? 'PRINTED' : 'FAIL'} ${name}`)
-  if (!ok) console.log(print.body.slice(0, 200))
 }
 
 async function main() {
-  const poXml = buildLabelXml(
-    { jobFontSize: 22, locationFontSize: 14, jobLines: [`PO ${ITEM}`], locationLines: [] },
-    catalog
-  )
   const inner = poInner(catalog)
   console.log('poInner', inner)
-  await printXml('PO-label', poXml)
-  await printXml('STUDIO-poInner', studioXml())
+  const textB = mapShipping({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, inner)
+  const qrB = mapShipping({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, inner)
+  console.log('studio text', textB, 'qr', qrB)
+  await printXml('PO-swapped', poSwappedXml())
+  await printXml('STUDIO-swapped', studioSwappedXml())
 }
 
 main().catch((e) => {
