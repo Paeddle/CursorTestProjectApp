@@ -1,5 +1,5 @@
 /**
- * Print studio layout matching web app rev 18 (item + QR, designer font scale).
+ * Print studio rev 19 — literal designer % (face-linear Y, no nudges).
  * node scripts/dymo-print-po-vs-studio.mjs
  */
 import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
@@ -8,7 +8,6 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
 const ITEM = "1' Cat6 Patch Cable"
-const Y_OFFSET = 0.15
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
@@ -28,16 +27,13 @@ function clamp(bounds, base) {
   }
 }
 
-function mapRev18(el, base) {
+function mapRev19(el, base) {
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  const maxY = base.y + base.height - height
-  const yAnchor = base.y + Math.round((el.yPct / 100) * (base.height - height))
-  const y = Math.min(maxY, yAnchor + Math.round(base.height * Y_OFFSET))
   return clamp(
     {
       x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y,
+      y: base.y + Math.round((el.yPct / 100) * base.height),
       width,
       height,
     },
@@ -92,11 +88,12 @@ function dieCut(objects) {
   )
 }
 
-/** Typical saved template: item name top, QR below (matches web app screenshot). */
 function studioXml() {
   const base = faceBounds(catalog)
-  const textB = mapRev18({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev18({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  const textB = mapRev19({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev19({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  const gap = qrB.y - (textB.y + textB.height)
+  console.log('XML gap text→qr (twips):', gap, gap < 0 ? 'OVERLAP' : 'ok')
   return dieCut(textXml(ITEM, textB, 17) + qrXml(qrB))
 }
 
@@ -123,15 +120,10 @@ async function printXml(name, labelXml) {
   })
   const ok = print.ok && String(print.body).trim().toLowerCase() !== 'false'
   console.log(`${ok ? 'PRINTED' : 'FAIL'} ${name}`)
-  if (!ok) console.log(String(print.body).slice(0, 400))
 }
 
 async function main() {
-  const base = faceBounds(catalog)
-  const textB = mapRev18({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev18({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  console.log('rev18 text', textB, 'qr', qrB)
-  await printXml('STUDIO-rev18', studioXml())
+  await printXml('STUDIO-rev19', studioXml())
 }
 
 main().catch((e) => {

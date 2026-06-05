@@ -8,10 +8,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 18
-
-/** Push stacked content down — hardware compresses XML Y into the top half of the face. */
-const SHIPPING_FACE_Y_OFFSET_FRAC = 0.15
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 19
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -63,7 +60,9 @@ function clampShippingBounds(
 }
 
 /**
- * 30323: catalog face, wide XML boxes (landscape text), face-linear Y + downward offset.
+ * 30323: literal designer % on catalog face.
+ * Y is face-linear (yPct = top edge on canvas) so stacked fields keep designer gaps.
+ * X uses inset anchor so wide elements honor width% without overflowing.
  */
 function pctToShippingPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
@@ -72,13 +71,10 @@ function pctToShippingPrintBounds(
   const base = studioFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  const maxY = base.y + base.height - height
-  const yLinear = base.y + Math.round((el.yPct / 100) * (base.height - height))
-  const y = Math.min(maxY, yLinear + Math.round(base.height * SHIPPING_FACE_Y_OFFSET_FRAC))
   return clampShippingBounds(
     {
       x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y,
+      y: base.y + Math.round((el.yPct / 100) * base.height),
       width,
       height,
     },
