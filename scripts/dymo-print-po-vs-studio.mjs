@@ -1,8 +1,8 @@
 /**
- * Print PO vs studio (axis-crossed poInner) for physical comparison.
+ * Print PO vs studio (rev 14: direct poInner + face-linear Y) for physical comparison.
  * node scripts/dymo-print-po-vs-studio.mjs
  */
-import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
+import { buildLabelXml, DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
@@ -20,13 +20,14 @@ function poInner(t) {
   }
 }
 
-/** 30323: face vertical% → XML Width, face horizontal% → XML Height. */
+/** Rev 14: wide boxes + face-linear Y (no axis cross). */
 function mapShipping(el, base) {
-  const width = Math.max(80, Math.round((el.heightPct / 100) * base.height))
-  const height = Math.max(60, Math.round((el.widthPct / 100) * base.width))
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const maxY = base.y + base.height - height
   return {
-    x: base.x + Math.round((el.yPct / 100) * (base.height - width)),
-    y: base.y + Math.round((el.xPct / 100) * (base.width - height)),
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY),
     width,
     height,
   }
@@ -79,13 +80,7 @@ function dieCut(objects) {
   )
 }
 
-function poSwappedXml() {
-  const inner = poInner(catalog)
-  const band = mapShipping({ xPct: 0, yPct: 0, widthPct: 100, heightPct: 100 }, inner)
-  return dieCut(textXml('PO', ITEM, band, 22))
-}
-
-function studioSwappedXml() {
+function studioXml() {
   const inner = poInner(catalog)
   const textB = mapShipping({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, inner)
   const qrB = mapShipping({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, inner)
@@ -119,12 +114,15 @@ async function printXml(name, labelXml) {
 
 async function main() {
   const inner = poInner(catalog)
-  console.log('poInner', inner)
   const textB = mapShipping({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, inner)
   const qrB = mapShipping({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, inner)
-  console.log('studio text', textB, 'qr', qrB)
-  await printXml('PO-swapped', poSwappedXml())
-  await printXml('STUDIO-swapped', studioSwappedXml())
+  console.log('rev14 text', textB, 'qr', qrB)
+  const poXml = buildLabelXml(
+    { jobFontSize: 22, locationFontSize: 14, jobLines: [`PO ${ITEM}`], locationLines: [] },
+    catalog
+  )
+  await printXml('PO-label', poXml)
+  await printXml('STUDIO-rev14', studioXml())
 }
 
 main().catch((e) => {

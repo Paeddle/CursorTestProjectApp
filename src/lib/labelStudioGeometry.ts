@@ -8,7 +8,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 13
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 14
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -36,19 +36,20 @@ function pctToStudioPrintBounds(
 }
 
 /**
- * 30323 on LabelWriter: XML Width tracks the physical vertical axis and Height the horizontal.
- * Map studio face % through poInner with axes crossed (probe: direct wide boxes print vertical).
+ * 30323: keep wide XML boxes (text runs along the label edge — correct on this printer).
+ * Use face-linear Y so designer top/bottom % match print and stacked elements do not overlap.
  */
 function pctToShippingPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
 ): DymoLabelBounds {
   const base = studioPrintableBounds(template)
-  const width = Math.max(80, Math.round((el.heightPct / 100) * base.height))
-  const height = Math.max(60, Math.round((el.widthPct / 100) * base.width))
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const maxY = base.y + base.height - height
   return {
-    x: base.x + Math.round((el.yPct / 100) * (base.height - width)),
-    y: base.y + Math.round((el.xPct / 100) * (base.width - height)),
+    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
+    y: Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY),
     width,
     height,
   }
@@ -64,7 +65,7 @@ export function pctToDymoPrintBounds(
   return pctToStudioPrintBounds(el, template)
 }
 
-/** Line-height axis in print XML (Bounds Width on 30323 after axis cross). */
+/** Text flow axis in print XML (30323 wide Bounds.Width is along the readable edge). */
 export function studioPrintTextVerticalTwips(
   bounds: DymoLabelBounds,
   template: DymoPaperTemplate
