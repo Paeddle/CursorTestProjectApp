@@ -1,5 +1,5 @@
 /**
- * User template rev 23 — canvas top-left % on catalog face, scaled into hybrid envelope.
+ * User template rev 24 — hybrid envelope with catalog X origin + QR boost.
  * Text 10/10/80/25  QR 32/51/36/38
  */
 import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
@@ -20,6 +20,7 @@ const HYBRID = {
 }
 
 const ITEM = "1' Cat6 Patch Cable"
+const QR_SIDE_BOOST = 1.32
 const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
 const QR = { xPct: 32, yPct: 51, widthPct: 36, heightPct: 38 }
 
@@ -49,7 +50,7 @@ function scaleToPrint(bounds, design, print) {
   const scaleX = p.width / d.width
   const scaleY = p.height / d.height
   return {
-    x: p.x + Math.round((bounds.x - d.x) * scaleX),
+    x: d.x + Math.round((bounds.x - d.x) * scaleX),
     y: p.y + Math.round((bounds.y - d.y) * scaleY),
     width: Math.max(80, Math.round(bounds.width * scaleX)),
     height: Math.max(60, Math.round(bounds.height * scaleY)),
@@ -77,7 +78,7 @@ function mapRect(el) {
 
 function mapQr(el) {
   const rect = mapRect(el)
-  const side = Math.max(80, Math.min(rect.width, rect.height))
+  const side = Math.max(80, Math.round(Math.min(rect.width, rect.height) * QR_SIDE_BOOST))
   return clamp(
     {
       x: rect.x + Math.round((rect.width - side) / 2),
@@ -164,10 +165,10 @@ async function printXml(name, labelXml) {
 async function main() {
   const textB = mapRect(TEXT)
   const qrB = mapQr(QR)
-  console.log('rev23 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
-  console.log('rev23 hybrid text', textB)
-  console.log('rev23 hybrid qr', qrB)
-  await printXml('STUDIO-rev23-hybrid', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
+  console.log('rev24 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
+  console.log('rev24 hybrid text', textB)
+  console.log('rev24 hybrid qr', qrB)
+  await printXml('STUDIO-rev24-tuned', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
 }
 
 main().catch((e) => {

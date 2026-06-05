@@ -75,7 +75,7 @@ export function dymoBarcodeSizeForStudioPrint(
   if (symbology === 'QrCode') {
     rank = Math.max(rank, BARCODE_SIZE_ORDER.indexOf('Large'))
     if (paperId === 'Shipping') {
-      rank = Math.max(rank, BARCODE_SIZE_ORDER.indexOf('Large'))
+      rank = Math.min(BARCODE_SIZE_ORDER.length - 1, rank + 1)
     }
   }
   return BARCODE_SIZE_ORDER[Math.min(BARCODE_SIZE_ORDER.length - 1, rank)] ?? 'ExtraLarge'

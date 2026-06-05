@@ -8,7 +8,12 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 23
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 24
+
+/** Hybrid (30256) boundsX is offset vs 30323 catalog — anchor X from catalog origin so print centers. */
+const SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN = true
+/** DYMO renders QR smaller than XML bounds on 30323 — boost square side slightly. */
+const SHIPPING_QR_SIDE_BOOST = 1.32
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -72,8 +77,12 @@ function scaleFaceBoundsToPrintTemplate(
   }
   const scaleX = print.width / design.width
   const scaleY = print.height / design.height
+  const x =
+    SHIPPING_HYBRID_X_FROM_DESIGN_ORIGIN
+      ? design.x + Math.round((bounds.x - design.x) * scaleX)
+      : print.x + Math.round((bounds.x - design.x) * scaleX)
   return {
-    x: print.x + Math.round((bounds.x - design.x) * scaleX),
+    x,
     y: print.y + Math.round((bounds.y - design.y) * scaleY),
     width: Math.max(80, Math.round(bounds.width * scaleX)),
     height: Math.max(60, Math.round(bounds.height * scaleY)),
@@ -118,7 +127,10 @@ export function shippingQrPrintBounds(
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
   const rect = pctToDymoPrintBounds(el, printTemplate, options)
-  const side = Math.max(80, Math.min(rect.width, rect.height))
+  const side = Math.max(
+    80,
+    Math.round(Math.min(rect.width, rect.height) * SHIPPING_QR_SIDE_BOOST)
+  )
   const face = studioFaceBounds(printTemplate)
   return clampWithinFace(
     {
