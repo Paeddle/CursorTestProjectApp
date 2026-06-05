@@ -18,7 +18,6 @@ import type {
 } from '../types/labelStudio'
 import {
   pctToDymoPrintBounds,
-  studioPrintTextBoxVerticalTwips,
   studioPrintTextFontSizePt,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
@@ -64,7 +63,6 @@ function buildTextObjectXml(
   lines: string[],
   fontSize: number,
   bounds: DymoLabelBounds,
-  paper: DymoPaperTemplate,
   options: {
     align: LabelStudioTextElement['align']
     bold: boolean
@@ -74,7 +72,7 @@ function buildTextObjectXml(
   const pt = studioPrintTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
-    studioPrintTextBoxVerticalTwips(bounds, paper),
+    bounds.height,
     options.textFitMode
   )
   const dymoFitMode = 'None'
@@ -140,8 +138,7 @@ function buildBarcodeObjectXml(
 function buildBarcodePrintXml(
   el: LabelStudioBarcodeElement,
   displayText: string,
-  bounds: DymoLabelBounds,
-  paper: DymoPaperTemplate
+  bounds: DymoLabelBounds
 ): string {
   const symbology = resolveBarcodeType(el.barcodeType, displayText)
   const encoded = barcodeTextForPrint(displayText, symbology)
@@ -157,7 +154,6 @@ function buildBarcodePrintXml(
     [displayText],
     barcodeCaptionFontPt(caption),
     caption,
-    paper,
     { align: 'Center', bold: false, textFitMode: 'None' }
   )
   return barcodeXml + captionXml
@@ -201,7 +197,7 @@ async function buildElementXmlAsync(
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
-    return buildBarcodePrintXml(el, value, bounds, template)
+    return buildBarcodePrintXml(el, value, bounds)
   }
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
@@ -213,7 +209,7 @@ async function buildElementXmlAsync(
   if (isTextElement(el)) {
     const lines = mergedLinesForElement(el.content, item)
     if (lines.length === 0) return ''
-    return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, template, {
+    return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
       textFitMode: el.textFitMode ?? 'ShrinkToFit',
@@ -231,7 +227,7 @@ function buildElementXml(
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
-    return buildBarcodePrintXml(el, value, bounds, template)
+    return buildBarcodePrintXml(el, value, bounds)
   }
   if (isImageElement(el)) {
     return ''
@@ -239,7 +235,7 @@ function buildElementXml(
   if (isTextElement(el)) {
     const lines = mergedLinesForElement(el.content, item)
     if (lines.length === 0) return ''
-    return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, template, {
+    return buildTextObjectXml(el.name || el.id, lines, el.fontSize, bounds, {
       align: el.align,
       bold: el.bold,
       textFitMode: el.textFitMode ?? 'ShrinkToFit',
@@ -266,7 +262,6 @@ export function buildLabelXmlFromStudio(
         ['(empty label)'],
         18,
         pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t, printOptions),
-        t,
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
@@ -307,7 +302,6 @@ export async function buildLabelXmlFromStudioForPrint(
         ['(empty label)'],
         18,
         pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t, printOptions),
-        t,
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
