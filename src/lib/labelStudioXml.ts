@@ -1,9 +1,4 @@
-import {
-  DYMO_PAPER_TEMPLATES,
-  dymoTemplateForStudioPrint,
-  escapeXmlText,
-  type DymoPaperTemplate,
-} from './dymoLabelXml'
+import { DYMO_PAPER_TEMPLATES, escapeXmlText, type DymoPaperTemplate } from './dymoLabelXml'
 import {
   barcodeTextForPrint,
   dymoBarcodeSizeForStudioPrint,
@@ -46,9 +41,9 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
 function studioDieCutXml(
   template: DymoPaperTemplate,
   objectXml: string,
-  options?: StudioPrintBoundsOptions
+  _options?: StudioPrintBoundsOptions
 ): string {
-  const t = options?.catalogTwips ? template : dymoTemplateForStudioPrint(template)
+  const t = template
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
@@ -323,7 +318,6 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred)
   if (preferred.id === 'Shipping') {
-    /** Catalog 30323 twips print tiny top-left labels; do not silently fall back. */
     return [hybrid]
   }
   const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)

@@ -907,7 +907,7 @@ export default function LabelStudio() {
 
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face. What you place here
-            prints at the same position and size (30323 uses the same tall layout as PO Info labels).{' '}
+            prints at the same position and size on that roll.{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field.
           </p>

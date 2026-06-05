@@ -1,8 +1,4 @@
-import {
-  dymoTemplateForStudioPrint,
-  poInnerBoundsForTemplate,
-  type DymoPaperTemplate,
-} from './dymoLabelXml'
+import type { DymoPaperTemplate } from './dymoLabelXml'
 import type { LabelStudioElement, LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
 
 /** Twips per point (1440 twips/in ÷ 72 pt/in). */
@@ -12,27 +8,28 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 8
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 9
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
-export type StudioPrintBoundsOptions = { /** Use short 30323 catalog twips (fallback if hybrid rejected). */ catalogTwips?: boolean }
+export type StudioPrintBoundsOptions = { /** @deprecated Unused — kept for call-site compatibility. */ catalogTwips?: boolean }
 
-/** Photo calibration — hybrid 30323 prints land slightly left/up on the sticker face. */
-const SHIPPING_PRINT_X_NUDGE_PCT = 3
-const SHIPPING_PRINT_Y_NUDGE_PCT = 3.5
+/** DYMO printable face for the roll template — same grid as the studio canvas (0–100%). */
+function studioPrintFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
+  return {
+    x: template.boundsX,
+    y: template.boundsY,
+    width: template.boundsWidth,
+    height: template.boundsHeight,
+  }
+}
 
-function pctToCatalogBounds(
+/** Map studio 0–100% (label face) to DYMO object bounds for print XML. */
+function pctToStudioFaceBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate
 ): DymoLabelBounds {
-  const pad = 40
-  const base = {
-    x: template.boundsX + pad,
-    y: template.boundsY + pad,
-    width: template.boundsWidth - pad * 2,
-    height: template.boundsHeight - pad * 2,
-  }
+  const base = studioPrintFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
   return {
@@ -43,49 +40,13 @@ function pctToCatalogBounds(
   }
 }
 
-/**
- * Map studio 0–100% (102×59 mm face) into the same inner bounds rectangle PO labels use
- * on the hybrid 30323 template (tall draw + large bounds). Direct x/y — wide text boxes so
- * ShrinkToFit is not crushed by a narrow width.
- */
-function applyShippingPrintNudge(bounds: DymoLabelBounds, template: DymoPaperTemplate): DymoLabelBounds {
-  if (template.id !== 'Shipping') return bounds
-  const base = poInnerBoundsForTemplate(template)
-  return {
-    x: bounds.x + Math.round((SHIPPING_PRINT_X_NUDGE_PCT / 100) * base.width),
-    y: bounds.y + Math.round((SHIPPING_PRINT_Y_NUDGE_PCT / 100) * base.height),
-    width: bounds.width,
-    height: bounds.height,
-  }
-}
-
-function pctToPoInnerBounds(
-  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  template: DymoPaperTemplate
-): DymoLabelBounds {
-  const base = poInnerBoundsForTemplate(template)
-  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
-  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
-  return applyShippingPrintNudge(
-    {
-      x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y: base.y + Math.round((el.yPct / 100) * (base.height - height)),
-      width,
-      height,
-    },
-    template
-  )
-}
-
 /** Map studio 0–100% to DYMO object bounds for print XML. */
 export function pctToDymoPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   template: DymoPaperTemplate,
-  options?: StudioPrintBoundsOptions
+  _options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
-  if (options?.catalogTwips) return pctToCatalogBounds(el, template)
-  const t = dymoTemplateForStudioPrint(template)
-  return pctToPoInnerBounds(el, t)
+  return pctToStudioFaceBounds(el, template)
 }
 
 export type LabelPrintableMetrics = {
@@ -100,14 +61,14 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
-/** Printable height in twips for preview font scaling (inner bounds, not raw catalog bounds). */
+/** Printable height in twips for preview font scaling (same face as print XML). */
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
-  return poInnerBoundsForTemplate(dymoTemplateForStudioPrint(template)).height
+  return studioPrintFaceBounds(template).height
 }
 
 /** Printable width in twips for preview font scaling. */
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
-  return poInnerBoundsForTemplate(dymoTemplateForStudioPrint(template)).width
+  return studioPrintFaceBounds(template).width
 }
 
 export function effectiveTextFontSizePt(
