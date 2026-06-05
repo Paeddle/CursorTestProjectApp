@@ -13,14 +13,20 @@ function faceBounds(t) {
   return { x: t.boundsX, y: t.boundsY, width: t.boundsWidth, height: t.boundsHeight }
 }
 
-/** Rev 15: catalog face + face-linear Y. */
-function mapRev15(el, base) {
+/** Rev 16: catalog face + face-linear Y + hardware nudge. */
+const NUDGE_X = 0.03
+const NUDGE_Y = 0.035
+
+function mapRev16(el, base) {
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const maxX = base.x + base.width - width
   const maxY = base.y + base.height - height
+  const x = base.x + Math.round((el.xPct / 100) * (base.width - width))
+  const y = Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY)
   return {
-    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-    y: Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY),
+    x: Math.min(maxX, x + Math.round(base.width * NUDGE_X)),
+    y: Math.min(maxY, y + Math.round(base.height * NUDGE_Y)),
     width,
     height,
   }
@@ -75,8 +81,8 @@ function dieCut(objects) {
 
 function studioXml() {
   const base = faceBounds(catalog)
-  const textB = mapRev15({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev15({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  const textB = mapRev16({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev16({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
   return dieCut(textXml('STUDIO', ITEM, textB, 18, 'ShrinkToFit') + qrXml(qrB))
 }
 
@@ -107,16 +113,16 @@ async function printXml(name, labelXml) {
 
 async function main() {
   const base = faceBounds(catalog)
-  const textB = mapRev15({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
-  const qrB = mapRev15({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
-  console.log('rev15 catalog face', base)
+  const textB = mapRev16({ xPct: 4, yPct: 8, widthPct: 92, heightPct: 32 }, base)
+  const qrB = mapRev16({ xPct: 22, yPct: 42, widthPct: 56, heightPct: 52 }, base)
+  console.log('rev16 catalog face', base)
   console.log('text', textB, 'qr', qrB)
   const poXml = buildLabelXml(
     { jobFontSize: 22, locationFontSize: 14, jobLines: [`PO ${ITEM}`], locationLines: [] },
     catalog
   )
   await printXml('PO-label', poXml)
-  await printXml('STUDIO-rev15', studioXml())
+  await printXml('STUDIO-rev16', studioXml())
 }
 
 main().catch((e) => {

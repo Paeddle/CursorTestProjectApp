@@ -8,7 +8,11 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 15
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 16
+
+/** Physical 30323 prints sit slightly left/up vs designer — twips added after % mapping. */
+const SHIPPING_PRINT_NUDGE_X_FRAC = 0.03
+const SHIPPING_PRINT_NUDGE_Y_FRAC = 0.035
 
 export type DymoLabelBounds = { x: number; y: number; width: number; height: number }
 
@@ -57,10 +61,15 @@ function pctToShippingPrintBounds(
   const base = studioFaceBounds(template)
   const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
   const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  const maxX = base.x + base.width - width
   const maxY = base.y + base.height - height
+  const x = base.x + Math.round((el.xPct / 100) * (base.width - width))
+  const y = Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY)
+  const nudgeX = Math.round(base.width * SHIPPING_PRINT_NUDGE_X_FRAC)
+  const nudgeY = Math.round(base.height * SHIPPING_PRINT_NUDGE_Y_FRAC)
   return {
-    x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-    y: Math.min(base.y + Math.round((el.yPct / 100) * base.height), maxY),
+    x: Math.min(maxX, x + nudgeX),
+    y: Math.min(maxY, y + nudgeY),
     width,
     height,
   }
@@ -97,12 +106,12 @@ export function printableMetricsForTemplate(template: DymoPaperTemplate): LabelP
   }
 }
 
-/** Canvas preview uses face vertical (59 mm) — poInner height twips. */
+/** Canvas preview vertical axis in twips (59 mm on 30323). */
 export function studioBoundsHeightTwips(template: DymoPaperTemplate): number {
   return studioPrintableBounds(template).height
 }
 
-/** Canvas preview uses face horizontal (102 mm) — poInner width twips. */
+/** Canvas preview horizontal axis in twips (102 mm on 30323). */
 export function studioBoundsWidthTwips(template: DymoPaperTemplate): number {
   return studioPrintableBounds(template).width
 }
