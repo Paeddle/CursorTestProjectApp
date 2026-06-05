@@ -1,5 +1,5 @@
 /**
- * User template rev 22 — calibrated size/Y scale.
+ * User template rev 23 — canvas top-left % on catalog face, scaled into hybrid envelope.
  * Text 10/10/80/25  QR 32/51/36/38
  */
 import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
@@ -7,11 +7,19 @@ import { DYMO_PAPER_TEMPLATES } from './dymo-label-xml.mjs'
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 
 const catalog = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
-const ITEM = "1' Cat6 Patch Cable"
-const WIDTH_SCALE = 1.45
-const HEIGHT_SCALE = 1.25
-const Y_POSITION_SCALE = 1.28
+const large = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'LargeShipping')
+const HYBRID = {
+  id: 'Shipping',
+  paperName: '30323 Shipping',
+  drawWidth: large.drawWidth,
+  drawHeight: large.drawHeight,
+  boundsX: large.boundsX,
+  boundsY: large.boundsY,
+  boundsWidth: large.boundsWidth,
+  boundsHeight: large.boundsHeight,
+}
 
+const ITEM = "1' Cat6 Patch Cable"
 const TEXT = { xPct: 10, yPct: 10, widthPct: 80, heightPct: 25 }
 const QR = { xPct: 32, yPct: 51, widthPct: 36, heightPct: 38 }
 
@@ -19,8 +27,33 @@ function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
 
-function faceBounds(t) {
+function face(t) {
   return { x: t.boundsX, y: t.boundsY, width: t.boundsWidth, height: t.boundsHeight }
+}
+
+function canvasBounds(el, design) {
+  const base = face(design)
+  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width))
+  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height))
+  return {
+    x: base.x + Math.round((el.xPct / 100) * base.width),
+    y: base.y + Math.round((el.yPct / 100) * base.height),
+    width,
+    height,
+  }
+}
+
+function scaleToPrint(bounds, design, print) {
+  const d = face(design)
+  const p = face(print)
+  const scaleX = p.width / d.width
+  const scaleY = p.height / d.height
+  return {
+    x: p.x + Math.round((bounds.x - d.x) * scaleX),
+    y: p.y + Math.round((bounds.y - d.y) * scaleY),
+    width: Math.max(80, Math.round(bounds.width * scaleX)),
+    height: Math.max(60, Math.round(bounds.height * scaleY)),
+  }
 }
 
 function clamp(bounds, base) {
@@ -36,23 +69,14 @@ function clamp(bounds, base) {
   }
 }
 
-function mapRect(el, base) {
-  const width = Math.max(80, Math.round((el.widthPct / 100) * base.width * WIDTH_SCALE))
-  const height = Math.max(60, Math.round((el.heightPct / 100) * base.height * HEIGHT_SCALE))
-  const y = base.y + Math.round((el.yPct / 100) * base.height * Y_POSITION_SCALE)
-  return clamp(
-    {
-      x: base.x + Math.round((el.xPct / 100) * (base.width - width)),
-      y,
-      width,
-      height,
-    },
-    base
-  )
+function mapRect(el) {
+  const onCanvas = canvasBounds(el, catalog)
+  const scaled = scaleToPrint(onCanvas, catalog, HYBRID)
+  return clamp(scaled, face(HYBRID))
 }
 
-function mapQr(el, base) {
-  const rect = mapRect(el, base)
+function mapQr(el) {
+  const rect = mapRect(el)
   const side = Math.max(80, Math.min(rect.width, rect.height))
   return clamp(
     {
@@ -61,7 +85,7 @@ function mapQr(el, base) {
       width: side,
       height: side,
     },
-    base
+    face(HYBRID)
   )
 }
 
@@ -73,7 +97,7 @@ function textXml(lines, bounds, size) {
     `<LinkedObjectName></LinkedObjectName><Rotation>Rotation0</Rotation>` +
     `<IsMirrored>False</IsMirrored><IsVariable>False</IsVariable>` +
     `<HorizontalAlignment>Center</HorizontalAlignment><VerticalAlignment>Middle</VerticalAlignment>` +
-    `<TextFitMode>None</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
+    `<TextFitMode>ShrinkToFit</TextFitMode><UseFullFontHeight>False</UseFullFontHeight>` +
     `<Verticalized>False</Verticalized><StyledText>` +
     `<Element><String>${esc(lines)}</String><Attributes>` +
     `<Font Family="Arial" Size="${size}" Bold="True" Italic="False" Underline="False" Strikeout="False"/>` +
@@ -104,9 +128,9 @@ function dieCut(objects) {
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +
     `<DieCutLabel Version="8.0" Units="twips">` +
-    `<PaperOrientation>Landscape</PaperOrientation><Id>${catalog.id}</Id>` +
-    `<PaperName>${catalog.paperName}</PaperName>` +
-    `<DrawCommands><RoundRectangle X="0" Y="0" Width="${catalog.drawWidth}" Height="${catalog.drawHeight}" Rx="270" Ry="270"/></DrawCommands>` +
+    `<PaperOrientation>Landscape</PaperOrientation><Id>${HYBRID.id}</Id>` +
+    `<PaperName>${HYBRID.paperName}</PaperName>` +
+    `<DrawCommands><RoundRectangle X="0" Y="0" Width="${HYBRID.drawWidth}" Height="${HYBRID.drawHeight}" Rx="270" Ry="270"/></DrawCommands>` +
     objects +
     `</DieCutLabel>`
   )
@@ -138,12 +162,12 @@ async function printXml(name, labelXml) {
 }
 
 async function main() {
-  const base = faceBounds(catalog)
-  const textB = mapRect(TEXT, base)
-  const qrB = mapQr(QR, base)
-  console.log('rev22 text', textB)
-  console.log('rev22 qr', qrB)
-  await printXml('STUDIO-rev22-calibrated', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
+  const textB = mapRect(TEXT)
+  const qrB = mapQr(QR)
+  console.log('rev23 canvas', canvasBounds(TEXT, catalog), canvasBounds(QR, catalog))
+  console.log('rev23 hybrid text', textB)
+  console.log('rev23 hybrid qr', qrB)
+  await printXml('STUDIO-rev23-hybrid', dieCut(textXml(ITEM, textB, 18) + qrXml(qrB)))
 }
 
 main().catch((e) => {

@@ -1,4 +1,9 @@
-import { DYMO_PAPER_TEMPLATES, escapeXmlText, type DymoPaperTemplate } from './dymoLabelXml'
+import {
+  DYMO_PAPER_TEMPLATES,
+  dymoTemplateForStudioPrint,
+  escapeXmlText,
+  type DymoPaperTemplate,
+} from './dymoLabelXml'
 import {
   barcodeTextForPrint,
   dymoBarcodeSizeForStudioPrint,
@@ -19,7 +24,6 @@ import type {
 import {
   pctToDymoPrintBounds,
   studioPrintTextFontSizePt,
-  shippingPrintFontSizePt,
   shippingQrPrintBounds,
   studioPrintTextFontBoxTwips,
   type DymoLabelBounds,
@@ -39,6 +43,13 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   const attrs = fontAttributesXml(fontSize, bold)
   const block = (lines.length > 0 ? lines : ['']).map(escapeXmlText).join('\n')
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
+}
+
+function studioPrintEnvelope(
+  designPaper: DymoPaperTemplate
+): { designTemplate: DymoPaperTemplate; printTemplate: DymoPaperTemplate; printOptions: StudioPrintBoundsOptions } {
+  const printTemplate = dymoTemplateForStudioPrint(designPaper)
+  return { designTemplate: designPaper, printTemplate, printOptions: { designTemplate: designPaper } }
 }
 
 function studioDieCutXml(
@@ -74,17 +85,14 @@ function buildTextObjectXml(
   }
 ): string {
   const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
-  const pt =
-    paper.id === 'Shipping'
-      ? shippingPrintFontSizePt(lines, fontSize, bounds)
-      : studioPrintTextFontSizePt(
-          fontSize,
-          Math.max(1, lines.length),
-          fontBoxTwips,
-          options.textFitMode
-        )
-  const dymoFitMode =
-    paper.id === 'Shipping' ? 'None' : options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
+  const fitMode = options.textFitMode === 'None' ? 'None' : 'ShrinkToFit'
+  const pt = studioPrintTextFontSizePt(
+    fontSize,
+    Math.max(1, lines.length),
+    fontBoxTwips,
+    fitMode
+  )
+  const dymoFitMode = fitMode
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -149,7 +157,8 @@ function buildBarcodePrintXml(
   el: LabelStudioBarcodeElement,
   displayText: string,
   bounds: DymoLabelBounds,
-  paper: DymoPaperTemplate
+  paper: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
 ): string {
   const symbology = resolveBarcodeType(el.barcodeType, displayText)
   const encoded = barcodeTextForPrint(displayText, symbology)
@@ -158,7 +167,7 @@ function buildBarcodePrintXml(
   const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition)
   const printBarcode =
     paper.id === 'Shipping' && symbology === 'QrCode'
-      ? shippingQrPrintBounds(el, paper)
+      ? shippingQrPrintBounds(el, paper, printOptions)
       : barcode
   const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, printBarcode, paper)
 
@@ -213,7 +222,7 @@ async function buildElementXmlAsync(
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
-    return buildBarcodePrintXml(el, value, bounds, template)
+    return buildBarcodePrintXml(el, value, bounds, template, printOptions)
   }
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
@@ -243,7 +252,7 @@ function buildElementXml(
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
     const value = mergedBarcodeForElement(el.content, item)
-    return buildBarcodePrintXml(el, value, bounds, template)
+    return buildBarcodePrintXml(el, value, bounds, template, printOptions)
   }
   if (isImageElement(el)) {
     return ''
@@ -266,9 +275,11 @@ export function buildLabelXmlFromStudio(
   paper?: DymoPaperTemplate,
   printOptions?: StudioPrintBoundsOptions
 ): string {
-  const t = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const designPaper = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const envelope = studioPrintEnvelope(designPaper)
+  const options = { ...envelope.printOptions, ...printOptions }
   const objects = template.elements
-    .map((el) => buildElementXml(el, item, t, printOptions))
+    .map((el) => buildElementXml(el, item, envelope.printTemplate, options))
     .filter(Boolean)
 
   if (objects.length === 0) {
@@ -277,14 +288,14 @@ export function buildLabelXmlFromStudio(
         'TEXT',
         ['(empty label)'],
         18,
-        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t, printOptions),
-        t,
+        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, envelope.printTemplate, options),
+        envelope.printTemplate,
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
   }
 
-  return studioDieCutXml(t, objects.join(''), printOptions)
+  return studioDieCutXml(envelope.printTemplate, objects.join(''), options)
 }
 
 export function buildLabelXmlCandidatesFromStudio(
@@ -306,9 +317,11 @@ export async function buildLabelXmlFromStudioForPrint(
   paper?: DymoPaperTemplate,
   printOptions?: StudioPrintBoundsOptions
 ): Promise<string> {
-  const t = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const designPaper = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  const envelope = studioPrintEnvelope(designPaper)
+  const options = { ...envelope.printOptions, ...printOptions }
   const objectParts = await Promise.all(
-    template.elements.map((el) => buildElementXmlAsync(el, item, t, printOptions))
+    template.elements.map((el) => buildElementXmlAsync(el, item, envelope.printTemplate, options))
   )
   const objects = objectParts.filter(Boolean)
 
@@ -318,14 +331,14 @@ export async function buildLabelXmlFromStudioForPrint(
         'TEXT',
         ['(empty label)'],
         18,
-        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, t, printOptions),
-        t,
+        pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, envelope.printTemplate, options),
+        envelope.printTemplate,
         { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
       )
     )
   }
 
-  return studioDieCutXml(t, objects.join(''), printOptions)
+  return studioDieCutXml(envelope.printTemplate, objects.join(''), options)
 }
 
 export async function buildLabelXmlCandidatesFromStudioForPrint(
