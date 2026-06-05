@@ -4,7 +4,12 @@ import {
   loadDymoSdk,
   getDymoPrinterNames,
 } from './dymoLabelPrint'
-import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
+import {
+  buildLabelWriterPrintParamsXml,
+  type DymoPrintQuality,
+  type DymoTwinTurboRoll,
+} from './dymoPrintParams'
+import type { ThermalImageProcessOptions } from './labelStudioThermalImage'
 import { printLabelXmlViaWebService } from './dymoWebService'
 import { LABEL_STUDIO_PRINT_GEOMETRY_REV } from './labelStudioGeometry'
 import { buildLabelXmlCandidatesFromStudioForPrint } from './labelStudioXml'
@@ -15,12 +20,15 @@ export { LABEL_STUDIO_PRINT_GEOMETRY_REV }
 export type PrintStudioLabelsOptions = {
   printerName?: string
   twinTurboRoll?: DymoTwinTurboRoll
+  printQuality?: DymoPrintQuality
+  thermalImage?: ThermalImageProcessOptions
 }
 
 async function printXmlCandidatesViaFramework(
   candidates: string[],
   printerName?: string,
-  twinTurboRoll?: DymoTwinTurboRoll
+  twinTurboRoll?: DymoTwinTurboRoll,
+  printQuality?: DymoPrintQuality
 ): Promise<number> {
   await loadDymoSdk()
   await initDymoFramework()
@@ -34,7 +42,7 @@ async function printXmlCandidatesViaFramework(
       : printers.find((n) => /labelwriter|dymo/i.test(n)) ?? printers[0]
   if (!target) throw new Error('No DYMO LabelWriter printer found.')
 
-  const printParams = buildLabelWriterPrintParamsXml({ twinTurboRoll })
+  const printParams = buildLabelWriterPrintParamsXml({ twinTurboRoll, printQuality })
   const errors: string[] = []
 
   for (const labelXml of candidates) {
@@ -71,18 +79,30 @@ async function printOneStudioItem(
   item: LabelStudioItem,
   options?: PrintStudioLabelsOptions
 ): Promise<'dymo-web' | 'dymo-framework'> {
-  const candidateXml = await buildLabelXmlCandidatesFromStudioForPrint(template, item)
+  const candidateXml = await buildLabelXmlCandidatesFromStudioForPrint(template, item, {
+    thermalImage: options?.thermalImage,
+  })
   const errors: string[] = []
 
   try {
-    await printLabelXmlViaWebService(candidateXml, options?.printerName, options?.twinTurboRoll)
+    await printLabelXmlViaWebService(
+      candidateXml,
+      options?.printerName,
+      options?.twinTurboRoll,
+      options?.printQuality
+    )
     return 'dymo-web'
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))
   }
 
   try {
-    await printXmlCandidatesViaFramework(candidateXml, options?.printerName, options?.twinTurboRoll)
+    await printXmlCandidatesViaFramework(
+      candidateXml,
+      options?.printerName,
+      options?.twinTurboRoll,
+      options?.printQuality
+    )
     return 'dymo-framework'
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))

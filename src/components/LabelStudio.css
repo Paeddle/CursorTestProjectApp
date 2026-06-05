@@ -193,6 +193,39 @@
   display: none;
 }
 
+.ls-thermal-print-bar {
+  margin-top: 0.65rem;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+}
+
+.ls-thermal-print-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-top: 0.45rem;
+}
+
+.ls-thermal-field {
+  flex: 1 1 240px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ls-thermal-field-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.ls-thermal-field .ls-field-hint {
+  margin-top: 0.1rem;
+}
+
 @media (min-width: 900px) {
   .ls-print-bar-roll .dymo-roll-picker-hint {
     display: block;

@@ -3,7 +3,11 @@ import {
   assertDymoPrintSucceeded,
   buildLabelXmlCandidatesForRow,
 } from './dymoLabelXml'
-import { buildLabelWriterPrintParamsXml, type DymoTwinTurboRoll } from './dymoPrintParams'
+import {
+  buildLabelWriterPrintParamsXml,
+  type DymoPrintQuality,
+  type DymoTwinTurboRoll,
+} from './dymoPrintParams'
 
 export type DymoServiceEndpoint = { host: string; port: number }
 
@@ -137,12 +141,13 @@ async function printOneLabelXml(
   service: DymoServiceEndpoint,
   printerName: string,
   labelXml: string,
-  twinTurboRoll?: DymoTwinTurboRoll
+  twinTurboRoll?: DymoTwinTurboRoll,
+  printQuality?: DymoPrintQuality
 ): Promise<void> {
   const result = await dymoRequest(service.host, service.port, 'PrintLabel2', 'POST', {
     printerName,
     labelXml,
-    printParamsXml: buildLabelWriterPrintParamsXml({ twinTurboRoll }),
+    printParamsXml: buildLabelWriterPrintParamsXml({ twinTurboRoll, printQuality }),
     labelSetXml: '',
   })
   assertDymoPrintSucceeded(result, 'PrintLabel2')
@@ -164,7 +169,8 @@ function formatDymoLabelXmlPrintFailure(errors: string[]): string {
 export async function printLabelXmlViaWebService(
   candidates: string[],
   printerName?: string,
-  twinTurboRoll?: DymoTwinTurboRoll
+  twinTurboRoll?: DymoTwinTurboRoll,
+  printQuality?: DymoPrintQuality
 ): Promise<{ printer: string; service: DymoServiceEndpoint }> {
   if (candidates.length === 0) throw new Error('No label XML to print.')
 
@@ -184,7 +190,7 @@ export async function printLabelXmlViaWebService(
       continue
     }
     try {
-      await printOneLabelXml(service, printer, labelXml, twinTurboRoll)
+      await printOneLabelXml(service, printer, labelXml, twinTurboRoll, printQuality)
       return { printer, service }
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e))
@@ -192,7 +198,7 @@ export async function printLabelXmlViaWebService(
   }
 
   try {
-    await printOneLabelXml(service, printer, candidates[0], twinTurboRoll)
+    await printOneLabelXml(service, printer, candidates[0], twinTurboRoll, printQuality)
     return { printer, service }
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e))

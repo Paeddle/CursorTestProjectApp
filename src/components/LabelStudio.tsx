@@ -21,7 +21,21 @@ import {
   type DymoTwinTurboRoll,
 } from '../lib/dymoPrintParams'
 import DymoTwinTurboRollPicker from './DymoTwinTurboRollPicker'
+import { fetchUrlAsPreviewDataUrl } from '../lib/labelStudioImage'
 import { LABEL_STUDIO_PRINT_GEOMETRY_REV, printStudioLabels } from '../lib/labelStudioPrint'
+import {
+  DYMO_PRINT_QUALITY_OPTIONS,
+  loadLabelStudioPrintQuality,
+  loadThermalImageTone,
+  saveLabelStudioPrintQuality,
+  saveThermalImageTone,
+  type DymoPrintQuality,
+} from '../lib/labelStudioThermalPrint'
+import {
+  THERMAL_IMAGE_TONE_OPTIONS,
+  thermalToneNeedsProcessing,
+  type ThermalImageTone,
+} from '../lib/labelStudioThermalImage'
 import {
   mergedBarcodeForElement,
   mergedImageUrlForElement,
@@ -129,6 +143,11 @@ export default function LabelStudio() {
       : DEFAULT_GRID_STEP_PCT
   })
   const [alignReferenceId, setAlignReferenceId] = useState<string>('')
+  const [printQuality, setPrintQuality] = useState<DymoPrintQuality>(() => loadLabelStudioPrintQuality())
+  const [thermalImageTone, setThermalImageTone] = useState<ThermalImageTone>(() => loadThermalImageTone())
+  const [thermalImagePreviewByElementId, setThermalImagePreviewByElementId] = useState<
+    Record<string, string>
+  >({})
   const [dymoSummary, setDymoSummary] = useState<string | null>(null)
 
   const searchTrimmed = search.trim()
@@ -252,6 +271,34 @@ export default function LabelStudio() {
       cancelled = true
     }
   }, [previewItem, template.elements, printableSizePx.width, printableSizePx.height])
+
+  useEffect(() => {
+    if (!previewItem || !thermalToneNeedsProcessing(thermalImageTone)) {
+      setThermalImagePreviewByElementId({})
+      return
+    }
+    if (printableSizePx.width < 16 || printableSizePx.height < 16) return
+
+    let cancelled = false
+    void (async () => {
+      const next: Record<string, string> = {}
+      for (const el of template.elements) {
+        if (!isImageElement(el)) continue
+        const url = mergedImageUrlForElement(el.content, previewItem)
+        if (!url) continue
+        const boxW = Math.max(48, Math.round((el.widthPct / 100) * printableSizePx.width))
+        const boxH = Math.max(48, Math.round((el.heightPct / 100) * printableSizePx.height))
+        const maxPx = Math.max(boxW, boxH, 160)
+        const dataUrl = await fetchUrlAsPreviewDataUrl(url, maxPx, { tone: thermalImageTone })
+        if (dataUrl) next[el.id] = dataUrl
+      }
+      if (!cancelled) setThermalImagePreviewByElementId(next)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewItem, template.elements, printableSizePx.width, printableSizePx.height, thermalImageTone])
 
   useEffect(() => {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
@@ -567,7 +614,11 @@ export default function LabelStudio() {
     setPrinting(true)
     setStatus({ kind: 'info', text: `Sending ${toPrint.length} label(s) to the printer…` })
     try {
-      const result = await printStudioLabels(template, toPrint, { twinTurboRoll })
+      const result = await printStudioLabels(template, toPrint, {
+        twinTurboRoll,
+        printQuality,
+        thermalImage: { tone: thermalImageTone },
+      })
       setStatus({
         kind: 'ok',
         text: `Printed ${result.printed} label${result.printed !== 1 ? 's' : ''} (print layout rev ${LABEL_STUDIO_PRINT_GEOMETRY_REV}, ${result.method}).`,
@@ -582,10 +633,13 @@ export default function LabelStudio() {
   const canvasImagePreviewUrl = useCallback(
     (el: LabelStudioElement): string | null => {
       if (!isImageElement(el) || !previewItem) return null
+      if (thermalToneNeedsProcessing(thermalImageTone)) {
+        return thermalImagePreviewByElementId[el.id] ?? null
+      }
       const url = mergedImageUrlForElement(el.content, previewItem)
       return url || null
     },
-    [previewItem]
+    [previewItem, thermalImageTone, thermalImagePreviewByElementId]
   )
 
   const canvasBarcodePreview = useCallback(
@@ -663,6 +717,55 @@ export default function LabelStudio() {
               ? `Print ${selectedItemIds.size} labels`
               : 'Print labels'}
         </button>
+      </div>
+
+      <div className="ls-thermal-print-bar">
+        <span className="ls-field-label">Thermal printer tuning</span>
+        <div className="ls-thermal-print-controls">
+          <label className="ls-thermal-field">
+            <span className="ls-thermal-field-label">Print quality</span>
+            <select
+              className="ls-select"
+              value={printQuality}
+              onChange={(e) => {
+                const next = e.target.value as DymoPrintQuality
+                setPrintQuality(next)
+                saveLabelStudioPrintQuality(next)
+              }}
+            >
+              {DYMO_PRINT_QUALITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <span className="ls-field-hint">
+              {DYMO_PRINT_QUALITY_OPTIONS.find((o) => o.value === printQuality)?.hint}
+            </span>
+          </label>
+          <label className="ls-thermal-field">
+            <span className="ls-thermal-field-label">Product image</span>
+            <select
+              className="ls-select"
+              value={thermalImageTone}
+              onChange={(e) => {
+                const next = e.target.value as ThermalImageTone
+                setThermalImageTone(next)
+                saveThermalImageTone(next)
+              }}
+            >
+              {THERMAL_IMAGE_TONE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <span className="ls-field-hint">
+              {THERMAL_IMAGE_TONE_OPTIONS.find((o) => o.value === thermalImageTone)?.hint} Canvas
+              preview matches print.
+            </span>
+          </label>
+        </div>
       </div>
 
       <section className="label-studio-panel ls-panel-items ls-panel-items-top">

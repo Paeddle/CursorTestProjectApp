@@ -1,4 +1,5 @@
 import { poInnerBoundsForTemplate, type DymoPaperTemplate } from './dymoLabelXml'
+import type { ThermalImageProcessOptions } from './labelStudioThermalImage'
 import type { LabelStudioElement, LabelStudioTextElement, LabelStudioTextFitMode } from '../types/labelStudio'
 
 /** Twips per point (1440 twips/in ÷ 72 pt/in). */
@@ -8,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 33
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 34
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -31,6 +32,8 @@ export type StudioPrintBoundsOptions = {
   designTemplate?: DymoPaperTemplate
   /** @deprecated Unused — kept for call-site compatibility. */
   catalogTwips?: boolean
+  /** Optional thermal tuning for embedded product images. */
+  thermalImage?: ThermalImageProcessOptions
 }
 
 /** Full catalog printable face — matches the Label Studio canvas (102×59 mm on 30323). */

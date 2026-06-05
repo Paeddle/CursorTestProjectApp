@@ -27,17 +27,21 @@ export function dymoTwinTurboRollLabel(roll: DymoTwinTurboRoll): string {
   return 'Auto (printer picks)'
 }
 
+export type DymoPrintQuality = 'Auto' | 'Text' | 'BarcodeAndGraphics'
+
 /** DYMO Connect / Label Framework print params XML. */
 export function buildLabelWriterPrintParamsXml(options?: {
   copies?: number
   twinTurboRoll?: DymoTwinTurboRoll
+  printQuality?: DymoPrintQuality
 }): string {
   const copies = options?.copies ?? 1
   const roll = options?.twinTurboRoll ?? loadDymoTwinTurboRoll()
+  const printQuality = options?.printQuality ?? 'Text'
   return (
     '<LabelWriterPrintParams>' +
     `<Copies>${copies}</Copies>` +
-    '<PrintQuality>Text</PrintQuality>' +
+    `<PrintQuality>${printQuality}</PrintQuality>` +
     `<TwinTurboRoll>${roll}</TwinTurboRoll>` +
     '</LabelWriterPrintParams>'
   )

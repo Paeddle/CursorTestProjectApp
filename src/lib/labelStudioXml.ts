@@ -272,7 +272,7 @@ async function buildElementXmlAsync(
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
     if (!imageUrl) return ''
-    const base64 = await fetchUrlAsPngBase64(imageUrl, bounds)
+    const base64 = await fetchUrlAsPngBase64(imageUrl, bounds, printOptions?.thermalImage)
     if (!base64) return ''
     return buildImageObjectXml(el, base64, bounds)
   }
@@ -356,15 +356,22 @@ export function buildLabelXmlCandidatesFromStudio(
 }
 
 /** Like buildLabelXmlFromStudio but embeds product images as base64 PNG for DYMO printing. */
+export type LabelStudioPrintBuildOptions = {
+  thermalImage?: StudioPrintBoundsOptions['thermalImage']
+}
+
 export async function buildLabelXmlFromStudioForPrint(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
   paper?: DymoPaperTemplate,
-  printOptions?: StudioPrintBoundsOptions
+  buildOptions?: LabelStudioPrintBuildOptions
 ): Promise<string> {
   const designPaper = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   const envelope = studioPrintEnvelope(designPaper)
-  const options = { ...envelope.printOptions, ...printOptions }
+  const options: StudioPrintBoundsOptions = {
+    ...envelope.printOptions,
+    ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
+  }
   const objectParts = await Promise.all(
     template.elements.map((el) => buildElementXmlAsync(el, item, envelope.printTemplate, options))
   )
@@ -388,14 +395,17 @@ export async function buildLabelXmlFromStudioForPrint(
 
 export async function buildLabelXmlCandidatesFromStudioForPrint(
   template: LabelStudioTemplate,
-  item: LabelStudioItem
+  item: LabelStudioItem,
+  buildOptions?: LabelStudioPrintBuildOptions
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
-  const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred)
+  const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
   if (preferred.id === 'Shipping' || preferred.id === 'Address30251') {
     return [hybrid]
   }
   const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)
-  const more = await Promise.all(rest.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper)))
+  const more = await Promise.all(
+    rest.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper, buildOptions))
+  )
   return [hybrid, ...more]
 }
