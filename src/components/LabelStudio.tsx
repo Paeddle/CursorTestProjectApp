@@ -17,6 +17,7 @@ import {
 import {
   dymoTwinTurboRollLabel,
   loadDymoTwinTurboRoll,
+  resolveStudioTwinTurboRoll,
   saveDymoTwinTurboRoll,
   type DymoTwinTurboRoll,
 } from '../lib/dymoPrintParams'
@@ -172,6 +173,20 @@ export default function LabelStudio() {
   const paperTemplate =
     DYMO_PAPER_TEMPLATES.find((p) => p.id === template.paperTemplateId) ?? DYMO_PAPER_TEMPLATES[1]
   const paperName = paperTemplate.paperName
+  const effectiveTwinTurboRoll = resolveStudioTwinTurboRoll(
+    template.paperTemplateId,
+    twinTurboRoll
+  )
+
+  useEffect(() => {
+    const paperRoll = paperTemplate.studioTwinTurboRoll
+    if (!paperRoll) return
+    setTwinTurboRoll((current) => {
+      if (current === paperRoll) return current
+      saveDymoTwinTurboRoll(paperRoll)
+      return paperRoll
+    })
+  }, [template.paperTemplateId, paperTemplate.studioTwinTurboRoll])
 
   const loadItems = useCallback(async () => {
     setLoadingItems(true)
@@ -694,7 +709,11 @@ export default function LabelStudio() {
               : 'No items selected — check rows below to print'}
           </strong>
           <span className="ls-print-bar-meta">
-            Template: {template.name} · Paper: {paperName} · Feed: {dymoTwinTurboRollLabel(twinTurboRoll)}
+            Template: {template.name} · Paper: {paperName} · Feed:{' '}
+            {dymoTwinTurboRollLabel(effectiveTwinTurboRoll)}
+            {twinTurboRoll === 'Auto' && paperTemplate.studioTwinTurboRoll
+              ? ' (from roll type)'
+              : ''}
           </span>
         </div>
         <DymoTwinTurboRollPicker

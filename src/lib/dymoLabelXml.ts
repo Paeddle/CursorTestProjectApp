@@ -28,6 +28,8 @@ export type DymoPaperTemplate = {
   studioLabel?: string
   /** When false, omitted from Label Studio roll list (PO print may still use the template). */
   studioVisible?: boolean
+  /** Twin Turbo feed when user leaves feed on Auto (LabelWriter 450 TT). */
+  studioTwinTurboRoll?: 'Left' | 'Right'
   /** Physical label face width in mm (what you see on the sticker). */
   widthMm: number
   /** Physical label face height in mm. */
@@ -47,6 +49,7 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     paperName: '30256 Shipping',
     catalogSku: '30256',
     studioLabel: 'Large Shipping Labels',
+    studioTwinTurboRoll: 'Left',
     widthMm: 59,
     heightMm: 102,
     drawWidth: 3331,
@@ -61,6 +64,7 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     paperName: '30323 Shipping',
     catalogSku: '30323',
     studioLabel: '30323 Shipping Labels',
+    studioTwinTurboRoll: 'Left',
     widthMm: LABEL_WIDTH_MM,
     heightMm: LABEL_HEIGHT_MM,
     /** Must match DYMO Connect 30323 Shipping schema (do not use mmToTwips here — driver rejects XML). */
@@ -77,6 +81,7 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
     paperName: '1933085 LW Durable 3/4 in x 2-1/2 in',
     catalogSku: '1933085',
     studioLabel: 'LW Durable Labels',
+    studioTwinTurboRoll: 'Right',
     /** 3/4" × 2-1/2" durable (19×64 mm), landscape on LabelWriter. */
     widthMm: 64,
     heightMm: 19,

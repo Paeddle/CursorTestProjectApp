@@ -6,6 +6,7 @@ import {
 } from './dymoLabelPrint'
 import {
   buildLabelWriterPrintParamsXml,
+  resolveStudioTwinTurboRoll,
   type DymoPrintQuality,
   type DymoTwinTurboRoll,
 } from './dymoPrintParams'
@@ -79,6 +80,7 @@ async function printOneStudioItem(
   item: LabelStudioItem,
   options?: PrintStudioLabelsOptions
 ): Promise<'dymo-web' | 'dymo-framework'> {
+  const twinTurboRoll = resolveStudioTwinTurboRoll(template.paperTemplateId, options?.twinTurboRoll)
   const candidateXml = await buildLabelXmlCandidatesFromStudioForPrint(template, item, {
     thermalImage: options?.thermalImage,
   })
@@ -88,7 +90,7 @@ async function printOneStudioItem(
     await printLabelXmlViaWebService(
       candidateXml,
       options?.printerName,
-      options?.twinTurboRoll,
+      twinTurboRoll,
       options?.printQuality
     )
     return 'dymo-web'
@@ -100,7 +102,7 @@ async function printOneStudioItem(
     await printXmlCandidatesViaFramework(
       candidateXml,
       options?.printerName,
-      options?.twinTurboRoll,
+      twinTurboRoll,
       options?.printQuality
     )
     return 'dymo-framework'

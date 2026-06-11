@@ -1,3 +1,5 @@
+import { DYMO_PAPER_TEMPLATES } from './dymoLabelXml'
+
 /** Left/right roll on LabelWriter Twin Turbo (and similar dual-roll models). */
 export type DymoTwinTurboRoll = 'Auto' | 'Left' | 'Right'
 
@@ -25,6 +27,27 @@ export function dymoTwinTurboRollLabel(roll: DymoTwinTurboRoll): string {
   if (roll === 'Left') return 'Left roll'
   if (roll === 'Right') return 'Right roll'
   return 'Auto (printer picks)'
+}
+
+/** Roll feed for a Label Studio paper type (e.g. durable → right on Twin Turbo). */
+export function studioTwinTurboRollForPaper(paperTemplateId: string): DymoTwinTurboRoll | undefined {
+  return DYMO_PAPER_TEMPLATES.find((t) => t.id === paperTemplateId)?.studioTwinTurboRoll
+}
+
+/**
+ * Resolve Twin Turbo feed for print. Durable uses a 30323 hybrid envelope, so Auto
+ * would pick the left/shipping roll — override from the designer paper type instead.
+ */
+export function resolveStudioTwinTurboRoll(
+  paperTemplateId: string,
+  userRoll?: DymoTwinTurboRoll
+): DymoTwinTurboRoll {
+  const picked = userRoll ?? loadDymoTwinTurboRoll()
+  const paperRoll = studioTwinTurboRollForPaper(paperTemplateId)
+  if (paperRoll) {
+    if (picked === 'Auto' || paperTemplateId === 'Durable1933085') return paperRoll
+  }
+  return picked
 }
 
 export type DymoPrintQuality = 'Auto' | 'Text' | 'BarcodeAndGraphics'
