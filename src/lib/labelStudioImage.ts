@@ -1,10 +1,14 @@
 import { supabase } from './supabase'
-import { labelRasterPxForBounds, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import {
+  labelRasterDimensionsForBounds,
+  MAX_LABEL_RASTER_PX,
+} from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
   type ThermalImageProcessOptions,
 } from './labelStudioThermalImage'
+import type { LabelStudioImageScaleMode } from '../types/labelStudio'
 
 /** Parse Supabase public storage URL → bucket + object path. */
 export function parseSupabaseStoragePublicUrl(url: string): { bucket: string; path: string } | null {
@@ -33,17 +37,84 @@ async function loadImageBlob(url: string): Promise<Blob | null> {
   }
 }
 
+function drawImageIntoBounds(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  targetW: number,
+  targetH: number,
+  scaleMode: LabelStudioImageScaleMode
+): void {
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, targetW, targetH)
+  const srcW = Math.max(1, img.naturalWidth)
+  const srcH = Math.max(1, img.naturalHeight)
+  const scale =
+    scaleMode === 'Fill'
+      ? Math.max(targetW / srcW, targetH / srcH)
+      : Math.min(targetW / srcW, targetH / srcH)
+  const dw = Math.max(1, Math.round(srcW * scale))
+  const dh = Math.max(1, Math.round(srcH * scale))
+  const dx = Math.round((targetW - dw) / 2)
+  const dy = Math.round((targetH - dh) / 2)
+  ctx.drawImage(img, dx, dy, dw, dh)
+}
+
+/** Raster product photos to the exact DYMO bounds size (96 dpi) so print matches the canvas box. */
+export function blobToPngBase64ForLabelBounds(
+  blob: Blob,
+  boundsTwips: { width: number; height: number },
+  scaleMode: LabelStudioImageScaleMode = 'Uniform',
+  thermal?: ThermalImageProcessOptions
+): Promise<string | null> {
+  const { width: targetW, height: targetH } = labelRasterDimensionsForBounds(boundsTwips)
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(blob)
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = targetW
+        canvas.height = targetH
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(null)
+          return
+        }
+        drawImageIntoBounds(ctx, img, targetW, targetH, scaleMode)
+        if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
+          const imageData = ctx.getImageData(0, 0, targetW, targetH)
+          processThermalImageData(imageData, thermal.tone)
+          ctx.putImageData(imageData, 0, 0)
+        }
+        const dataUrl = canvas.toDataURL('image/png')
+        resolve(dataUrl.replace(/^data:image\/png;base64,/, ''))
+      } catch {
+        resolve(null)
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve(null)
+    }
+    img.src = objectUrl
+  })
+}
+
 /** Fetch an image URL and return PNG bytes as base64 for DYMO ImageObject XML. */
 export async function fetchUrlAsPngBase64(
   url: string,
   boundsTwips?: { width: number; height: number },
-  thermal?: ThermalImageProcessOptions
+  thermal?: ThermalImageProcessOptions,
+  scaleMode: LabelStudioImageScaleMode = 'Uniform'
 ): Promise<string | null> {
-  const maxPx =
-    boundsTwips != null ? labelRasterPxForBounds(boundsTwips) : MAX_LABEL_RASTER_PX
   const blob = await loadImageBlob(url)
   if (!blob) return null
-  return blobToPngBase64(blob, maxPx, thermal)
+  if (boundsTwips != null) {
+    return blobToPngBase64ForLabelBounds(blob, boundsTwips, scaleMode, thermal)
+  }
+  return blobToPngBase64(blob, MAX_LABEL_RASTER_PX, thermal)
 }
 
 /** Data URL for canvas preview — applies the same thermal tuning as print when enabled. */

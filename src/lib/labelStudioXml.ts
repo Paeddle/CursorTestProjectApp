@@ -262,11 +262,11 @@ function buildImageObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<ImageLocation/>` +
     `<Image>${base64Png}</Image>` +
-    `<ScaleMode>${el.scaleMode ?? 'Uniform'}</ScaleMode>` +
+    `<ScaleMode>Fill</ScaleMode>` +
     `<BorderWidth>0</BorderWidth>` +
     `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
-    `<HorizontalAlignment>Center</HorizontalAlignment>` +
-    `<VerticalAlignment>Center</VerticalAlignment>` +
+    `<HorizontalAlignment>Left</HorizontalAlignment>` +
+    `<VerticalAlignment>Top</VerticalAlignment>` +
     `</ImageObject>` +
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
     `</ObjectInfo>`
@@ -302,7 +302,12 @@ async function buildElementXmlAsync(
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
     if (!imageUrl) return ''
-    const base64 = await fetchUrlAsPngBase64(imageUrl, bounds, printOptions?.thermalImage)
+    const base64 = await fetchUrlAsPngBase64(
+      imageUrl,
+      bounds,
+      printOptions?.thermalImage,
+      el.scaleMode ?? 'Uniform'
+    )
     if (!base64) return ''
     return buildImageObjectXml(el, base64, bounds)
   }
