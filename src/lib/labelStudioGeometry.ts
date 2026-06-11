@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 43
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 44
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -179,23 +179,13 @@ export function pctToDymoPrintBounds(
   return clampWithinFace(bounds, printFace)
 }
 
-/**
- * Product image on LW Durable hybrid: map into the 30330 GPD face the driver actually
- * prints, while text keeps durable-native bounds on the same hybrid die-cut.
- */
+/** @deprecated Images use durable-native bounds like text (see fetchProductImagePngBase64). */
 export function studioDurableImagePrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
   designTemplate: DymoPaperTemplate,
   gpdTemplate: DymoPaperTemplate
 ): DymoLabelBounds {
-  const onDesign = pctToCanvasFaceBounds(el, designTemplate)
-  const gpdFace = studioFaceBounds(gpdTemplate)
-  const scaled = scaleBoundsBetweenFaces(
-    onDesign,
-    studioFaceBounds(designTemplate),
-    gpdFace
-  )
-  return clampWithinFace(scaled, gpdFace)
+  return pctToDymoPrintBounds(el, gpdTemplate, { designTemplate })
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */

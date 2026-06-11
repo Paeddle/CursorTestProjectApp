@@ -1,6 +1,5 @@
 import {
   DYMO_PAPER_TEMPLATES,
-  durableLw450PrintGpdTemplate,
   dymoTemplateForStudioPrint,
   escapeXmlText,
   type DymoPaperTemplate,
@@ -25,7 +24,6 @@ import type {
 } from '../types/labelStudio'
 import {
   pctToDymoPrintBounds,
-  studioDurableImagePrintBounds,
   studioPrintTextFitMode,
   studioPrintTextFontSizeForElement,
   studioQrPrintBounds,
@@ -56,22 +54,6 @@ function studioPrintEnvelope(
 ): { designTemplate: DymoPaperTemplate; printTemplate: DymoPaperTemplate; printOptions: StudioPrintBoundsOptions } {
   const printTemplate = printTemplateOverride ?? dymoTemplateForStudioPrint(designPaper)
   return { designTemplate: designPaper, printTemplate, printOptions: { designTemplate: designPaper } }
-}
-
-function durableHybridImageBounds(
-  el: LabelStudioElement,
-  printTemplate: DymoPaperTemplate,
-  printOptions?: StudioPrintBoundsOptions
-): DymoLabelBounds {
-  const design = printOptions?.designTemplate
-  if (
-    design?.id === 'Durable1933085' &&
-    printTemplate.paperName === '30330 Return Address' &&
-    printTemplate.drawWidth > 3000
-  ) {
-    return studioDurableImagePrintBounds(el, design, durableLw450PrintGpdTemplate())
-  }
-  return pctToDymoPrintBounds(el, printTemplate, printOptions)
 }
 
 /** Text first, then barcodes, then images — images stay visible when boxes overlap on print. */
@@ -279,7 +261,7 @@ function buildImageObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<ImageLocation/>` +
     `<Image>${base64Png}</Image>` +
-    `<ScaleMode>Fill</ScaleMode>` +
+    `<ScaleMode>${el.scaleMode ?? 'Uniform'}</ScaleMode>` +
     `<BorderWidth>0</BorderWidth>` +
     `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
@@ -319,15 +301,14 @@ async function buildElementXmlAsync(
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
     if (!imageUrl) return ''
-    const imageBounds = durableHybridImageBounds(el, template, printOptions)
     const base64 = await fetchUrlAsPngBase64(
       imageUrl,
-      imageBounds,
+      bounds,
       printOptions?.thermalImage,
       el.scaleMode ?? 'Uniform'
     )
     if (!base64) return ''
-    return buildImageObjectXml(el, base64, imageBounds)
+    return buildImageObjectXml(el, base64, bounds)
   }
   if (isTextElement(el)) {
     const lines = mergedLinesForElement(el.content, item)

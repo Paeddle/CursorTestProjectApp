@@ -1,8 +1,5 @@
 import { supabase } from './supabase'
-import {
-  labelRasterDimensionsForBounds,
-  MAX_LABEL_RASTER_PX,
-} from './labelStudioRaster'
+import { MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
@@ -99,16 +96,26 @@ function drawImageIntoBounds(
   ctx.drawImage(src.source, dx, dy, dw, dh)
 }
 
-/** Raster product photos to the exact DYMO bounds size (96 dpi) so print matches the canvas box. */
-export async function blobToPngBase64ForLabelBounds(
-  blob: Blob,
+/** Fetch a product photo for DYMO ImageObject — high-res raster, same bounds as canvas. */
+export async function fetchProductImagePngBase64(
+  url: string,
   boundsTwips: { width: number; height: number },
   scaleMode: LabelStudioImageScaleMode = 'Uniform',
   thermal?: ThermalImageProcessOptions
 ): Promise<string | null> {
-  const { width: targetW, height: targetH } = labelRasterDimensionsForBounds(boundsTwips)
+  const blob = await loadImageBlob(url)
+  if (!blob) return null
   const oriented = await loadOrientedImageSource(blob)
   if (!oriented) return null
+
+  const aspect = Math.max(0.05, boundsTwips.width / Math.max(1, boundsTwips.height))
+  let targetW = MAX_LABEL_RASTER_PX
+  let targetH = Math.max(32, Math.round(MAX_LABEL_RASTER_PX / aspect))
+  if (targetH > MAX_LABEL_RASTER_PX) {
+    targetH = MAX_LABEL_RASTER_PX
+    targetW = Math.max(32, Math.round(MAX_LABEL_RASTER_PX * aspect))
+  }
+
   try {
     const canvas = document.createElement('canvas')
     canvas.width = targetW
@@ -137,11 +144,11 @@ export async function fetchUrlAsPngBase64(
   thermal?: ThermalImageProcessOptions,
   scaleMode: LabelStudioImageScaleMode = 'Uniform'
 ): Promise<string | null> {
+  if (boundsTwips != null) {
+    return fetchProductImagePngBase64(url, boundsTwips, scaleMode, thermal)
+  }
   const blob = await loadImageBlob(url)
   if (!blob) return null
-  if (boundsTwips != null) {
-    return blobToPngBase64ForLabelBounds(blob, boundsTwips, scaleMode, thermal)
-  }
   return blobToPngBase64(blob, MAX_LABEL_RASTER_PX, thermal)
 }
 
