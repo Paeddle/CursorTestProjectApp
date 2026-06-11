@@ -119,7 +119,8 @@ export function durableLw450PrintProxyTemplate(): DymoPaperTemplate {
     paperName: '30330 Return Address',
     catalogSku: '30330',
     studioVisible: false,
-    widthMm: 64,
+    /** Physical 30330 face (2" × 0.75"); designer canvas stays on 64 mm durable. */
+    widthMm: 51,
     heightMm: 19,
     drawWidth: 2930,
     drawHeight: 557,

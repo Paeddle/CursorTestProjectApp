@@ -35,7 +35,7 @@ export function studioTwinTurboRollForPaper(paperTemplateId: string): DymoTwinTu
 }
 
 /**
- * Resolve Twin Turbo feed for print. Durable uses a 30323 hybrid envelope, so Auto
+ * Resolve Twin Turbo feed for print. LW Durable uses a 30330 proxy envelope, so Auto
  * would pick the left/shipping roll — override from the designer paper type instead.
  */
 export function resolveStudioTwinTurboRoll(

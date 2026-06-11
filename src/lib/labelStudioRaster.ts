@@ -6,3 +6,10 @@ export function labelRasterPxForTwips(sideTwips: number): number {
   const px = Math.round((sideTwips * 96) / 1440)
   return Math.max(64, Math.min(MAX_LABEL_RASTER_PX, px))
 }
+
+/** Raster size for an ImageObject box — use the longer edge so wide product photos stay sharp. */
+export function labelRasterPxForBounds(bounds: { width: number; height: number }): number {
+  const short = labelRasterPxForTwips(Math.min(bounds.width, bounds.height))
+  const long = labelRasterPxForTwips(Math.max(bounds.width, bounds.height))
+  return Math.min(MAX_LABEL_RASTER_PX, Math.max(short, long))
+}

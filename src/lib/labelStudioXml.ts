@@ -24,6 +24,7 @@ import type {
 } from '../types/labelStudio'
 import {
   pctToDymoPrintBounds,
+  studioPrintTextFitMode,
   studioPrintTextFontSizePt,
   studioQrPrintBounds,
   usesStudioQrImagePrint,
@@ -53,6 +54,17 @@ function studioPrintEnvelope(
 ): { designTemplate: DymoPaperTemplate; printTemplate: DymoPaperTemplate; printOptions: StudioPrintBoundsOptions } {
   const printTemplate = dymoTemplateForStudioPrint(designPaper)
   return { designTemplate: designPaper, printTemplate, printOptions: { designTemplate: designPaper } }
+}
+
+/** Text first, then barcodes, then images — images stay visible when boxes overlap on print. */
+function studioPrintElementOrder(elements: LabelStudioElement[]): LabelStudioElement[] {
+  const rank = (el: LabelStudioElement): number => {
+    if (isTextElement(el)) return 0
+    if (isBarcodeElement(el)) return 1
+    if (isImageElement(el)) return 2
+    return 3
+  }
+  return [...elements].sort((a, b) => rank(a) - rank(b))
 }
 
 function studioDieCutXml(
@@ -85,18 +97,23 @@ function buildTextObjectXml(
     align: LabelStudioTextElement['align']
     bold: boolean
     textFitMode: LabelStudioTextElement['textFitMode']
+    designTemplate?: DymoPaperTemplate
   }
 ): string {
   const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
-  const shrink = options.textFitMode !== 'None'
-  const fitMode = shrink ? 'ShrinkToFit' : 'None'
+  const fitMode = studioPrintTextFitMode(
+    options.textFitMode,
+    options.designTemplate,
+    paper
+  )
+  const shrink = fitMode !== 'None'
   const pt = studioPrintTextFontSizePt(
     fontSize,
     Math.max(1, lines.length),
     fontBoxTwips,
     fitMode
   )
-  const dymoFitMode = fitMode
+  const dymoFitMode = shrink ? 'ShrinkToFit' : 'None'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -186,7 +203,12 @@ function buildBarcodePrintXml(
     barcodeCaptionFontPt(caption),
     caption,
     paper,
-    { align: 'Center', bold: false, textFitMode: 'None' }
+    {
+      align: 'Center',
+      bold: false,
+      textFitMode: 'None',
+      designTemplate: printOptions?.designTemplate,
+    }
   )
   return barcodeXml + captionXml
 }
@@ -289,6 +311,7 @@ async function buildElementXmlAsync(
       align: el.align,
       bold: el.bold,
       textFitMode: el.textFitMode ?? 'ShrinkToFit',
+      designTemplate: printOptions?.designTemplate,
     })
   }
   return ''
@@ -315,6 +338,7 @@ function buildElementXml(
       align: el.align,
       bold: el.bold,
       textFitMode: el.textFitMode ?? 'ShrinkToFit',
+      designTemplate: printOptions?.designTemplate,
     })
   }
   return ''
@@ -329,7 +353,7 @@ export function buildLabelXmlFromStudio(
   const designPaper = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   const envelope = studioPrintEnvelope(designPaper)
   const options = { ...envelope.printOptions, ...printOptions }
-  const objects = template.elements
+  const objects = studioPrintElementOrder(template.elements)
     .map((el) => buildElementXml(el, item, envelope.printTemplate, options))
     .filter(Boolean)
 
@@ -379,7 +403,9 @@ export async function buildLabelXmlFromStudioForPrint(
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
   }
   const objectParts = await Promise.all(
-    template.elements.map((el) => buildElementXmlAsync(el, item, envelope.printTemplate, options))
+    studioPrintElementOrder(template.elements).map((el) =>
+      buildElementXmlAsync(el, item, envelope.printTemplate, options)
+    )
   )
   const objects = objectParts.filter(Boolean)
 

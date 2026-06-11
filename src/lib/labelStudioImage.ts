@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { labelRasterPxForTwips, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import { labelRasterPxForBounds, labelRasterPxForTwips, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
@@ -40,9 +40,7 @@ export async function fetchUrlAsPngBase64(
   thermal?: ThermalImageProcessOptions
 ): Promise<string | null> {
   const maxPx =
-    boundsTwips != null
-      ? labelRasterPxForTwips(Math.min(boundsTwips.width, boundsTwips.height))
-      : MAX_LABEL_RASTER_PX
+    boundsTwips != null ? labelRasterPxForBounds(boundsTwips) : MAX_LABEL_RASTER_PX
   const blob = await loadImageBlob(url)
   if (!blob) return null
   return blobToPngBase64(blob, maxPx, thermal)
