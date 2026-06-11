@@ -29,7 +29,6 @@ import {
   studioPrintTextFontSizeForElement,
   studioQrPrintBounds,
   usesStudioQrImagePrint,
-  studioPrintTextFontBoxTwips,
   studioPrintVerticalAlignment,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,

@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { labelRasterPxForBounds, labelRasterPxForTwips, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import { labelRasterPxForBounds, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
