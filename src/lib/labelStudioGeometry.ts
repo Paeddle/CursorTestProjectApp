@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 41
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 42
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -30,6 +30,11 @@ export type DymoLabelBounds = { x: number; y: number; width: number; height: num
 export type StudioPrintBoundsOptions = {
   /** Catalog template used by the designer canvas (30323 face). */
   designTemplate?: DymoPaperTemplate
+  /**
+   * Map designer % into this printable face for Object Bounds.
+   * Die-cut draw/bounds may differ (e.g. durable hybrid envelope + 30330 object face).
+   */
+  objectFaceTemplate?: DymoPaperTemplate
   /** @deprecated Unused — kept for call-site compatibility. */
   catalogTwips?: boolean
   /** Optional thermal tuning for embedded product images. */
@@ -164,19 +169,20 @@ export function pctToDymoPrintBounds(
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
   const designTemplate = options?.designTemplate ?? printTemplate
+  const boundsTemplate = options?.objectFaceTemplate ?? printTemplate
   if (!usesStudioFacePrint(designTemplate)) {
-    return pctToStudioPrintBounds(el, printTemplate)
+    return pctToStudioPrintBounds(el, boundsTemplate)
   }
 
-  const printFace = studioFaceBounds(printTemplate)
-  if (designTemplate.id === printTemplate.id) {
-    return clampWithinFace(pctToCanvasFaceBounds(el, designTemplate), printFace)
-  }
+  const boundsFace = studioFaceBounds(boundsTemplate)
   const onDesign = pctToCanvasFaceBounds(el, designTemplate)
-  const bounds = studioFaceLayoutsMatch(designTemplate, printTemplate)
+  if (designTemplate.id === boundsTemplate.id && !options?.objectFaceTemplate) {
+    return clampWithinFace(onDesign, boundsFace)
+  }
+  const bounds = studioFaceLayoutsMatch(designTemplate, boundsTemplate)
     ? onDesign
-    : scaleBoundsBetweenFaces(onDesign, studioFaceBounds(designTemplate), printFace)
-  return clampWithinFace(bounds, printFace)
+    : scaleBoundsBetweenFaces(onDesign, studioFaceBounds(designTemplate), boundsFace)
+  return clampWithinFace(bounds, boundsFace)
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */

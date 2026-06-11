@@ -54,7 +54,16 @@ function studioPrintEnvelope(
   printTemplateOverride?: DymoPaperTemplate
 ): { designTemplate: DymoPaperTemplate; printTemplate: DymoPaperTemplate; printOptions: StudioPrintBoundsOptions } {
   const printTemplate = printTemplateOverride ?? dymoTemplateForStudioPrint(designPaper)
-  return { designTemplate: designPaper, printTemplate, printOptions: { designTemplate: designPaper } }
+  const printOptions: StudioPrintBoundsOptions = { designTemplate: designPaper }
+  // 30330 driver prints inside its GPD face; hybrid die-cut keeps durable length for feed.
+  if (
+    designPaper.id === 'Durable1933085' &&
+    printTemplate.paperName === '30330 Return Address' &&
+    printTemplate.drawWidth > 3000
+  ) {
+    printOptions.objectFaceTemplate = durableLw450PrintGpdTemplate()
+  }
+  return { designTemplate: designPaper, printTemplate, printOptions }
 }
 
 /** Text first, then barcodes, then images — images stay visible when boxes overlap on print. */
@@ -265,8 +274,8 @@ function buildImageObjectXml(
     `<ScaleMode>Fill</ScaleMode>` +
     `<BorderWidth>0</BorderWidth>` +
     `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
-    `<HorizontalAlignment>Left</HorizontalAlignment>` +
-    `<VerticalAlignment>Top</VerticalAlignment>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment>` +
+    `<VerticalAlignment>Middle</VerticalAlignment>` +
     `</ImageObject>` +
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
     `</ObjectInfo>`
@@ -442,20 +451,7 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   if (preferred.id === 'Durable1933085') {
-    const hybridNative = await buildLabelXmlFromStudioForPrint(
-      template,
-      item,
-      preferred,
-      buildOptions
-    )
-    const gpdScaled = await buildLabelXmlFromStudioForPrint(
-      template,
-      item,
-      preferred,
-      buildOptions,
-      durableLw450PrintGpdTemplate()
-    )
-    return [hybridNative, gpdScaled]
+    return [await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)]
   }
   const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
   if (preferred.id === 'Shipping' || preferred.id === 'Address30251') {

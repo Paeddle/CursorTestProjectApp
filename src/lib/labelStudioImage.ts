@@ -37,17 +37,57 @@ async function loadImageBlob(url: string): Promise<Blob | null> {
   }
 }
 
+type OrientedImageSource = {
+  source: CanvasImageSource
+  width: number
+  height: number
+  cleanup?: () => void
+}
+
+async function loadOrientedImageSource(blob: Blob): Promise<OrientedImageSource | null> {
+  if (typeof createImageBitmap !== 'undefined') {
+    try {
+      const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' })
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        cleanup: () => bitmap.close(),
+      }
+    } catch {
+      /* fall back to HTMLImageElement */
+    }
+  }
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(blob)
+    const img = new Image()
+    img.onload = () => {
+      resolve({
+        source: img,
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        cleanup: () => URL.revokeObjectURL(objectUrl),
+      })
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve(null)
+    }
+    img.src = objectUrl
+  })
+}
+
 function drawImageIntoBounds(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
+  src: OrientedImageSource,
   targetW: number,
   targetH: number,
   scaleMode: LabelStudioImageScaleMode
 ): void {
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, targetW, targetH)
-  const srcW = Math.max(1, img.naturalWidth)
-  const srcH = Math.max(1, img.naturalHeight)
+  const srcW = Math.max(1, src.width)
+  const srcH = Math.max(1, src.height)
   const scale =
     scaleMode === 'Fill'
       ? Math.max(targetW / srcW, targetH / srcH)
@@ -56,50 +96,38 @@ function drawImageIntoBounds(
   const dh = Math.max(1, Math.round(srcH * scale))
   const dx = Math.round((targetW - dw) / 2)
   const dy = Math.round((targetH - dh) / 2)
-  ctx.drawImage(img, dx, dy, dw, dh)
+  ctx.drawImage(src.source, dx, dy, dw, dh)
 }
 
 /** Raster product photos to the exact DYMO bounds size (96 dpi) so print matches the canvas box. */
-export function blobToPngBase64ForLabelBounds(
+export async function blobToPngBase64ForLabelBounds(
   blob: Blob,
   boundsTwips: { width: number; height: number },
   scaleMode: LabelStudioImageScaleMode = 'Uniform',
   thermal?: ThermalImageProcessOptions
 ): Promise<string | null> {
   const { width: targetW, height: targetH } = labelRasterDimensionsForBounds(boundsTwips)
-  return new Promise((resolve) => {
-    const objectUrl = URL.createObjectURL(blob)
-    const img = new Image()
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas')
-        canvas.width = targetW
-        canvas.height = targetH
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          resolve(null)
-          return
-        }
-        drawImageIntoBounds(ctx, img, targetW, targetH, scaleMode)
-        if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
-          const imageData = ctx.getImageData(0, 0, targetW, targetH)
-          processThermalImageData(imageData, thermal.tone)
-          ctx.putImageData(imageData, 0, 0)
-        }
-        const dataUrl = canvas.toDataURL('image/png')
-        resolve(dataUrl.replace(/^data:image\/png;base64,/, ''))
-      } catch {
-        resolve(null)
-      } finally {
-        URL.revokeObjectURL(objectUrl)
-      }
+  const oriented = await loadOrientedImageSource(blob)
+  if (!oriented) return null
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    drawImageIntoBounds(ctx, oriented, targetW, targetH, scaleMode)
+    if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
+      const imageData = ctx.getImageData(0, 0, targetW, targetH)
+      processThermalImageData(imageData, thermal.tone)
+      ctx.putImageData(imageData, 0, 0)
     }
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl)
-      resolve(null)
-    }
-    img.src = objectUrl
-  })
+    const dataUrl = canvas.toDataURL('image/png')
+    return dataUrl.replace(/^data:image\/png;base64,/, '')
+  } catch {
+    return null
+  } finally {
+    oriented.cleanup?.()
+  }
 }
 
 /** Fetch an image URL and return PNG bytes as base64 for DYMO ImageObject XML. */
