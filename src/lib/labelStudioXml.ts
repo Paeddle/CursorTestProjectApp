@@ -25,6 +25,7 @@ import type {
 } from '../types/labelStudio'
 import {
   pctToDymoPrintBounds,
+  studioDurableImagePrintBounds,
   studioPrintTextFitMode,
   studioPrintTextFontSizeForElement,
   studioQrPrintBounds,
@@ -54,16 +55,23 @@ function studioPrintEnvelope(
   printTemplateOverride?: DymoPaperTemplate
 ): { designTemplate: DymoPaperTemplate; printTemplate: DymoPaperTemplate; printOptions: StudioPrintBoundsOptions } {
   const printTemplate = printTemplateOverride ?? dymoTemplateForStudioPrint(designPaper)
-  const printOptions: StudioPrintBoundsOptions = { designTemplate: designPaper }
-  // 30330 driver prints inside its GPD face; hybrid die-cut keeps durable length for feed.
+  return { designTemplate: designPaper, printTemplate, printOptions: { designTemplate: designPaper } }
+}
+
+function durableHybridImageBounds(
+  el: LabelStudioElement,
+  printTemplate: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
+): DymoLabelBounds {
+  const design = printOptions?.designTemplate
   if (
-    designPaper.id === 'Durable1933085' &&
+    design?.id === 'Durable1933085' &&
     printTemplate.paperName === '30330 Return Address' &&
     printTemplate.drawWidth > 3000
   ) {
-    printOptions.objectFaceTemplate = durableLw450PrintGpdTemplate()
+    return studioDurableImagePrintBounds(el, design, durableLw450PrintGpdTemplate())
   }
-  return { designTemplate: designPaper, printTemplate, printOptions }
+  return pctToDymoPrintBounds(el, printTemplate, printOptions)
 }
 
 /** Text first, then barcodes, then images — images stay visible when boxes overlap on print. */
@@ -311,14 +319,15 @@ async function buildElementXmlAsync(
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
     if (!imageUrl) return ''
+    const imageBounds = durableHybridImageBounds(el, template, printOptions)
     const base64 = await fetchUrlAsPngBase64(
       imageUrl,
-      bounds,
+      imageBounds,
       printOptions?.thermalImage,
       el.scaleMode ?? 'Uniform'
     )
     if (!base64) return ''
-    return buildImageObjectXml(el, base64, bounds)
+    return buildImageObjectXml(el, base64, imageBounds)
   }
   if (isTextElement(el)) {
     const lines = mergedLinesForElement(el.content, item)

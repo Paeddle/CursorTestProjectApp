@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 42
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 43
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -30,11 +30,6 @@ export type DymoLabelBounds = { x: number; y: number; width: number; height: num
 export type StudioPrintBoundsOptions = {
   /** Catalog template used by the designer canvas (30323 face). */
   designTemplate?: DymoPaperTemplate
-  /**
-   * Map designer % into this printable face for Object Bounds.
-   * Die-cut draw/bounds may differ (e.g. durable hybrid envelope + 30330 object face).
-   */
-  objectFaceTemplate?: DymoPaperTemplate
   /** @deprecated Unused — kept for call-site compatibility. */
   catalogTwips?: boolean
   /** Optional thermal tuning for embedded product images. */
@@ -169,20 +164,38 @@ export function pctToDymoPrintBounds(
   options?: StudioPrintBoundsOptions
 ): DymoLabelBounds {
   const designTemplate = options?.designTemplate ?? printTemplate
-  const boundsTemplate = options?.objectFaceTemplate ?? printTemplate
   if (!usesStudioFacePrint(designTemplate)) {
-    return pctToStudioPrintBounds(el, boundsTemplate)
+    return pctToStudioPrintBounds(el, printTemplate)
   }
 
-  const boundsFace = studioFaceBounds(boundsTemplate)
+  const printFace = studioFaceBounds(printTemplate)
   const onDesign = pctToCanvasFaceBounds(el, designTemplate)
-  if (designTemplate.id === boundsTemplate.id && !options?.objectFaceTemplate) {
-    return clampWithinFace(onDesign, boundsFace)
+  if (designTemplate.id === printTemplate.id) {
+    return clampWithinFace(onDesign, printFace)
   }
-  const bounds = studioFaceLayoutsMatch(designTemplate, boundsTemplate)
+  const bounds = studioFaceLayoutsMatch(designTemplate, printTemplate)
     ? onDesign
-    : scaleBoundsBetweenFaces(onDesign, studioFaceBounds(designTemplate), boundsFace)
-  return clampWithinFace(bounds, boundsFace)
+    : scaleBoundsBetweenFaces(onDesign, studioFaceBounds(designTemplate), printFace)
+  return clampWithinFace(bounds, printFace)
+}
+
+/**
+ * Product image on LW Durable hybrid: map into the 30330 GPD face the driver actually
+ * prints, while text keeps durable-native bounds on the same hybrid die-cut.
+ */
+export function studioDurableImagePrintBounds(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  designTemplate: DymoPaperTemplate,
+  gpdTemplate: DymoPaperTemplate
+): DymoLabelBounds {
+  const onDesign = pctToCanvasFaceBounds(el, designTemplate)
+  const gpdFace = studioFaceBounds(gpdTemplate)
+  const scaled = scaleBoundsBetweenFaces(
+    onDesign,
+    studioFaceBounds(designTemplate),
+    gpdFace
+  )
+  return clampWithinFace(scaled, gpdFace)
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */
