@@ -19,6 +19,10 @@ export function parseSupabaseStoragePublicUrl(url: string): { bucket: string; pa
   }
 }
 
+export async function loadImageBlobForPrint(url: string): Promise<Blob | null> {
+  return loadImageBlob(url)
+}
+
 async function loadImageBlob(url: string): Promise<Blob | null> {
   const storage = parseSupabaseStoragePublicUrl(url)
   if (storage && supabase) {
@@ -41,7 +45,7 @@ type OrientedImageSource = {
   cleanup?: () => void
 }
 
-async function loadOrientedImageSource(blob: Blob): Promise<OrientedImageSource | null> {
+export async function loadOrientedImageSource(blob: Blob): Promise<OrientedImageSource | null> {
   if (typeof createImageBitmap !== 'undefined') {
     try {
       const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' })
