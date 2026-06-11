@@ -288,7 +288,10 @@ async function buildDurableFaceImageOverlayXml(
         if (!url) return null
         return {
           url,
-          bounds: pctToDymoPrintBounds(el, printTemplate, printOptions),
+          xPct: el.xPct,
+          yPct: el.yPct,
+          widthPct: el.widthPct,
+          heightPct: el.heightPct,
           scaleMode: el.scaleMode ?? 'Uniform',
         }
       })
@@ -303,7 +306,7 @@ async function buildDurableFaceImageOverlayXml(
     printOptions.thermalImage
   )
   if (!base64) return ''
-  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, 'Fill')
+  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, 'Uniform')
 }
 
 async function buildElementXmlAsync(
@@ -454,6 +457,15 @@ export async function buildLabelXmlFromStudioForPrint(
     : template.elements
 
   const objectParts: string[] = []
+
+  const elementParts = await Promise.all(
+    studioPrintElementOrder(nonImageElements).map((el) =>
+      buildElementXmlAsync(el, item, envelope.printTemplate, options)
+    )
+  )
+  objectParts.push(...elementParts.filter(Boolean))
+
+  // ImageObject renders above TextObject on LW450 — overlay last, transparent outside photos.
   if (useDurableFaceImage) {
     const faceXml = await buildDurableFaceImageOverlayXml(
       template,
@@ -463,13 +475,6 @@ export async function buildLabelXmlFromStudioForPrint(
     )
     if (faceXml) objectParts.push(faceXml)
   }
-
-  const elementParts = await Promise.all(
-    studioPrintElementOrder(nonImageElements).map((el) =>
-      buildElementXmlAsync(el, item, envelope.printTemplate, options)
-    )
-  )
-  objectParts.push(...elementParts.filter(Boolean))
 
   const objects = objectParts.filter(Boolean)
 

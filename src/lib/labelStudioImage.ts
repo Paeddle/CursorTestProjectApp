@@ -120,17 +120,22 @@ function drawImageIntoBounds(
 
 export type StudioFaceImageLayer = {
   url: string
-  bounds: { x: number; y: number; width: number; height: number }
+  /** Same 0–100% grid as Label Studio canvas CSS (left/top/width/height). */
+  xPct: number
+  yPct: number
+  widthPct: number
+  heightPct: number
   scaleMode: LabelStudioImageScaleMode
 }
 
 /**
  * Composite product photos onto the full printable face at 96 dpi (pixel positions match
- * the Label Studio canvas). Used for LW Durable where per-box ImageObjects print tiny.
+ * the Label Studio canvas). Transparent outside image boxes — print as the top layer so
+ * text on the left stays visible.
  */
 export async function composeStudioFaceImageOverlayBase64(
   layers: StudioFaceImageLayer[],
-  face: { x: number; y: number; width: number; height: number },
+  face: { width: number; height: number },
   thermal?: ThermalImageProcessOptions
 ): Promise<string | null> {
   if (layers.length === 0) return null
@@ -139,8 +144,6 @@ export async function composeStudioFaceImageOverlayBase64(
     width: face.width,
     height: face.height,
   })
-  const scaleX = faceW / face.width
-  const scaleY = faceH / face.height
 
   try {
     const canvas = document.createElement('canvas')
@@ -149,8 +152,7 @@ export async function composeStudioFaceImageOverlayBase64(
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, faceW, faceH)
+    ctx.clearRect(0, 0, faceW, faceH)
 
     for (const layer of layers) {
       const blob = await loadImageBlob(layer.url)
@@ -159,10 +161,10 @@ export async function composeStudioFaceImageOverlayBase64(
       if (!oriented) continue
 
       try {
-        const x = Math.round((layer.bounds.x - face.x) * scaleX)
-        const y = Math.round((layer.bounds.y - face.y) * scaleY)
-        const w = Math.max(1, Math.round(layer.bounds.width * scaleX))
-        const h = Math.max(1, Math.round(layer.bounds.height * scaleY))
+        const x = Math.round((layer.xPct / 100) * faceW)
+        const y = Math.round((layer.yPct / 100) * faceH)
+        const w = Math.max(1, Math.round((layer.widthPct / 100) * faceW))
+        const h = Math.max(1, Math.round((layer.heightPct / 100) * faceH))
         drawImageIntoBoundsAt(ctx, oriented, x, y, w, h, layer.scaleMode)
         if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
           const imageData = ctx.getImageData(x, y, w, h)
