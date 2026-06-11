@@ -1,5 +1,6 @@
 import {
   DYMO_PAPER_TEMPLATES,
+  durableLw450PrintGpdTemplate,
   dymoTemplateForStudioPrint,
   escapeXmlText,
   type DymoPaperTemplate,
@@ -25,7 +26,7 @@ import type {
 import {
   pctToDymoPrintBounds,
   studioPrintTextFitMode,
-  studioPrintTextFontSizePt,
+  studioPrintTextFontSizeForElement,
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintTextFontBoxTwips,
@@ -50,9 +51,10 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
 }
 
 function studioPrintEnvelope(
-  designPaper: DymoPaperTemplate
+  designPaper: DymoPaperTemplate,
+  printTemplateOverride?: DymoPaperTemplate
 ): { designTemplate: DymoPaperTemplate; printTemplate: DymoPaperTemplate; printOptions: StudioPrintBoundsOptions } {
-  const printTemplate = dymoTemplateForStudioPrint(designPaper)
+  const printTemplate = printTemplateOverride ?? dymoTemplateForStudioPrint(designPaper)
   return { designTemplate: designPaper, printTemplate, printOptions: { designTemplate: designPaper } }
 }
 
@@ -98,22 +100,23 @@ function buildTextObjectXml(
     bold: boolean
     textFitMode: LabelStudioTextElement['textFitMode']
     designTemplate?: DymoPaperTemplate
+    heightPct?: number
   }
 ): string {
-  const fontBoxTwips = studioPrintTextFontBoxTwips(bounds, paper)
   const fitMode = studioPrintTextFitMode(
     options.textFitMode,
     options.designTemplate,
     paper
   )
-  const shrink = fitMode !== 'None'
-  const pt = studioPrintTextFontSizePt(
-    fontSize,
+  const pt = studioPrintTextFontSizeForElement(
+    { fontSize, heightPct: options.heightPct ?? 100 },
+    bounds,
+    options.designTemplate,
+    paper,
     Math.max(1, lines.length),
-    fontBoxTwips,
-    fitMode
+    options.textFitMode
   )
-  const dymoFitMode = shrink ? 'ShrinkToFit' : 'None'
+  const dymoFitMode = fitMode !== 'None' ? 'ShrinkToFit' : 'None'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -312,6 +315,7 @@ async function buildElementXmlAsync(
       bold: el.bold,
       textFitMode: el.textFitMode ?? 'ShrinkToFit',
       designTemplate: printOptions?.designTemplate,
+      heightPct: el.heightPct,
     })
   }
   return ''
@@ -339,6 +343,7 @@ function buildElementXml(
       bold: el.bold,
       textFitMode: el.textFitMode ?? 'ShrinkToFit',
       designTemplate: printOptions?.designTemplate,
+      heightPct: el.heightPct,
     })
   }
   return ''
@@ -394,10 +399,11 @@ export async function buildLabelXmlFromStudioForPrint(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
   paper?: DymoPaperTemplate,
-  buildOptions?: LabelStudioPrintBuildOptions
+  buildOptions?: LabelStudioPrintBuildOptions,
+  printTemplateOverride?: DymoPaperTemplate
 ): Promise<string> {
   const designPaper = paper ?? paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
-  const envelope = studioPrintEnvelope(designPaper)
+  const envelope = studioPrintEnvelope(designPaper, printTemplateOverride)
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
@@ -431,12 +437,24 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
   buildOptions?: LabelStudioPrintBuildOptions
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
+  if (preferred.id === 'Durable1933085') {
+    const hybridNative = await buildLabelXmlFromStudioForPrint(
+      template,
+      item,
+      preferred,
+      buildOptions
+    )
+    const gpdScaled = await buildLabelXmlFromStudioForPrint(
+      template,
+      item,
+      preferred,
+      buildOptions,
+      durableLw450PrintGpdTemplate()
+    )
+    return [hybridNative, gpdScaled]
+  }
   const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
-  if (
-    preferred.id === 'Shipping' ||
-    preferred.id === 'Address30251' ||
-    preferred.id === 'Durable1933085'
-  ) {
+  if (preferred.id === 'Shipping' || preferred.id === 'Address30251') {
     return [hybrid]
   }
   const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)

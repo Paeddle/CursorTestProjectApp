@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 39
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 40
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -100,9 +100,11 @@ function scaleBoundsBetweenFaces(
   }
 }
 
-/** LW Durable designer canvas → 30330 Return Address print proxy on LW450. */
-function usesDirectPrintFacePct(design: DymoPaperTemplate, print: DymoPaperTemplate): boolean {
-  return design.id === 'Durable1933085' && print.id === 'ReturnAddress30330'
+/** Same printable face twips — canvas % map 1:1 (durable hybrid on 30330 PaperName). */
+function studioFaceLayoutsMatch(design: DymoPaperTemplate, print: DymoPaperTemplate): boolean {
+  const d = studioFaceBounds(design)
+  const p = studioFaceBounds(print)
+  return d.x === p.x && d.y === p.y && d.width === p.width && d.height === p.height
 }
 
 /** Direct map for non-30323 rolls (poInner + inset anchor). */
@@ -170,15 +172,10 @@ export function pctToDymoPrintBounds(
   if (designTemplate.id === printTemplate.id) {
     return clampWithinFace(pctToCanvasFaceBounds(el, designTemplate), printFace)
   }
-  // Designer % are relative to the roll face (64 mm durable, 51 mm 30330, etc.) — map on the
-  // accepted print envelope face instead of scaling twips between mismatched driver schemas.
-  const bounds = usesDirectPrintFacePct(designTemplate, printTemplate)
-    ? pctToCanvasFaceBounds(el, printTemplate)
-    : scaleBoundsBetweenFaces(
-        pctToCanvasFaceBounds(el, designTemplate),
-        studioFaceBounds(designTemplate),
-        printFace
-      )
+  const onDesign = pctToCanvasFaceBounds(el, designTemplate)
+  const bounds = studioFaceLayoutsMatch(designTemplate, printTemplate)
+    ? onDesign
+    : scaleBoundsBetweenFaces(onDesign, studioFaceBounds(designTemplate), printFace)
   return clampWithinFace(bounds, printFace)
 }
 
@@ -232,6 +229,26 @@ export function studioPrintTextFontSizePt(
   const needed = lines * fontSize * LINE_HEIGHT_TWIPS_PER_PT
   if (textFitMode === 'None' || needed <= boxVerticalTwips) return fontSize
   return Math.max(8, Math.floor((fontSize * boxVerticalTwips) / needed))
+}
+
+/** Scale designer fontSize when the print box is smaller than the canvas box. */
+export function studioPrintTextFontSizeForElement(
+  el: Pick<LabelStudioTextElement, 'fontSize' | 'heightPct'>,
+  bounds: DymoLabelBounds,
+  designTemplate: DymoPaperTemplate | undefined,
+  printTemplate: DymoPaperTemplate,
+  lineCount: number,
+  textFitMode: LabelStudioTextFitMode | undefined
+): number {
+  const fit = studioPrintTextFitMode(textFitMode, designTemplate, printTemplate)
+  let fontSize = el.fontSize
+  if (designTemplate && designTemplate.id !== printTemplate.id) {
+    const designBoxH = (el.heightPct / 100) * studioFaceBounds(designTemplate).height
+    if (designBoxH > 0 && bounds.height > 0 && Math.abs(designBoxH - bounds.height) > 8) {
+      fontSize = Math.max(8, Math.round((el.fontSize * bounds.height) / designBoxH))
+    }
+  }
+  return studioPrintTextFontSizePt(fontSize, lineCount, bounds.height, fit)
 }
 
 /** When printing on a proxy envelope, always shrink text like the canvas preview. */

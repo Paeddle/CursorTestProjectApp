@@ -109,17 +109,35 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   },
 ] as const
 
+function durableStudioTemplate(): DymoPaperTemplate {
+  const durable = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Durable1933085')
+  if (!durable) throw new Error('Durable1933085 template missing')
+  return durable
+}
+
 /**
- * LW450 has no 1933085 durable schema — print via 30330 Return Address (0.75"×2")
- * on the right Twin Turbo roll. Physical durable is 0.75"×2.5"; layout is close enough.
+ * LW450 has no 1933085 durable schema — print via 30330 Return Address PaperName on the
+ * right Twin Turbo roll, but keep the durable draw/bounds so Label Studio % map 1:1.
  */
-export function durableLw450PrintProxyTemplate(): DymoPaperTemplate {
+export function durableLw450PrintHybridTemplate(): DymoPaperTemplate {
+  const durable = durableStudioTemplate()
+  return {
+    ...durable,
+    id: 'ReturnAddress30330',
+    paperName: '30330 Return Address',
+    catalogSku: '30330',
+    studioVisible: false,
+    studioTwinTurboRoll: 'Right',
+  }
+}
+
+/** Fallback: driver GPD 30330 envelope (2"×0.75") with scaled layout if hybrid render fails. */
+export function durableLw450PrintGpdTemplate(): DymoPaperTemplate {
   return {
     id: 'ReturnAddress30330',
     paperName: '30330 Return Address',
     catalogSku: '30330',
     studioVisible: false,
-    /** Physical 30330 face (2" × 0.75"); designer canvas stays on 64 mm durable. */
     widthMm: 51,
     heightMm: 19,
     drawWidth: 2930,
@@ -132,6 +150,11 @@ export function durableLw450PrintProxyTemplate(): DymoPaperTemplate {
   }
 }
 
+/** @deprecated Use durableLw450PrintHybridTemplate */
+export function durableLw450PrintProxyTemplate(): DymoPaperTemplate {
+  return durableLw450PrintHybridTemplate()
+}
+
 /** Rolls shown in Label Studio roll picker. */
 export function labelStudioPaperTemplates(
   templates: readonly DymoPaperTemplate[] = DYMO_PAPER_TEMPLATES
@@ -141,11 +164,11 @@ export function labelStudioPaperTemplates(
 
 /**
  * Map designer roll → DieCutLabel envelope accepted by DYMO Connect on this PC.
- * LW Durable → 30330 Return Address proxy on LW450 (see durableLw450PrintProxyTemplate).
+ * LW Durable → 30330 hybrid envelope on LW450 (see durableLw450PrintHybridTemplate).
  */
 export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
   if (template.id !== 'Durable1933085') return template
-  return durableLw450PrintProxyTemplate()
+  return durableLw450PrintHybridTemplate()
 }
 
 /** Inner printable rectangle (same padding as PO job/location split). */
