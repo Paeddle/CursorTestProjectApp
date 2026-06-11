@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 36
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 37
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -84,6 +84,22 @@ function clampWithinFace(bounds: DymoLabelBounds, face: DymoLabelBounds): DymoLa
   }
 }
 
+/** Map bounds from designer roll face → accepted print envelope (e.g. durable → 30323). */
+function scaleBoundsBetweenFaces(
+  bounds: DymoLabelBounds,
+  fromFace: DymoLabelBounds,
+  toFace: DymoLabelBounds
+): DymoLabelBounds {
+  const scaleX = toFace.width / fromFace.width
+  const scaleY = toFace.height / fromFace.height
+  return {
+    x: toFace.x + Math.round((bounds.x - fromFace.x) * scaleX),
+    y: toFace.y + Math.round((bounds.y - fromFace.y) * scaleY),
+    width: Math.max(80, Math.round(bounds.width * scaleX)),
+    height: Math.max(60, Math.round(bounds.height * scaleY)),
+  }
+}
+
 /** Direct map for non-30323 rolls (poInner + inset anchor). */
 function pctToStudioPrintBounds(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
@@ -143,8 +159,13 @@ export function pctToDymoPrintBounds(
   if (!usesStudioFacePrint(printTemplate)) return pctToStudioPrintBounds(el, printTemplate)
 
   const designTemplate = options?.designTemplate ?? printTemplate
+  const printFace = studioFaceBounds(printTemplate)
   const onCanvas = pctToCanvasFaceBounds(el, designTemplate)
-  return clampWithinFace(onCanvas, studioFaceBounds(printTemplate))
+  const bounds =
+    designTemplate.id !== printTemplate.id
+      ? scaleBoundsBetweenFaces(onCanvas, studioFaceBounds(designTemplate), printFace)
+      : onCanvas
+  return clampWithinFace(bounds, printFace)
 }
 
 /** Twips used to size print font — match canvas (element height band on 30323). */

@@ -188,6 +188,15 @@ export default function LabelStudio() {
     })
   }, [template.paperTemplateId, paperTemplate.studioTwinTurboRoll])
 
+  useEffect(() => {
+    if (paperTemplate.id !== 'Durable1933085') return
+    setPrintQuality((current) => {
+      if (current === 'BarcodeAndGraphics') return current
+      saveLabelStudioPrintQuality('BarcodeAndGraphics')
+      return 'BarcodeAndGraphics'
+    })
+  }, [paperTemplate.id, template.paperTemplateId])
+
   const loadItems = useCallback(async () => {
     setLoadingItems(true)
     setItemsError(null)
@@ -760,6 +769,9 @@ export default function LabelStudio() {
             </select>
             <span className="ls-field-hint">
               {DYMO_PRINT_QUALITY_OPTIONS.find((o) => o.value === printQuality)?.hint}
+              {paperTemplate.id === 'Durable1933085'
+                ? ' LW Durable film usually needs Graphics — Text often prints blank.'
+                : ''}
             </span>
           </label>
           <label className="ls-thermal-field">
