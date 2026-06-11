@@ -113,7 +113,7 @@ async function printOneStudioItem(
     throw new Error(
       `Print failed.\n• ${detail}\n\n` +
         'Use this app in a browser on the PC where DYMO Connect is running (localhost is fine). ' +
-        'In DYMO Connect, confirm the roll size matches “Label roll in printer” in Label Studio (30323 Shipping is common).'
+        'In DYMO Connect, confirm the roll size matches “Label roll in printer” in Label Studio.'
     )
   }
   throw new Error(detail)

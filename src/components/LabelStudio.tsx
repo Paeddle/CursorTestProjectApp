@@ -1183,7 +1183,7 @@ export default function LabelStudio() {
 
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face — print uses the same
-            catalog bounds on 30323.{' '}
+            layout on that roll.{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow
             keys.

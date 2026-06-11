@@ -73,6 +73,7 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   },
   {
     id: 'Durable1933085',
+    /** Designer / canvas id — DYMO Connect on LW450 rejects this PaperName in XML. */
     paperName: '1933085 LW Durable 3/4 in x 2-1/2 in',
     catalogSku: '1933085',
     studioLabel: 'LW Durable Labels',
@@ -111,11 +112,19 @@ export function labelStudioPaperTemplates(
 }
 
 /**
- * Label Studio prints on the same 30323 catalog face as the designer canvas.
- * (30256 hybrid bounds scaled content inward on physical 30323 stickers.)
+ * Map designer roll → DieCutLabel envelope accepted by DYMO Connect on this PC.
+ * LW Durable 1933085 is not in the LW450 driver schema; use 30323 Shipping id/PaperName
+ * with durable draw/bounds (same hybrid pattern as PO 30256 on 30323).
  */
 export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
-  return template
+  if (template.id !== 'Durable1933085') return template
+  const shipping = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
+  if (!shipping) return template
+  return {
+    ...template,
+    id: shipping.id,
+    paperName: shipping.paperName,
+  }
 }
 
 /** Inner printable rectangle (same padding as PO job/location split). */

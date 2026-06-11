@@ -197,13 +197,6 @@ export async function printLabelXmlViaWebService(
     }
   }
 
-  try {
-    await printOneLabelXml(service, printer, candidates[0], twinTurboRoll, printQuality)
-    return { printer, service }
-  } catch (e) {
-    errors.push(e instanceof Error ? e.message : String(e))
-  }
-
   throw new Error(formatDymoLabelXmlPrintFailure(errors))
 }
 

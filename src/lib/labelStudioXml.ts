@@ -400,7 +400,11 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
-  if (preferred.id === 'Shipping' || preferred.id === 'Address30251') {
+  if (
+    preferred.id === 'Shipping' ||
+    preferred.id === 'Address30251' ||
+    preferred.id === 'Durable1933085'
+  ) {
     return [hybrid]
   }
   const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)
