@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 44
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 45
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -257,6 +257,8 @@ export function studioPrintTextFontSizeForElement(
       fontSize = Math.max(8, Math.round((el.fontSize * bounds.height) / designBoxH))
     }
   }
+  // ShrinkToFit: let DYMO shrink from designer size (matches canvas binary search better).
+  if (fit === 'ShrinkToFit') return fontSize
   return studioPrintTextFontSizePt(fontSize, lineCount, bounds.height, fit)
 }
 

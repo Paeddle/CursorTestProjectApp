@@ -249,6 +249,7 @@ export default function LabelStudioCanvas({
                       src={imgSrc}
                       alt=""
                       referrerPolicy="no-referrer"
+                      style={{ objectFit: el.scaleMode === 'Fill' ? 'cover' : 'contain' }}
                     />
                   ) : (
                     <span className="ls-element-text">No image</span>

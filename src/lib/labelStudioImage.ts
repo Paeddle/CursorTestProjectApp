@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import { labelRasterDimensionsForBounds, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
@@ -96,7 +96,11 @@ function drawImageIntoBounds(
   ctx.drawImage(src.source, dx, dy, dw, dh)
 }
 
-/** Fetch a product photo for DYMO ImageObject — high-res raster, same bounds as canvas. */
+/**
+ * Fetch a product photo for DYMO ImageObject.
+ * Raster at 96 dpi relative to print bounds (same approach as QR ImageObjects) so DYMO
+ * ScaleMode upscales correctly — oversized PNGs (~320 px) print as tiny specks.
+ */
 export async function fetchProductImagePngBase64(
   url: string,
   boundsTwips: { width: number; height: number },
@@ -108,13 +112,7 @@ export async function fetchProductImagePngBase64(
   const oriented = await loadOrientedImageSource(blob)
   if (!oriented) return null
 
-  const aspect = Math.max(0.05, boundsTwips.width / Math.max(1, boundsTwips.height))
-  let targetW = MAX_LABEL_RASTER_PX
-  let targetH = Math.max(32, Math.round(MAX_LABEL_RASTER_PX / aspect))
-  if (targetH > MAX_LABEL_RASTER_PX) {
-    targetH = MAX_LABEL_RASTER_PX
-    targetW = Math.max(32, Math.round(MAX_LABEL_RASTER_PX * aspect))
-  }
+  const { width: targetW, height: targetH } = labelRasterDimensionsForBounds(boundsTwips)
 
   try {
     const canvas = document.createElement('canvas')
