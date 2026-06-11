@@ -47,29 +47,26 @@ async function printXmlCandidatesViaFramework(
   const errors: string[] = []
 
   for (const labelXml of candidates) {
-    let printed = false
     if (fw.printLabel) {
       try {
         fw.printLabel(target, printParams, labelXml, '')
-        printed = true
+        return 1
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e))
+        continue
       }
     }
-    if (!printed) {
-      try {
-        const label = fw.openLabelXml(labelXml)
-        if (label.isValidLabel && !label.isValidLabel()) {
-          errors.push('Label XML failed validation')
-          continue
-        }
-        label.print(target)
-        printed = true
-      } catch (e) {
-        errors.push(e instanceof Error ? e.message : String(e))
+    try {
+      const label = fw.openLabelXml(labelXml)
+      if (label.isValidLabel && !label.isValidLabel()) {
+        errors.push('Label XML failed validation')
+        continue
       }
+      label.print(target)
+      return 1
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e))
     }
-    if (printed) return 1
   }
 
   throw new Error(errors[errors.length - 1] ?? 'DYMO rejected all label templates')

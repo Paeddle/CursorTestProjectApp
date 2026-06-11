@@ -109,6 +109,28 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   },
 ] as const
 
+/**
+ * LW450 has no 1933085 durable schema — print via 30330 Return Address (0.75"×2")
+ * on the right Twin Turbo roll. Physical durable is 0.75"×2.5"; layout is close enough.
+ */
+export function durableLw450PrintProxyTemplate(): DymoPaperTemplate {
+  return {
+    id: 'ReturnAddress30330',
+    paperName: '30330 Return Address',
+    catalogSku: '30330',
+    studioVisible: false,
+    widthMm: 64,
+    heightMm: 19,
+    drawWidth: 2930,
+    drawHeight: 557,
+    boundsX: 212,
+    boundsY: 47,
+    boundsWidth: 2509,
+    boundsHeight: 477,
+    studioTwinTurboRoll: 'Right',
+  }
+}
+
 /** Rolls shown in Label Studio roll picker. */
 export function labelStudioPaperTemplates(
   templates: readonly DymoPaperTemplate[] = DYMO_PAPER_TEMPLATES
@@ -118,13 +140,11 @@ export function labelStudioPaperTemplates(
 
 /**
  * Map designer roll → DieCutLabel envelope accepted by DYMO Connect on this PC.
- * LW Durable is not in the LW450 schema — print on the full 30323 Shipping envelope
- * and scale designer bounds from the durable face (see labelStudioGeometry).
+ * LW Durable → 30330 Return Address proxy on LW450 (see durableLw450PrintProxyTemplate).
  */
 export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
   if (template.id !== 'Durable1933085') return template
-  const shipping = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
-  return shipping ?? template
+  return durableLw450PrintProxyTemplate()
 }
 
 /** Inner printable rectangle (same padding as PO job/location split). */

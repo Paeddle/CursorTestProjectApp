@@ -169,8 +169,11 @@ function buildBarcodePrintXml(
   if (!encoded) return ''
 
   const { barcode, caption } = splitBarcodeElementBounds(bounds, el.textPosition)
+  const qrAsImage =
+    usesStudioQrImagePrint(paper) ||
+    Boolean(printOptions?.designTemplate && usesStudioQrImagePrint(printOptions.designTemplate))
   const printBarcode =
-    usesStudioQrImagePrint(paper) && symbology === 'QrCode'
+    qrAsImage && symbology === 'QrCode'
       ? studioQrPrintBounds(el, paper, printOptions)
       : barcode
   const barcodeXml = buildBarcodeObjectXml(el, encoded, symbology, printBarcode, paper)
@@ -257,7 +260,10 @@ async function buildElementXmlAsync(
     const value = mergedBarcodeForElement(el.content, item)
     const symbology = resolveBarcodeType(el.barcodeType, value)
     const encoded = barcodeTextForPrint(value, symbology)
-    if (usesStudioQrImagePrint(template) && symbology === 'QrCode' && encoded) {
+    const qrAsImage =
+      usesStudioQrImagePrint(template) ||
+      Boolean(printOptions?.designTemplate && usesStudioQrImagePrint(printOptions.designTemplate))
+    if (qrAsImage && symbology === 'QrCode' && encoded) {
       const qrBounds = studioQrPrintBounds(el, template, printOptions)
       const png = await qrPngBase64ForPrint(
         encoded,
