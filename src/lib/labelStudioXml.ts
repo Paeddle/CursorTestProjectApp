@@ -11,7 +11,7 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { composeStudioFaceImageOverlayBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
@@ -29,6 +29,7 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
+  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -217,7 +218,8 @@ function buildBarcodePrintXml(
 function buildRasterImageObjectXml(
   objectName: string,
   base64Png: string,
-  bounds: DymoLabelBounds
+  bounds: DymoLabelBounds,
+  scaleMode: 'Uniform' | 'Fill' = 'Uniform'
 ): string {
   if (!base64Png) return ''
   return (
@@ -232,7 +234,7 @@ function buildRasterImageObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<ImageLocation/>` +
     `<Image>${base64Png}</Image>` +
-    `<ScaleMode>Uniform</ScaleMode>` +
+    `<ScaleMode>${scaleMode}</ScaleMode>` +
     `<BorderWidth>0</BorderWidth>` +
     `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
@@ -265,11 +267,43 @@ function buildImageObjectXml(
     `<BorderWidth>0</BorderWidth>` +
     `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
     `<HorizontalAlignment>Center</HorizontalAlignment>` +
-    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    `<VerticalAlignment>Center</VerticalAlignment>` +
     `</ImageObject>` +
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
     `</ObjectInfo>`
   )
+}
+
+async function buildDurableFaceImageOverlayXml(
+  template: LabelStudioTemplate,
+  item: LabelStudioItem,
+  printTemplate: DymoPaperTemplate,
+  printOptions: StudioPrintBoundsOptions
+): Promise<string> {
+  const face = studioPrintFaceBounds(printTemplate)
+  const layers = (
+    await Promise.all(
+      template.elements.filter(isImageElement).map(async (el) => {
+        const url = mergedImageUrlForElement(el.content, item)
+        if (!url) return null
+        return {
+          url,
+          bounds: pctToDymoPrintBounds(el, printTemplate, printOptions),
+          scaleMode: el.scaleMode ?? 'Uniform',
+        }
+      })
+    )
+  ).filter((layer): layer is NonNullable<typeof layer> => layer != null)
+
+  if (layers.length === 0) return ''
+
+  const base64 = await composeStudioFaceImageOverlayBase64(
+    layers,
+    face,
+    printOptions.thermalImage
+  )
+  if (!base64) return ''
+  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, 'Fill')
 }
 
 async function buildElementXmlAsync(
@@ -411,11 +445,32 @@ export async function buildLabelXmlFromStudioForPrint(
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
   }
-  const objectParts = await Promise.all(
-    studioPrintElementOrder(template.elements).map((el) =>
+  const useDurableFaceImage =
+    designPaper.id === 'Durable1933085' &&
+    template.elements.some((el) => isImageElement(el) && mergedImageUrlForElement(el.content, item))
+
+  const nonImageElements = useDurableFaceImage
+    ? template.elements.filter((el) => !isImageElement(el))
+    : template.elements
+
+  const objectParts: string[] = []
+  if (useDurableFaceImage) {
+    const faceXml = await buildDurableFaceImageOverlayXml(
+      template,
+      item,
+      envelope.printTemplate,
+      options
+    )
+    if (faceXml) objectParts.push(faceXml)
+  }
+
+  const elementParts = await Promise.all(
+    studioPrintElementOrder(nonImageElements).map((el) =>
       buildElementXmlAsync(el, item, envelope.printTemplate, options)
     )
   )
+  objectParts.push(...elementParts.filter(Boolean))
+
   const objects = objectParts.filter(Boolean)
 
   if (objects.length === 0) {

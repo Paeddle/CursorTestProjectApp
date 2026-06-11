@@ -74,6 +74,28 @@ async function loadOrientedImageSource(blob: Blob): Promise<OrientedImageSource 
   })
 }
 
+function drawImageIntoBoundsAt(
+  ctx: CanvasRenderingContext2D,
+  src: OrientedImageSource,
+  x: number,
+  y: number,
+  targetW: number,
+  targetH: number,
+  scaleMode: LabelStudioImageScaleMode
+): void {
+  const srcW = Math.max(1, src.width)
+  const srcH = Math.max(1, src.height)
+  const scale =
+    scaleMode === 'Fill'
+      ? Math.max(targetW / srcW, targetH / srcH)
+      : Math.min(targetW / srcW, targetH / srcH)
+  const dw = Math.max(1, Math.round(srcW * scale))
+  const dh = Math.max(1, Math.round(srcH * scale))
+  const dx = x + Math.round((targetW - dw) / 2)
+  const dy = y + Math.round((targetH - dh) / 2)
+  ctx.drawImage(src.source, dx, dy, dw, dh)
+}
+
 function drawImageIntoBounds(
   ctx: CanvasRenderingContext2D,
   src: OrientedImageSource,
@@ -94,6 +116,69 @@ function drawImageIntoBounds(
   const dx = Math.round((targetW - dw) / 2)
   const dy = Math.round((targetH - dh) / 2)
   ctx.drawImage(src.source, dx, dy, dw, dh)
+}
+
+export type StudioFaceImageLayer = {
+  url: string
+  bounds: { x: number; y: number; width: number; height: number }
+  scaleMode: LabelStudioImageScaleMode
+}
+
+/**
+ * Composite product photos onto the full printable face at 96 dpi (pixel positions match
+ * the Label Studio canvas). Used for LW Durable where per-box ImageObjects print tiny.
+ */
+export async function composeStudioFaceImageOverlayBase64(
+  layers: StudioFaceImageLayer[],
+  face: { x: number; y: number; width: number; height: number },
+  thermal?: ThermalImageProcessOptions
+): Promise<string | null> {
+  if (layers.length === 0) return null
+
+  const { width: faceW, height: faceH } = labelRasterDimensionsForBounds({
+    width: face.width,
+    height: face.height,
+  })
+  const scaleX = faceW / face.width
+  const scaleY = faceH / face.height
+
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = faceW
+    canvas.height = faceH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, faceW, faceH)
+
+    for (const layer of layers) {
+      const blob = await loadImageBlob(layer.url)
+      if (!blob) continue
+      const oriented = await loadOrientedImageSource(blob)
+      if (!oriented) continue
+
+      try {
+        const x = Math.round((layer.bounds.x - face.x) * scaleX)
+        const y = Math.round((layer.bounds.y - face.y) * scaleY)
+        const w = Math.max(1, Math.round(layer.bounds.width * scaleX))
+        const h = Math.max(1, Math.round(layer.bounds.height * scaleY))
+        drawImageIntoBoundsAt(ctx, oriented, x, y, w, h, layer.scaleMode)
+        if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
+          const imageData = ctx.getImageData(x, y, w, h)
+          processThermalImageData(imageData, thermal.tone)
+          ctx.putImageData(imageData, x, y)
+        }
+      } finally {
+        oriented.cleanup?.()
+      }
+    }
+
+    const dataUrl = canvas.toDataURL('image/png')
+    return dataUrl.replace(/^data:image\/png;base64,/, '')
+  } catch {
+    return null
+  }
 }
 
 /**

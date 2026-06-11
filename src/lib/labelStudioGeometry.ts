@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 45
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 46
 
 /** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
 export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
@@ -37,13 +37,17 @@ export type StudioPrintBoundsOptions = {
 }
 
 /** Full catalog printable face — matches the Label Studio canvas (102×59 mm on 30323). */
-function studioFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
+export function studioPrintFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
   return {
     x: template.boundsX,
     y: template.boundsY,
     width: template.boundsWidth,
     height: template.boundsHeight,
   }
+}
+
+function studioFaceBounds(template: DymoPaperTemplate): DymoLabelBounds {
+  return studioPrintFaceBounds(template)
 }
 
 /** Printable band for preview font scaling — matches canvas % grid on studio rolls. */
