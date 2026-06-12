@@ -13,6 +13,7 @@ import {
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { composeStudioFaceImageOverlayBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
 import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
+import { DURABLE_FACE_RASTER_IMAGE_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
@@ -331,11 +332,7 @@ async function buildDurableFaceImageOverlayXml(
     printOptions.thermalImage
   )
   if (!base64) return ''
-  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, {
-    scaleMode: 'Fill',
-    horizontalAlignment: 'Left',
-    verticalAlignment: 'Top',
-  })
+  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, DURABLE_FACE_RASTER_IMAGE_OPTIONS)
 }
 
 async function buildElementXmlAsync(
@@ -494,11 +491,7 @@ export async function buildLabelXmlFromStudioForPrint(
       const face = studioPrintFaceBounds(envelope.printTemplate)
       return studioDieCutXml(
         envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL_RASTER', base64, face, {
-          scaleMode: 'Fill',
-          horizontalAlignment: 'Left',
-          verticalAlignment: 'Top',
-        }),
+        buildRasterImageObjectXml('LABEL_RASTER', base64, face, DURABLE_FACE_RASTER_IMAGE_OPTIONS),
         options
       )
     }

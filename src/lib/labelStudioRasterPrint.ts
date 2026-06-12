@@ -203,6 +203,8 @@ export async function composeDurableStudioLabelRasterBase64(
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, faceW, faceH)
 
