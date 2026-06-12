@@ -97,7 +97,10 @@ function drawTextElement(
   ctx.textBaseline = 'middle'
   const lineHeight = fontPx * 1.1
   const totalH = lines.length * lineHeight
-  let y = box.y + (box.h - totalH) / 2 + lineHeight / 2
+  const verticalTop = shrink || el.align !== 'Center'
+  let y = verticalTop
+    ? box.y + lineHeight / 2
+    : box.y + (box.h - totalH) / 2 + lineHeight / 2
   for (const line of lines) {
     let x = box.x
     if (el.align === 'Center') {
@@ -143,9 +146,9 @@ async function drawImageLayer(
     const dy = y + Math.round((h - dh) / 2)
     ctx.drawImage(oriented.source, dx, dy, dw, dh)
     if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
-      const imageData = ctx.getImageData(x, y, w, h)
+      const imageData = ctx.getImageData(dx, dy, dw, dh)
       processThermalImageData(imageData, thermal.tone)
-      ctx.putImageData(imageData, x, y)
+      ctx.putImageData(imageData, dx, dy)
     }
   } finally {
     oriented.cleanup?.()
@@ -207,25 +210,32 @@ export async function composeDurableStudioLabelRasterBase64(
     for (const el of imageEls) {
       const url = mergedImageUrlForElement(el.content, item)
       if (!url) continue
-      await drawImageLayer(
-        ctx,
-        {
-          url,
-          xPct: el.xPct,
-          yPct: el.yPct,
-          widthPct: el.widthPct,
-          heightPct: el.heightPct,
-          scaleMode: el.scaleMode ?? 'Uniform',
-        },
-        faceW,
-        faceH,
-        thermal
-      )
+      try {
+        await drawImageLayer(
+          ctx,
+          {
+            url,
+            xPct: el.xPct,
+            yPct: el.yPct,
+            widthPct: el.widthPct,
+            heightPct: el.heightPct,
+            scaleMode: el.scaleMode ?? 'Uniform',
+          },
+          faceW,
+          faceH,
+          thermal
+        )
+      } catch {
+        /* skip failed photo — still print text/barcode */
+      }
     }
 
     for (const el of template.elements) {
-      if (isBarcodeElement(el)) {
+      if (!isBarcodeElement(el)) continue
+      try {
         await drawBarcodeElement(ctx, el, item, pctBoxPx(el, faceW, faceH))
+      } catch {
+        /* skip failed barcode */
       }
     }
 

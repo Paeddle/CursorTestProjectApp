@@ -11,7 +11,7 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { composeStudioFaceImageOverlayBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
 import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
@@ -216,13 +216,37 @@ function buildBarcodePrintXml(
   return barcodeXml + captionXml
 }
 
+type RasterImageObjectOptions = {
+  scaleMode?: 'Uniform' | 'Fill'
+  horizontalAlignment?: 'Left' | 'Center' | 'Right'
+  verticalAlignment?: 'Top' | 'Middle' | 'Bottom'
+}
+
+function resolveRasterImageObjectOptions(
+  options?: 'Uniform' | 'Fill' | RasterImageObjectOptions
+): Required<RasterImageObjectOptions> {
+  if (options == null || typeof options === 'string') {
+    return {
+      scaleMode: options ?? 'Uniform',
+      horizontalAlignment: 'Center',
+      verticalAlignment: 'Middle',
+    }
+  }
+  return {
+    scaleMode: options.scaleMode ?? 'Uniform',
+    horizontalAlignment: options.horizontalAlignment ?? 'Center',
+    verticalAlignment: options.verticalAlignment ?? 'Middle',
+  }
+}
+
 function buildRasterImageObjectXml(
   objectName: string,
   base64Png: string,
   bounds: DymoLabelBounds,
-  scaleMode: 'Uniform' | 'Fill' = 'Uniform'
+  options?: 'Uniform' | 'Fill' | RasterImageObjectOptions
 ): string {
   if (!base64Png) return ''
+  const resolved = resolveRasterImageObjectOptions(options)
   return (
     `<ObjectInfo>` +
     `<ImageObject>` +
@@ -235,11 +259,11 @@ function buildRasterImageObjectXml(
     `<IsVariable>False</IsVariable>` +
     `<ImageLocation/>` +
     `<Image>${base64Png}</Image>` +
-    `<ScaleMode>${scaleMode}</ScaleMode>` +
+    `<ScaleMode>${resolved.scaleMode}</ScaleMode>` +
     `<BorderWidth>0</BorderWidth>` +
     `<BorderColor Alpha="255" Red="0" Green="0" Blue="0"/>` +
-    `<HorizontalAlignment>Center</HorizontalAlignment>` +
-    `<VerticalAlignment>Center</VerticalAlignment>` +
+    `<HorizontalAlignment>${resolved.horizontalAlignment}</HorizontalAlignment>` +
+    `<VerticalAlignment>${resolved.verticalAlignment}</VerticalAlignment>` +
     `</ImageObject>` +
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
     `</ObjectInfo>`
@@ -273,6 +297,45 @@ function buildImageObjectXml(
     `<Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}"/>` +
     `</ObjectInfo>`
   )
+}
+
+async function buildDurableFaceImageOverlayXml(
+  template: LabelStudioTemplate,
+  item: LabelStudioItem,
+  printTemplate: DymoPaperTemplate,
+  printOptions: StudioPrintBoundsOptions
+): Promise<string> {
+  const face = studioPrintFaceBounds(printTemplate)
+  const layers = (
+    await Promise.all(
+      template.elements.filter(isImageElement).map(async (el) => {
+        const url = mergedImageUrlForElement(el.content, item)
+        if (!url) return null
+        return {
+          url,
+          xPct: el.xPct,
+          yPct: el.yPct,
+          widthPct: el.widthPct,
+          heightPct: el.heightPct,
+          scaleMode: el.scaleMode ?? 'Uniform',
+        }
+      })
+    )
+  ).filter((layer): layer is NonNullable<typeof layer> => layer != null)
+
+  if (layers.length === 0) return ''
+
+  const base64 = await composeStudioFaceImageOverlayBase64(
+    layers,
+    face,
+    printOptions.thermalImage
+  )
+  if (!base64) return ''
+  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, {
+    scaleMode: 'Fill',
+    horizontalAlignment: 'Left',
+    verticalAlignment: 'Top',
+  })
 }
 
 async function buildElementXmlAsync(
@@ -431,10 +494,45 @@ export async function buildLabelXmlFromStudioForPrint(
       const face = studioPrintFaceBounds(envelope.printTemplate)
       return studioDieCutXml(
         envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL_RASTER', base64, face, 'Uniform'),
+        buildRasterImageObjectXml('LABEL_RASTER', base64, face, {
+          scaleMode: 'Fill',
+          horizontalAlignment: 'Left',
+          verticalAlignment: 'Top',
+        }),
         options
       )
     }
+
+    const nonImageElements = template.elements.filter((el) => !isImageElement(el))
+    const objectParts: string[] = []
+    const elementParts = await Promise.all(
+      studioPrintElementOrder(nonImageElements).map((el) =>
+        buildElementXmlAsync(el, item, envelope.printTemplate, options)
+      )
+    )
+    objectParts.push(...elementParts.filter(Boolean))
+    const faceXml = await buildDurableFaceImageOverlayXml(
+      template,
+      item,
+      envelope.printTemplate,
+      options
+    )
+    if (faceXml) objectParts.push(faceXml)
+
+    if (objectParts.length === 0) {
+      objectParts.push(
+        buildTextObjectXml(
+          'TEXT',
+          ['(empty label)'],
+          18,
+          pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, envelope.printTemplate, options),
+          envelope.printTemplate,
+          { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
+        )
+      )
+    }
+
+    return studioDieCutXml(envelope.printTemplate, objectParts.join(''), options)
   }
 
   const objectParts = await Promise.all(

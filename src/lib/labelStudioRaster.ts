@@ -21,6 +21,12 @@ export function labelRasterDimensionsForBounds(bounds: {
 }): { width: number; height: number } {
   let width = Math.max(1, Math.round((bounds.width * 96) / 1440))
   let height = Math.max(1, Math.round((bounds.height * 96) / 1440))
+  // Independent rounding can skew aspect ratio — DYMO Center+Uniform then shifts the bitmap vs TextObject twips.
+  const twipsAspect = bounds.width / bounds.height
+  const pxAspect = width / height
+  if (Math.abs(twipsAspect - pxAspect) > 0.001) {
+    height = Math.max(1, Math.round(width / twipsAspect))
+  }
   const maxEdge = Math.max(width, height)
   if (maxEdge > MAX_LABEL_RASTER_PX) {
     const scale = MAX_LABEL_RASTER_PX / maxEdge
