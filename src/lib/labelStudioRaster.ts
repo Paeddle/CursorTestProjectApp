@@ -61,3 +61,6 @@ export const STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS = {
   horizontalAlignment: 'Center' as const,
   verticalAlignment: 'Center' as const,
 }
+
+/** LW450 durable hybrid — matches dymo-probe-durable-30330-hybrid.mjs (small PNG, Uniform upscales). */
+export const DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS = STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS

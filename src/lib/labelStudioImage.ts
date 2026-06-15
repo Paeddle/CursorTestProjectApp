@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { labelRasterDimensionsForBounds, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import { labelRasterDimensionsForBounds, labelRasterPxForTwips, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
@@ -187,11 +187,7 @@ export async function composeStudioFaceImageOverlayBase64(
   }
 }
 
-/**
- * Fetch a product photo for DYMO ImageObject.
- * Raster at 96 dpi relative to print bounds (same approach as QR ImageObjects) so DYMO
- * ScaleMode upscales correctly — oversized PNGs (~320 px) print as tiny specks.
- */
+/** Fetch a product photo for DYMO ImageObject. */
 export async function fetchProductImagePngBase64(
   url: string,
   boundsTwips: { width: number; height: number },
@@ -215,6 +211,44 @@ export async function fetchProductImagePngBase64(
     drawImageIntoBounds(ctx, oriented, targetW, targetH, scaleMode)
     if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
       const imageData = ctx.getImageData(0, 0, targetW, targetH)
+      processThermalImageData(imageData, thermal.tone)
+      ctx.putImageData(imageData, 0, 0)
+    }
+    const dataUrl = canvas.toDataURL('image/png')
+    return dataUrl.replace(/^data:image\/png;base64,/, '')
+  } catch {
+    return null
+  } finally {
+    oriented.cleanup?.()
+  }
+}
+
+/**
+ * LW Durable / LW450: small square PNG (like QR + probe scripts) so DYMO Uniform upscales
+ * into the element bounds. Full-size PNGs at 96 dpi print as tiny specks on this driver.
+ */
+export async function fetchDymoUpscaleImagePngBase64(
+  url: string,
+  boundsTwips: { width: number; height: number },
+  scaleMode: LabelStudioImageScaleMode = 'Uniform',
+  thermal?: ThermalImageProcessOptions
+): Promise<string | null> {
+  const blob = await loadImageBlob(url)
+  if (!blob) return null
+  const oriented = await loadOrientedImageSource(blob)
+  if (!oriented) return null
+
+  const sidePx = labelRasterPxForTwips(Math.min(boundsTwips.width, boundsTwips.height))
+
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = sidePx
+    canvas.height = sidePx
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    drawImageIntoBounds(ctx, oriented, sidePx, sidePx, scaleMode)
+    if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
+      const imageData = ctx.getImageData(0, 0, sidePx, sidePx)
       processThermalImageData(imageData, thermal.tone)
       ctx.putImageData(imageData, 0, 0)
     }
