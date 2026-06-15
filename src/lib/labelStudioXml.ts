@@ -32,7 +32,7 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
-  studioPrintFaceBounds,
+  studioPrintDrawBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -52,7 +52,7 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
 }
 
-/** One face bitmap — Fill maps pixels 1:1 to durable face twips (LW450 ignores per-element ImageObject scale). */
+/** One draw-area bitmap — Fill maps pixels 1:1 to RoundRectangle twips (30330 hybrid). */
 const DURABLE_FACE_RASTER_OPTIONS = {
   scaleMode: 'Fill' as const,
   horizontalAlignment: 'Left' as const,
@@ -473,14 +473,17 @@ export async function buildLabelXmlFromStudioForPrint(
       envelope.printTemplate,
       options
     )
-    if (base64) {
-      const face = studioPrintFaceBounds(envelope.printTemplate)
-      return studioDieCutXml(
-        envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL', base64, face, DURABLE_FACE_RASTER_OPTIONS),
-        options
+    if (!base64) {
+      throw new Error(
+        'Could not build the durable label image for print. Confirm product photos load in the canvas preview, then try again.'
       )
     }
+    const draw = studioPrintDrawBounds(envelope.printTemplate)
+    return studioDieCutXml(
+      envelope.printTemplate,
+      buildRasterImageObjectXml('LABEL', base64, draw, DURABLE_FACE_RASTER_OPTIONS),
+      options
+    )
   }
 
   const objectParts = await Promise.all(

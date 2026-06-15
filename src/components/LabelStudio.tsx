@@ -1215,7 +1215,7 @@ export default function LabelStudio() {
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face
             {paperTemplate.id === 'Durable1933085'
-              ? ' — durable print is a WYSIWYG bitmap of this canvas (30330 envelope).'
+              ? ' — durable print is a WYSIWYG bitmap of this canvas on the full label draw area (30330 envelope).'
               : ' — print uses the same layout on that roll.'}{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow

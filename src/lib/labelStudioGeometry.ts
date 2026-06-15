@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 62
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 63
 
 /** @deprecated Durable uses WYSIWYG raster print — native TextObject no longer needs a fudge factor. */
 export const DURABLE_STUDIO_TEXT_PRINT_SCALE = 1
@@ -37,6 +37,11 @@ export type StudioPrintBoundsOptions = {
   catalogTwips?: boolean
   /** Optional thermal tuning for embedded product images. */
   thermalImage?: ThermalImageProcessOptions
+}
+
+/** Full die-cut draw rectangle (RoundRectangle) — LW450 30330 maps ImageObject here, not just bounds. */
+export function studioPrintDrawBounds(template: DymoPaperTemplate): DymoLabelBounds {
+  return { x: 0, y: 0, width: template.drawWidth, height: template.drawHeight }
 }
 
 /** Full catalog printable face — matches the Label Studio canvas (102×59 mm on 30323). */
