@@ -11,7 +11,7 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { composeStudioFaceImageOverlayBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
 import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
@@ -31,6 +31,7 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
+  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -48,6 +49,52 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   const attrs = fontAttributesXml(fontSize, bold)
   const block = (lines.length > 0 ? lines : ['']).map(escapeXmlText).join('\n')
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
+}
+
+/** LW Durable photos: one face bitmap at canvas % — LW450 per-element ImageObject misplaces PNGs. */
+const DURABLE_FACE_OVERLAY_IMAGE_OPTIONS = {
+  scaleMode: 'Uniform' as const,
+  horizontalAlignment: 'Left' as const,
+  verticalAlignment: 'Top' as const,
+}
+
+async function buildDurableImageFaceOverlayObjectXml(
+  template: LabelStudioTemplate,
+  item: LabelStudioItem,
+  printTemplate: DymoPaperTemplate,
+  printOptions?: StudioPrintBoundsOptions
+): Promise<string> {
+  const imageEls = template.elements.filter(isImageElement)
+  if (imageEls.length === 0) return ''
+
+  const face = studioPrintFaceBounds(printTemplate)
+  const layers = (
+    await Promise.all(
+      imageEls.map(async (el) => {
+        const url = mergedImageUrlForElement(el.content, item)
+        if (!url) return null
+        return {
+          url,
+          xPct: el.xPct,
+          yPct: el.yPct,
+          widthPct: el.widthPct,
+          heightPct: el.heightPct,
+          scaleMode: el.scaleMode ?? ('Uniform' as const),
+        }
+      })
+    )
+  ).filter((layer): layer is NonNullable<typeof layer> => layer != null)
+
+  if (layers.length === 0) return ''
+
+  const base64 = await composeStudioFaceImageOverlayBase64(
+    layers,
+    { width: face.width, height: face.height },
+    printOptions?.thermalImage
+  )
+  if (!base64) return ''
+
+  return buildRasterImageObjectXml('PHOTOS', base64, face, DURABLE_FACE_OVERLAY_IMAGE_OPTIONS)
 }
 
 function studioPrintEnvelope(
@@ -440,6 +487,38 @@ export async function buildLabelXmlFromStudioForPrint(
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
+  }
+
+  if (designPaper.id === 'Durable1933085') {
+    const nonImageEls = template.elements.filter((el) => !isImageElement(el))
+    const objectParts = await Promise.all(
+      studioPrintElementOrder(nonImageEls).map((el) =>
+        buildElementXmlAsync(el, item, envelope.printTemplate, options)
+      )
+    )
+    const objects = objectParts.filter(Boolean)
+    const overlayXml = await buildDurableImageFaceOverlayObjectXml(
+      template,
+      item,
+      envelope.printTemplate,
+      options
+    )
+    if (overlayXml) objects.push(overlayXml)
+
+    if (objects.length === 0) {
+      objects.push(
+        buildTextObjectXml(
+          'TEXT',
+          ['(empty label)'],
+          18,
+          pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, envelope.printTemplate, options),
+          envelope.printTemplate,
+          { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
+        )
+      )
+    }
+
+    return studioDieCutXml(envelope.printTemplate, objects.join(''), options)
   }
 
   const objectParts = await Promise.all(
