@@ -30,14 +30,18 @@ import type {
 } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement } from '../types/labelStudio'
 
+const FIT_TOLERANCE_PX = 2
+
 function pctBoxPx(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  originX: number,
+  originY: number,
   faceW: number,
   faceH: number
 ): { x: number; y: number; w: number; h: number } {
   return {
-    x: Math.round((el.xPct / 100) * faceW),
-    y: Math.round((el.yPct / 100) * faceH),
+    x: originX + Math.round((el.xPct / 100) * faceW),
+    y: originY + Math.round((el.yPct / 100) * faceH),
     w: Math.max(1, Math.round((el.widthPct / 100) * faceW)),
     h: Math.max(1, Math.round((el.heightPct / 100) * faceH)),
   }
@@ -53,9 +57,9 @@ function textFitsBox(
   ctx.font = `${bold ? '700' : '400'} ${fontPx}px Arial,sans-serif`
   const lineHeight = fontPx * 1.1
   const totalH = lines.length * lineHeight
-  if (totalH > box.h + 2) return false
+  if (totalH > box.h + FIT_TOLERANCE_PX) return false
   for (const line of lines) {
-    if (ctx.measureText(line).width > box.w + 2) return false
+    if (ctx.measureText(line).width > box.w + FIT_TOLERANCE_PX) return false
   }
   return true
 }
@@ -97,8 +101,7 @@ function drawTextElement(
   ctx.textBaseline = 'middle'
   const lineHeight = fontPx * 1.1
   const totalH = lines.length * lineHeight
-  const verticalTop = shrink || el.align !== 'Center'
-  let y = verticalTop
+  let y = shrink
     ? box.y + lineHeight / 2
     : box.y + (box.h - totalH) / 2 + lineHeight / 2
   for (const line of lines) {
@@ -120,6 +123,8 @@ function drawTextElement(
 async function drawImageLayer(
   ctx: CanvasRenderingContext2D,
   layer: StudioFaceImageLayer,
+  originX: number,
+  originY: number,
   faceW: number,
   faceH: number,
   thermal?: ThermalImageProcessOptions
@@ -130,8 +135,8 @@ async function drawImageLayer(
   if (!oriented) return
 
   try {
-    const x = Math.round((layer.xPct / 100) * faceW)
-    const y = Math.round((layer.yPct / 100) * faceH)
+    const x = originX + Math.round((layer.xPct / 100) * faceW)
+    const y = originY + Math.round((layer.yPct / 100) * faceH)
     const w = Math.max(1, Math.round((layer.widthPct / 100) * faceW))
     const h = Math.max(1, Math.round((layer.heightPct / 100) * faceH))
     const srcW = Math.max(1, oriented.width)
@@ -181,7 +186,7 @@ async function drawBarcodeElement(
   }
 }
 
-/** Paint the whole durable label face — WYSIWYG bitmap for a single DYMO ImageObject. */
+/** Paint the whole durable label — WYSIWYG bitmap on the draw area for a single DYMO ImageObject. */
 export async function composeDurableStudioLabelRasterBase64(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
@@ -190,23 +195,28 @@ export async function composeDurableStudioLabelRasterBase64(
   options?: StudioPrintBoundsOptions
 ): Promise<string | null> {
   const face = studioPrintFaceBounds(printTemplate)
-  const { width: faceW, height: faceH } = labelRasterDimensionsForBounds({
-    width: face.width,
-    height: face.height,
+  const { width: drawW, height: drawH } = labelRasterDimensionsForBounds({
+    width: printTemplate.drawWidth,
+    height: printTemplate.drawHeight,
   })
+  const pxPerTwip = drawH / printTemplate.drawHeight
+  const faceX = Math.round(face.x * pxPerTwip)
+  const faceY = Math.round(face.y * pxPerTwip)
+  const faceW = Math.max(1, Math.round(face.width * pxPerTwip))
+  const faceH = Math.max(1, Math.round(face.height * pxPerTwip))
   const thermal = options?.thermalImage
 
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = faceW
-    canvas.height = faceH
+    canvas.width = drawW
+    canvas.height = drawH
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, faceW, faceH)
+    ctx.fillRect(0, 0, drawW, drawH)
 
     const imageEls = template.elements.filter(isImageElement)
     for (const el of imageEls) {
@@ -223,6 +233,8 @@ export async function composeDurableStudioLabelRasterBase64(
             heightPct: el.heightPct,
             scaleMode: el.scaleMode ?? 'Uniform',
           },
+          faceX,
+          faceY,
           faceW,
           faceH,
           thermal
@@ -235,7 +247,7 @@ export async function composeDurableStudioLabelRasterBase64(
     for (const el of template.elements) {
       if (!isBarcodeElement(el)) continue
       try {
-        await drawBarcodeElement(ctx, el, item, pctBoxPx(el, faceW, faceH))
+        await drawBarcodeElement(ctx, el, item, pctBoxPx(el, faceX, faceY, faceW, faceH))
       } catch {
         /* skip failed barcode */
       }
@@ -244,7 +256,14 @@ export async function composeDurableStudioLabelRasterBase64(
     for (const el of template.elements) {
       if (!isTextElement(el)) continue
       const lines = mergedLinesForElement(el.content, item)
-      drawTextElement(ctx, el, lines, pctBoxPx(el, faceW, faceH), faceH, designPaper)
+      drawTextElement(
+        ctx,
+        el,
+        lines,
+        pctBoxPx(el, faceX, faceY, faceW, faceH),
+        faceH,
+        designPaper
+      )
     }
 
     const dataUrl = canvas.toDataURL('image/png')

@@ -488,10 +488,15 @@ export async function buildLabelXmlFromStudioForPrint(
       options
     )
     if (base64) {
-      const face = studioPrintFaceBounds(envelope.printTemplate)
+      const drawBounds = {
+        x: 0,
+        y: 0,
+        width: envelope.printTemplate.drawWidth,
+        height: envelope.printTemplate.drawHeight,
+      }
       return studioDieCutXml(
         envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL_RASTER', base64, face, DURABLE_FACE_RASTER_IMAGE_OPTIONS),
+        buildRasterImageObjectXml('LABEL_RASTER', base64, drawBounds, DURABLE_FACE_RASTER_IMAGE_OPTIONS),
         options
       )
     }
