@@ -31,16 +31,17 @@ function inchStr(n: number): string {
   return n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
 }
 
-/** Canvas xPct/yPct are % of the full label; Connect ObjectLayout uses inches from draw origin. */
+/** Canvas xPct/yPct → Connect ObjectLayout inches (position on draw, size on printable face). */
 function pctToConnectInches(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  draw = DURABLE_CONNECT_DRAW_IN
+  draw = DURABLE_CONNECT_DRAW_IN,
+  face = DURABLE_CONNECT_FACE_IN
 ): { x: number; y: number; width: number; height: number } {
   return {
     x: (el.xPct / 100) * draw.width,
     y: (el.yPct / 100) * draw.height,
-    width: (el.widthPct / 100) * draw.width,
-    height: (el.heightPct / 100) * draw.height,
+    width: (el.widthPct / 100) * face.width,
+    height: (el.heightPct / 100) * face.height,
   }
 }
 
