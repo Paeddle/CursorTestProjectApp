@@ -2,7 +2,6 @@ import type { DymoPaperTemplate } from './dymoLabelXml'
 import {
   loadImageBlobForPrint,
   loadOrientedImageSource,
-  type StudioFaceImageLayer,
 } from './labelStudioImage'
 import { labelRasterDimensionsForBounds } from './labelStudioRaster'
 import {
@@ -13,8 +12,10 @@ import {
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import { resolveBarcodeType } from './labelStudioBarcode'
 import {
+  pctToDymoPrintBounds,
   previewMaxFontSizePx,
   studioPrintFaceBounds,
+  twipsBoundsToFacePixels,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
 import {
@@ -28,24 +29,10 @@ import type {
   LabelStudioTemplate,
   LabelStudioTextElement,
 } from '../types/labelStudio'
+import type { LabelStudioImageScaleMode } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement } from '../types/labelStudio'
 
 const FIT_TOLERANCE_PX = 2
-
-function pctBoxPx(
-  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  originX: number,
-  originY: number,
-  faceW: number,
-  faceH: number
-): { x: number; y: number; w: number; h: number } {
-  return {
-    x: originX + Math.round((el.xPct / 100) * faceW),
-    y: originY + Math.round((el.yPct / 100) * faceH),
-    w: Math.max(1, Math.round((el.widthPct / 100) * faceW)),
-    h: Math.max(1, Math.round((el.heightPct / 100) * faceH)),
-  }
-}
 
 function textFitsBox(
   ctx: CanvasRenderingContext2D,
@@ -124,35 +111,29 @@ function drawTextElement(
   }
 }
 
-async function drawImageLayer(
+async function drawImageInBox(
   ctx: CanvasRenderingContext2D,
-  layer: StudioFaceImageLayer,
-  originX: number,
-  originY: number,
-  faceW: number,
-  faceH: number,
+  url: string,
+  box: { x: number; y: number; w: number; h: number },
+  scaleMode: LabelStudioImageScaleMode,
   thermal?: ThermalImageProcessOptions
 ): Promise<void> {
-  const blob = await loadImageBlobForPrint(layer.url)
+  const blob = await loadImageBlobForPrint(url)
   if (!blob) return
   const oriented = await loadOrientedImageSource(blob)
   if (!oriented) return
 
   try {
-    const x = originX + Math.round((layer.xPct / 100) * faceW)
-    const y = originY + Math.round((layer.yPct / 100) * faceH)
-    const w = Math.max(1, Math.round((layer.widthPct / 100) * faceW))
-    const h = Math.max(1, Math.round((layer.heightPct / 100) * faceH))
     const srcW = Math.max(1, oriented.width)
     const srcH = Math.max(1, oriented.height)
     const scale =
-      layer.scaleMode === 'Fill'
-        ? Math.max(w / srcW, h / srcH)
-        : Math.min(w / srcW, h / srcH)
+      scaleMode === 'Fill'
+        ? Math.max(box.w / srcW, box.h / srcH)
+        : Math.min(box.w / srcW, box.h / srcH)
     const dw = Math.max(1, Math.round(srcW * scale))
     const dh = Math.max(1, Math.round(srcH * scale))
-    const dx = x + Math.round((w - dw) / 2)
-    const dy = y + Math.round((h - dh) / 2)
+    const dx = box.x + Math.round((box.w - dw) / 2)
+    const dy = box.y + Math.round((box.h - dh) / 2)
     ctx.drawImage(oriented.source, dx, dy, dw, dh)
     if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
       const imageData = ctx.getImageData(dx, dy, dw, dh)
@@ -190,7 +171,7 @@ async function drawBarcodeElement(
   }
 }
 
-/** Paint the printable face only — WYSIWYG bitmap for a single DYMO ImageObject at face bounds. */
+/** Paint printable face at 30330 GPD twips — canvas % scaled from durable design face. */
 export async function composeDurableStudioLabelRasterBase64(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
@@ -198,12 +179,24 @@ export async function composeDurableStudioLabelRasterBase64(
   printTemplate: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
 ): Promise<string | null> {
+  const printOptions: StudioPrintBoundsOptions = {
+    designTemplate: designPaper,
+    ...options,
+  }
   const face = studioPrintFaceBounds(printTemplate)
   const { width: faceW, height: faceH } = labelRasterDimensionsForBounds({
     width: face.width,
     height: face.height,
   })
   const thermal = options?.thermalImage
+
+  const elementBoxPx = (el: LabelStudioElement) =>
+    twipsBoundsToFacePixels(
+      pctToDymoPrintBounds(el, printTemplate, printOptions),
+      face,
+      faceW,
+      faceH
+    )
 
   try {
     const canvas = document.createElement('canvas')
@@ -217,25 +210,15 @@ export async function composeDurableStudioLabelRasterBase64(
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, faceW, faceH)
 
-    const imageEls = template.elements.filter(isImageElement)
-    for (const el of imageEls) {
+    for (const el of template.elements.filter(isImageElement)) {
       const url = mergedImageUrlForElement(el.content, item)
       if (!url) continue
       try {
-        await drawImageLayer(
+        await drawImageInBox(
           ctx,
-          {
-            url,
-            xPct: el.xPct,
-            yPct: el.yPct,
-            widthPct: el.widthPct,
-            heightPct: el.heightPct,
-            scaleMode: el.scaleMode ?? 'Uniform',
-          },
-          0,
-          0,
-          faceW,
-          faceH,
+          url,
+          elementBoxPx(el),
+          el.scaleMode ?? 'Uniform',
           thermal
         )
       } catch {
@@ -246,7 +229,7 @@ export async function composeDurableStudioLabelRasterBase64(
     for (const el of template.elements) {
       if (!isBarcodeElement(el)) continue
       try {
-        await drawBarcodeElement(ctx, el, item, pctBoxPx(el, 0, 0, faceW, faceH))
+        await drawBarcodeElement(ctx, el, item, elementBoxPx(el))
       } catch {
         /* skip failed barcode */
       }
@@ -259,7 +242,7 @@ export async function composeDurableStudioLabelRasterBase64(
         ctx,
         el,
         lines,
-        pctBoxPx(el, 0, 0, faceW, faceH),
+        elementBoxPx(el),
         faceH,
         designPaper,
         0.94

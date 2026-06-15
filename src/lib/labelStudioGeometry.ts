@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 57
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 58
 
 /** @deprecated Durable uses WYSIWYG raster print — native TextObject no longer needs a fudge factor. */
 export const DURABLE_STUDIO_TEXT_PRINT_SCALE = 1
@@ -162,6 +162,21 @@ export function shippingQrPrintBounds(
 
 export function usesStudioQrImagePrint(template: DymoPaperTemplate): boolean {
   return usesStudioFacePrint(template)
+}
+
+/** Map scaled print twips → pixels on a face bitmap (0,0 = top-left of printable face). */
+export function twipsBoundsToFacePixels(
+  bounds: DymoLabelBounds,
+  face: DymoLabelBounds,
+  facePixelWidth: number,
+  facePixelHeight: number
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: Math.max(0, Math.round(((bounds.x - face.x) / face.width) * facePixelWidth)),
+    y: Math.max(0, Math.round(((bounds.y - face.y) / face.height) * facePixelHeight)),
+    w: Math.max(1, Math.round((bounds.width / face.width) * facePixelWidth)),
+    h: Math.max(1, Math.round((bounds.height / face.height) * facePixelHeight)),
+  }
 }
 
 /** Map studio 0–100% to DYMO object bounds for print XML. */

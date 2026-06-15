@@ -51,9 +51,9 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
 }
 
-/** LW Durable: face bitmap at catalog face bounds — Fill maps pixels 1:1 to twips (no draw-margin letterboxing). */
+/** LW Durable: face bitmap at 30330 GPD face bounds (canvas % scaled from durable design). */
 const DURABLE_FACE_RASTER_IMAGE_OPTIONS = {
-  scaleMode: 'Fill' as const,
+  scaleMode: 'Uniform' as const,
   horizontalAlignment: 'Left' as const,
   verticalAlignment: 'Top' as const,
 }
