@@ -12,10 +12,10 @@ import {
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
-import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
 import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
+import { studioCanvasFitFontPt } from './labelStudioTextFit'
 import type {
   LabelStudioBarcodeElement,
   LabelStudioElement,
@@ -31,7 +31,6 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
-  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -49,13 +48,6 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   const attrs = fontAttributesXml(fontSize, bold)
   const block = (lines.length > 0 ? lines : ['']).map(escapeXmlText).join('\n')
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
-}
-
-/** LW Durable: face bitmap at 30330 GPD face bounds (canvas % scaled from durable design). */
-const DURABLE_FACE_RASTER_IMAGE_OPTIONS = {
-  scaleMode: 'Uniform' as const,
-  horizontalAlignment: 'Left' as const,
-  verticalAlignment: 'Top' as const,
 }
 
 function studioPrintEnvelope(
@@ -111,20 +103,38 @@ function buildTextObjectXml(
     heightPct?: number
   }
 ): string {
-  const fitMode = studioPrintTextFitMode(
-    options.textFitMode,
-    options.designTemplate,
-    paper
-  )
-  const pt = studioPrintTextFontSizeForElement(
-    { fontSize, heightPct: options.heightPct ?? 100 },
-    bounds,
-    options.designTemplate,
-    paper,
-    Math.max(1, lines.length),
-    options.textFitMode
-  )
-  const dymoFitMode = fitMode !== 'None' ? 'ShrinkToFit' : 'None'
+  const isDurableCanvas = options.designTemplate?.id === 'Durable1933085'
+  let pt: number
+  let dymoFitMode: string
+  if (isDurableCanvas && options.designTemplate) {
+    pt = studioCanvasFitFontPt(
+      {
+        fontSize,
+        bold: options.bold,
+        textFitMode: options.textFitMode ?? 'ShrinkToFit',
+        heightPct: options.heightPct ?? 100,
+      },
+      lines,
+      bounds,
+      options.designTemplate
+    )
+    dymoFitMode = 'None'
+  } else {
+    const fitMode = studioPrintTextFitMode(
+      options.textFitMode,
+      options.designTemplate,
+      paper
+    )
+    pt = studioPrintTextFontSizeForElement(
+      { fontSize, heightPct: options.heightPct ?? 100 },
+      bounds,
+      options.designTemplate,
+      paper,
+      Math.max(1, lines.length),
+      options.textFitMode
+    )
+    dymoFitMode = fitMode !== 'None' ? 'ShrinkToFit' : 'None'
+  }
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -430,24 +440,6 @@ export async function buildLabelXmlFromStudioForPrint(
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
-  }
-
-  if (designPaper.id === 'Durable1933085') {
-    const base64 = await composeDurableStudioLabelRasterBase64(
-      template,
-      item,
-      designPaper,
-      envelope.printTemplate,
-      options
-    )
-    if (base64) {
-      const faceBounds = studioPrintFaceBounds(envelope.printTemplate)
-      return studioDieCutXml(
-        envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL_RASTER', base64, faceBounds, DURABLE_FACE_RASTER_IMAGE_OPTIONS),
-        options
-      )
-    }
   }
 
   const objectParts = await Promise.all(

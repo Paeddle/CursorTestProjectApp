@@ -111,11 +111,19 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
 
 /**
  * LW450 has no 1933085 durable schema — print via 30330 Return Address PaperName on the
- * right Twin Turbo roll. Canvas uses durable face twips; print XML uses the driver GPD face
- * (30330 is ~51 mm wide vs 64 mm durable) with positions scaled in pctToDymoPrintBounds.
+ * right Twin Turbo roll with durable draw/bounds (canvas % map 1:1 to print twips).
  */
 export function durableLw450PrintHybridTemplate(): DymoPaperTemplate {
-  return durableLw450PrintGpdTemplate()
+  const durable = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Durable1933085')
+  if (!durable) throw new Error('Durable1933085 template missing')
+  return {
+    ...durable,
+    id: 'ReturnAddress30330',
+    paperName: '30330 Return Address',
+    catalogSku: '30330',
+    studioVisible: false,
+    studioTwinTurboRoll: 'Right',
+  }
 }
 
 /** Fallback: driver GPD 30330 envelope (2"×0.75") with scaled layout if hybrid render fails. */

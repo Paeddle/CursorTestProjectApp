@@ -1215,7 +1215,7 @@ export default function LabelStudio() {
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face
             {paperTemplate.id === 'Durable1933085'
-              ? ' — durable print scales this layout to the 30330 driver face (right Twin Turbo roll).'
+              ? ' — durable print uses native DYMO text and image at these canvas positions (30330 envelope).'
               : ' — print uses the same layout on that roll.'}{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow
