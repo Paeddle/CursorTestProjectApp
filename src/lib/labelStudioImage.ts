@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { labelRasterDimensionsForBounds, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import { labelRasterDimensionsExactTwips, labelRasterDimensionsForBounds, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
@@ -203,7 +203,7 @@ export async function fetchProductImagePngBase64(
   const oriented = await loadOrientedImageSource(blob)
   if (!oriented) return null
 
-  const { width: targetW, height: targetH } = labelRasterDimensionsForBounds(boundsTwips)
+  const { width: targetW, height: targetH } = labelRasterDimensionsExactTwips(boundsTwips)
 
   try {
     const canvas = document.createElement('canvas')

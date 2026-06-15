@@ -35,3 +35,26 @@ export function labelRasterDimensionsForBounds(bounds: {
   }
   return { width, height }
 }
+
+/** Per-edge 96 dpi sizing for element ImageObjects (each bounds edge rounded independently). */
+export function labelRasterDimensionsExactTwips(bounds: {
+  width: number
+  height: number
+}): { width: number; height: number } {
+  let width = Math.max(1, Math.round((bounds.width * 96) / 1440))
+  let height = Math.max(1, Math.round((bounds.height * 96) / 1440))
+  const maxEdge = Math.max(width, height)
+  if (maxEdge > MAX_LABEL_RASTER_PX) {
+    const scale = MAX_LABEL_RASTER_PX / maxEdge
+    width = Math.max(1, Math.round(width * scale))
+    height = Math.max(1, Math.round(height * scale))
+  }
+  return { width, height }
+}
+
+/** ImageObject XML options for a full-face transparent photo overlay (canvas % positions). */
+export const STUDIO_FACE_IMAGE_OBJECT_OPTIONS = {
+  scaleMode: 'Uniform' as const,
+  horizontalAlignment: 'Center' as const,
+  verticalAlignment: 'Middle' as const,
+}
