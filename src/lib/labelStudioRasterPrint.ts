@@ -90,11 +90,15 @@ function drawTextElement(
   lines: string[],
   box: { x: number; y: number; w: number; h: number },
   faceH: number,
-  designPaper: DymoPaperTemplate
+  designPaper: DymoPaperTemplate,
+  printFontScale = 1
 ): void {
   if (lines.length === 0) return
   const shrink = el.textFitMode !== 'None'
-  const maxPx = previewMaxFontSizePx(el, faceH, designPaper)
+  const maxPx = Math.max(
+    4,
+    Math.floor(previewMaxFontSizePx(el, faceH, designPaper) * printFontScale)
+  )
   const fontPx = shrinkFontPx(ctx, lines, box, maxPx, el.bold, shrink)
   ctx.fillStyle = '#000000'
   ctx.font = `${el.bold ? '700' : '400'} ${fontPx}px Arial,sans-serif`
@@ -186,7 +190,7 @@ async function drawBarcodeElement(
   }
 }
 
-/** Paint the whole durable label — WYSIWYG bitmap on the draw area for a single DYMO ImageObject. */
+/** Paint the printable face only — WYSIWYG bitmap for a single DYMO ImageObject at face bounds. */
 export async function composeDurableStudioLabelRasterBase64(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
@@ -195,28 +199,23 @@ export async function composeDurableStudioLabelRasterBase64(
   options?: StudioPrintBoundsOptions
 ): Promise<string | null> {
   const face = studioPrintFaceBounds(printTemplate)
-  const { width: drawW, height: drawH } = labelRasterDimensionsForBounds({
-    width: printTemplate.drawWidth,
-    height: printTemplate.drawHeight,
+  const { width: faceW, height: faceH } = labelRasterDimensionsForBounds({
+    width: face.width,
+    height: face.height,
   })
-  const pxPerTwip = drawH / printTemplate.drawHeight
-  const faceX = Math.round(face.x * pxPerTwip)
-  const faceY = Math.round(face.y * pxPerTwip)
-  const faceW = Math.max(1, Math.round(face.width * pxPerTwip))
-  const faceH = Math.max(1, Math.round(face.height * pxPerTwip))
   const thermal = options?.thermalImage
 
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = drawW
-    canvas.height = drawH
+    canvas.width = faceW
+    canvas.height = faceH
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, drawW, drawH)
+    ctx.fillRect(0, 0, faceW, faceH)
 
     const imageEls = template.elements.filter(isImageElement)
     for (const el of imageEls) {
@@ -233,8 +232,8 @@ export async function composeDurableStudioLabelRasterBase64(
             heightPct: el.heightPct,
             scaleMode: el.scaleMode ?? 'Uniform',
           },
-          faceX,
-          faceY,
+          0,
+          0,
           faceW,
           faceH,
           thermal
@@ -247,7 +246,7 @@ export async function composeDurableStudioLabelRasterBase64(
     for (const el of template.elements) {
       if (!isBarcodeElement(el)) continue
       try {
-        await drawBarcodeElement(ctx, el, item, pctBoxPx(el, faceX, faceY, faceW, faceH))
+        await drawBarcodeElement(ctx, el, item, pctBoxPx(el, 0, 0, faceW, faceH))
       } catch {
         /* skip failed barcode */
       }
@@ -260,9 +259,10 @@ export async function composeDurableStudioLabelRasterBase64(
         ctx,
         el,
         lines,
-        pctBoxPx(el, faceX, faceY, faceW, faceH),
+        pctBoxPx(el, 0, 0, faceW, faceH),
         faceH,
-        designPaper
+        designPaper,
+        0.94
       )
     }
 

@@ -31,6 +31,7 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
+  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -50,9 +51,9 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
 }
 
-/** LW Durable: one draw-area bitmap — pixel layout matches Label Studio canvas (see composeDurableStudioLabelRasterBase64). */
-const DURABLE_DRAW_RASTER_IMAGE_OPTIONS = {
-  scaleMode: 'Uniform' as const,
+/** LW Durable: face bitmap at catalog face bounds — Fill maps pixels 1:1 to twips (no draw-margin letterboxing). */
+const DURABLE_FACE_RASTER_IMAGE_OPTIONS = {
+  scaleMode: 'Fill' as const,
   horizontalAlignment: 'Left' as const,
   verticalAlignment: 'Top' as const,
 }
@@ -440,15 +441,10 @@ export async function buildLabelXmlFromStudioForPrint(
       options
     )
     if (base64) {
-      const drawBounds = {
-        x: 0,
-        y: 0,
-        width: envelope.printTemplate.drawWidth,
-        height: envelope.printTemplate.drawHeight,
-      }
+      const faceBounds = studioPrintFaceBounds(envelope.printTemplate)
       return studioDieCutXml(
         envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL_RASTER', base64, drawBounds, DURABLE_DRAW_RASTER_IMAGE_OPTIONS),
+        buildRasterImageObjectXml('LABEL_RASTER', base64, faceBounds, DURABLE_FACE_RASTER_IMAGE_OPTIONS),
         options
       )
     }
