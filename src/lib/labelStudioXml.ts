@@ -11,9 +11,7 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { composeStudioFaceImageOverlayBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
-import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
-import { DURABLE_FACE_RASTER_IMAGE_OPTIONS } from './labelStudioRaster'
+import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
@@ -31,7 +29,6 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
-  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -300,41 +297,6 @@ function buildImageObjectXml(
   )
 }
 
-async function buildDurableFaceImageOverlayXml(
-  template: LabelStudioTemplate,
-  item: LabelStudioItem,
-  printTemplate: DymoPaperTemplate,
-  printOptions: StudioPrintBoundsOptions
-): Promise<string> {
-  const face = studioPrintFaceBounds(printTemplate)
-  const layers = (
-    await Promise.all(
-      template.elements.filter(isImageElement).map(async (el) => {
-        const url = mergedImageUrlForElement(el.content, item)
-        if (!url) return null
-        return {
-          url,
-          xPct: el.xPct,
-          yPct: el.yPct,
-          widthPct: el.widthPct,
-          heightPct: el.heightPct,
-          scaleMode: el.scaleMode ?? 'Uniform',
-        }
-      })
-    )
-  ).filter((layer): layer is NonNullable<typeof layer> => layer != null)
-
-  if (layers.length === 0) return ''
-
-  const base64 = await composeStudioFaceImageOverlayBase64(
-    layers,
-    face,
-    printOptions.thermalImage
-  )
-  if (!base64) return ''
-  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, DURABLE_FACE_RASTER_IMAGE_OPTIONS)
-}
-
 async function buildElementXmlAsync(
   el: LabelStudioElement,
   item: LabelStudioItem,
@@ -473,64 +435,6 @@ export async function buildLabelXmlFromStudioForPrint(
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
-  }
-
-  const useDurableRaster =
-    designPaper.id === 'Durable1933085' &&
-    template.elements.some((el) => isImageElement(el) && mergedImageUrlForElement(el.content, item))
-
-  if (useDurableRaster) {
-    const base64 = await composeDurableStudioLabelRasterBase64(
-      template,
-      item,
-      designPaper,
-      envelope.printTemplate,
-      options
-    )
-    if (base64) {
-      const drawBounds = {
-        x: 0,
-        y: 0,
-        width: envelope.printTemplate.drawWidth,
-        height: envelope.printTemplate.drawHeight,
-      }
-      return studioDieCutXml(
-        envelope.printTemplate,
-        buildRasterImageObjectXml('LABEL_RASTER', base64, drawBounds, DURABLE_FACE_RASTER_IMAGE_OPTIONS),
-        options
-      )
-    }
-
-    const nonImageElements = template.elements.filter((el) => !isImageElement(el))
-    const objectParts: string[] = []
-    const elementParts = await Promise.all(
-      studioPrintElementOrder(nonImageElements).map((el) =>
-        buildElementXmlAsync(el, item, envelope.printTemplate, options)
-      )
-    )
-    objectParts.push(...elementParts.filter(Boolean))
-    const faceXml = await buildDurableFaceImageOverlayXml(
-      template,
-      item,
-      envelope.printTemplate,
-      options
-    )
-    if (faceXml) objectParts.push(faceXml)
-
-    if (objectParts.length === 0) {
-      objectParts.push(
-        buildTextObjectXml(
-          'TEXT',
-          ['(empty label)'],
-          18,
-          pctToDymoPrintBounds({ xPct: 4, yPct: 30, widthPct: 92, heightPct: 40 }, envelope.printTemplate, options),
-          envelope.printTemplate,
-          { align: 'Center', bold: true, textFitMode: 'ShrinkToFit' }
-        )
-      )
-    }
-
-    return studioDieCutXml(envelope.printTemplate, objectParts.join(''), options)
   }
 
   const objectParts = await Promise.all(

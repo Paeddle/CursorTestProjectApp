@@ -1215,7 +1215,7 @@ export default function LabelStudio() {
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face
             {paperTemplate.id === 'Durable1933085'
-              ? ' — durable print uses the same coordinates on your roll (30330 driver envelope).'
+              ? ' — durable print uses native text and image objects at the same canvas coordinates (30330 driver envelope).'
               : ' — print uses the same layout on that roll.'}{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow

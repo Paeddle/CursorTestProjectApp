@@ -35,10 +35,3 @@ export function labelRasterDimensionsForBounds(bounds: {
   }
   return { width, height }
 }
-
-/** DYMO ImageObject options for a full durable label raster (Uniform upscales; center when aspect matches twips). */
-export const DURABLE_FACE_RASTER_IMAGE_OPTIONS = {
-  scaleMode: 'Uniform' as const,
-  horizontalAlignment: 'Center' as const,
-  verticalAlignment: 'Middle' as const,
-}
