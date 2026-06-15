@@ -12,6 +12,7 @@ import {
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
 import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
@@ -47,6 +48,13 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   const attrs = fontAttributesXml(fontSize, bold)
   const block = (lines.length > 0 ? lines : ['']).map(escapeXmlText).join('\n')
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
+}
+
+/** LW Durable: one draw-area bitmap — pixel layout matches Label Studio canvas (see composeDurableStudioLabelRasterBase64). */
+const DURABLE_DRAW_RASTER_IMAGE_OPTIONS = {
+  scaleMode: 'Uniform' as const,
+  horizontalAlignment: 'Left' as const,
+  verticalAlignment: 'Top' as const,
 }
 
 function studioPrintEnvelope(
@@ -218,7 +226,7 @@ function buildBarcodePrintXml(
 type RasterImageObjectOptions = {
   scaleMode?: 'Uniform' | 'Fill'
   horizontalAlignment?: 'Left' | 'Center' | 'Right'
-  verticalAlignment?: 'Top' | 'Middle' | 'Bottom'
+  verticalAlignment?: 'Top' | 'Middle' | 'Bottom' | 'Center'
 }
 
 function resolveRasterImageObjectOptions(
@@ -316,7 +324,7 @@ async function buildElementXmlAsync(
       imageUrl,
       bounds,
       printOptions?.thermalImage,
-      'Fill'
+      el.scaleMode ?? 'Uniform'
     )
     if (!base64) return ''
     return buildImageObjectXml(el, base64, bounds)
@@ -421,6 +429,29 @@ export async function buildLabelXmlFromStudioForPrint(
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
+  }
+
+  if (designPaper.id === 'Durable1933085') {
+    const base64 = await composeDurableStudioLabelRasterBase64(
+      template,
+      item,
+      designPaper,
+      envelope.printTemplate,
+      options
+    )
+    if (base64) {
+      const drawBounds = {
+        x: 0,
+        y: 0,
+        width: envelope.printTemplate.drawWidth,
+        height: envelope.printTemplate.drawHeight,
+      }
+      return studioDieCutXml(
+        envelope.printTemplate,
+        buildRasterImageObjectXml('LABEL_RASTER', base64, drawBounds, DURABLE_DRAW_RASTER_IMAGE_OPTIONS),
+        options
+      )
+    }
   }
 
   const objectParts = await Promise.all(

@@ -53,11 +53,11 @@ export function labelRasterDimensionsExactTwips(bounds: {
 }
 
 /**
- * ImageObject XML for studio element boxes — PNG is pre-sized to bounds at 96 dpi with matched
- * aspect ratio; Left+Top maps pixel (0,0) to the element origin (same as canvas % top-left).
+ * ImageObject XML for studio element boxes (non-durable fallback) — Uniform preserves aspect;
+ * Center matches DYMO Connect defaults and our probe scripts.
  */
 export const STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS = {
-  scaleMode: 'Fill' as const,
-  horizontalAlignment: 'Left' as const,
-  verticalAlignment: 'Top' as const,
+  scaleMode: 'Uniform' as const,
+  horizontalAlignment: 'Center' as const,
+  verticalAlignment: 'Center' as const,
 }
