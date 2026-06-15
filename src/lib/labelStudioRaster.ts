@@ -20,6 +20,17 @@ export function labelWriterRasterDimensionsForBounds(bounds: {
   return { width, height }
 }
 
+/** Per-element PNG at LabelWriter resolution — each edge maps independently to twips. */
+export function labelWriterRasterDimensionsExactTwips(bounds: {
+  width: number
+  height: number
+}): { width: number; height: number } {
+  return {
+    width: Math.max(1, Math.round((bounds.width * DYMO_LABELWRITER_PRINT_DPI) / 1440)),
+    height: Math.max(1, Math.round((bounds.height * DYMO_LABELWRITER_PRINT_DPI) / 1440)),
+  }
+}
+
 /** Map DYMO twips on a printed edge → PNG pixel width (96 dpi). */
 export function labelRasterPxForTwips(sideTwips: number): number {
   const px = Math.round((sideTwips * 96) / 1440)
@@ -78,5 +89,9 @@ export const STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS = {
   verticalAlignment: 'Center' as const,
 }
 
-/** LW450 durable hybrid — matches dymo-probe-durable-30330-hybrid.mjs (small PNG, Uniform upscales). */
-export const DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS = STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS
+/** LW450 durable — PNG is prerendered to fill the element box at 300 dpi. */
+export const DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS = {
+  scaleMode: 'Fill' as const,
+  horizontalAlignment: 'Left' as const,
+  verticalAlignment: 'Top' as const,
+}

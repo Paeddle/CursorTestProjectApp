@@ -1,5 +1,10 @@
 import { supabase } from './supabase'
-import { labelRasterDimensionsForBounds, labelRasterPxForTwips, MAX_LABEL_RASTER_PX } from './labelStudioRaster'
+import {
+  labelRasterDimensionsForBounds,
+  labelRasterPxForTwips,
+  labelWriterRasterDimensionsExactTwips,
+  MAX_LABEL_RASTER_PX,
+} from './labelStudioRaster'
 import {
   processThermalImageData,
   thermalToneNeedsProcessing,
@@ -223,9 +228,43 @@ export async function fetchProductImagePngBase64(
   }
 }
 
+/** LW Durable element box — PNG at LabelWriter 300 dpi, Fill maps 1:1 to twips bounds. */
+export async function fetchDurableElementImagePngBase64(
+  url: string,
+  boundsTwips: { width: number; height: number },
+  scaleMode: LabelStudioImageScaleMode = 'Uniform',
+  thermal?: ThermalImageProcessOptions
+): Promise<string | null> {
+  const blob = await loadImageBlob(url)
+  if (!blob) return null
+  const oriented = await loadOrientedImageSource(blob)
+  if (!oriented) return null
+
+  const { width: targetW, height: targetH } = labelWriterRasterDimensionsExactTwips(boundsTwips)
+
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    drawImageIntoBounds(ctx, oriented, targetW, targetH, scaleMode)
+    if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
+      const imageData = ctx.getImageData(0, 0, targetW, targetH)
+      processThermalImageData(imageData, thermal.tone)
+      ctx.putImageData(imageData, 0, 0)
+    }
+    const dataUrl = canvas.toDataURL('image/png')
+    return dataUrl.replace(/^data:image\/png;base64,/, '')
+  } catch {
+    return null
+  } finally {
+    oriented.cleanup?.()
+  }
+}
+
 /**
- * LW Durable / LW450: small square PNG (like QR + probe scripts) so DYMO Uniform upscales
- * into the element bounds. Full-size PNGs at 96 dpi print as tiny specks on this driver.
+ * @deprecated LW450 ignores Uniform upscale — use fetchDurableElementImagePngBase64.
  */
 export async function fetchDymoUpscaleImagePngBase64(
   url: string,

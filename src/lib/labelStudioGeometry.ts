@@ -9,7 +9,7 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 64
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 65
 
 /** @deprecated Durable uses WYSIWYG raster print — native TextObject no longer needs a fudge factor. */
 export const DURABLE_STUDIO_TEXT_PRINT_SCALE = 1

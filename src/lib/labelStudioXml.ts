@@ -11,12 +11,10 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { fetchDymoUpscaleImagePngBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
-import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
+import { fetchDurableElementImagePngBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
 import { DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS, STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
-import { studioCanvasFitFontPt } from './labelStudioTextFit'
 import type {
   LabelStudioBarcodeElement,
   LabelStudioElement,
@@ -32,7 +30,6 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
-  studioPrintDrawBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -50,13 +47,6 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   const attrs = fontAttributesXml(fontSize, bold)
   const block = (lines.length > 0 ? lines : ['']).map(escapeXmlText).join('\n')
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
-}
-
-/** One draw-area bitmap — Fill maps pixels 1:1 to RoundRectangle twips (30330 hybrid). */
-const DURABLE_FACE_RASTER_OPTIONS = {
-  scaleMode: 'Fill' as const,
-  horizontalAlignment: 'Left' as const,
-  verticalAlignment: 'Top' as const,
 }
 
 function studioPrintEnvelope(
@@ -112,38 +102,20 @@ function buildTextObjectXml(
     heightPct?: number
   }
 ): string {
-  const isDurableCanvas = options.designTemplate?.id === 'Durable1933085'
-  let pt: number
-  let dymoFitMode: string
-  if (isDurableCanvas && options.designTemplate) {
-    pt = studioCanvasFitFontPt(
-      {
-        fontSize,
-        bold: options.bold,
-        textFitMode: options.textFitMode ?? 'ShrinkToFit',
-        heightPct: options.heightPct ?? 100,
-      },
-      lines,
-      bounds,
-      options.designTemplate
-    )
-    dymoFitMode = 'None'
-  } else {
-    const fitMode = studioPrintTextFitMode(
-      options.textFitMode,
-      options.designTemplate,
-      paper
-    )
-    pt = studioPrintTextFontSizeForElement(
-      { fontSize, heightPct: options.heightPct ?? 100 },
-      bounds,
-      options.designTemplate,
-      paper,
-      Math.max(1, lines.length),
-      options.textFitMode
-    )
-    dymoFitMode = fitMode !== 'None' ? 'ShrinkToFit' : 'None'
-  }
+  const fitMode = studioPrintTextFitMode(
+    options.textFitMode,
+    options.designTemplate,
+    paper
+  )
+  const pt = studioPrintTextFontSizeForElement(
+    { fontSize, heightPct: options.heightPct ?? 100 },
+    bounds,
+    options.designTemplate,
+    paper,
+    Math.max(1, lines.length),
+    options.textFitMode
+  )
+  const dymoFitMode = fitMode !== 'None' ? 'ShrinkToFit' : 'None'
   const styled = buildStyledTextBlockXml(lines, pt, options.bold)
   return (
     `<ObjectInfo>` +
@@ -301,7 +273,7 @@ function buildImageObjectXml(
   el: LabelStudioImageElement,
   base64Png: string,
   bounds: DymoLabelBounds,
-  imageOptions = STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS
+  imageOptions: RasterImageObjectOptions = STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS
 ): string {
   if (!base64Png) return ''
   return buildRasterImageObjectXml(
@@ -343,7 +315,7 @@ async function buildElementXmlAsync(
     if (!imageUrl) return ''
     const isDurable = printOptions?.designTemplate?.id === 'Durable1933085'
     const base64 = isDurable
-      ? await fetchDymoUpscaleImagePngBase64(
+      ? await fetchDurableElementImagePngBase64(
           imageUrl,
           bounds,
           el.scaleMode ?? 'Uniform',
@@ -463,27 +435,6 @@ export async function buildLabelXmlFromStudioForPrint(
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
-  }
-
-  if (designPaper.id === 'Durable1933085') {
-    const base64 = await composeDurableStudioLabelRasterBase64(
-      template,
-      item,
-      designPaper,
-      envelope.printTemplate,
-      options
-    )
-    if (!base64) {
-      throw new Error(
-        'Could not build the durable label image for print. Confirm product photos load in the canvas preview, then try again.'
-      )
-    }
-    const draw = studioPrintDrawBounds(envelope.printTemplate)
-    return studioDieCutXml(
-      envelope.printTemplate,
-      buildRasterImageObjectXml('LABEL', base64, draw, DURABLE_FACE_RASTER_OPTIONS),
-      options
-    )
   }
 
   const objectParts = await Promise.all(

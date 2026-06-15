@@ -110,17 +110,17 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
 ] as const
 
 /**
- * LW450 has no 1933085 durable schema — print via 30330 Return Address PaperName on the
- * right Twin Turbo roll with durable draw/bounds (canvas % map 1:1 to print twips).
+ * LW450 has no 1933085 durable schema — print with a known PaperName (30323 Shipping) plus
+ * durable draw/bounds so canvas % twips map 1:1. 30330 Return Address remaps ImageObject
+ * coordinates on this driver (full-label bitmaps letterbox to the left).
  */
 export function durableLw450PrintHybridTemplate(): DymoPaperTemplate {
   const durable = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Durable1933085')
   if (!durable) throw new Error('Durable1933085 template missing')
   return {
     ...durable,
-    id: 'ReturnAddress30330',
-    paperName: '30330 Return Address',
-    catalogSku: '30330',
+    id: 'Shipping',
+    paperName: '30323 Shipping',
     studioVisible: false,
     studioTwinTurboRoll: 'Right',
   }
@@ -159,7 +159,7 @@ export function labelStudioPaperTemplates(
 
 /**
  * Map designer roll → DieCutLabel envelope accepted by DYMO Connect on this PC.
- * LW Durable → 30330 hybrid envelope on LW450 (see durableLw450PrintHybridTemplate).
+ * LW Durable → 30323 Shipping PaperName + durable draw/bounds on LW450 (see durableLw450PrintHybridTemplate).
  */
 export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
   if (template.id !== 'Durable1933085') return template
