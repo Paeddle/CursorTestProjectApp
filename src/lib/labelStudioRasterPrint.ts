@@ -12,10 +12,8 @@ import {
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import { resolveBarcodeType } from './labelStudioBarcode'
 import {
-  pctToDymoPrintBounds,
   previewMaxFontSizePx,
   studioPrintFaceBounds,
-  twipsBoundsToFacePixels,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
 import {
@@ -33,6 +31,20 @@ import type { LabelStudioImageScaleMode } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement } from '../types/labelStudio'
 
 const FIT_TOLERANCE_PX = 2
+
+/** Canvas CSS % → pixel box on the printable face (same origin as Label Studio preview). */
+function pctBoxPx(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
+  faceW: number,
+  faceH: number
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: Math.round((el.xPct / 100) * faceW),
+    y: Math.round((el.yPct / 100) * faceH),
+    w: Math.max(1, Math.round((el.widthPct / 100) * faceW)),
+    h: Math.max(1, Math.round((el.heightPct / 100) * faceH)),
+  }
+}
 
 function textFitsBox(
   ctx: CanvasRenderingContext2D,
@@ -171,7 +183,7 @@ async function drawBarcodeElement(
   }
 }
 
-/** Paint printable face at 30330 GPD twips — canvas % scaled from durable design face. */
+/** Paint the full printable face — exact canvas layout as one bitmap for LW450 durable print. */
 export async function composeDurableStudioLabelRasterBase64(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
@@ -179,24 +191,12 @@ export async function composeDurableStudioLabelRasterBase64(
   printTemplate: DymoPaperTemplate,
   options?: StudioPrintBoundsOptions
 ): Promise<string | null> {
-  const printOptions: StudioPrintBoundsOptions = {
-    designTemplate: designPaper,
-    ...options,
-  }
   const face = studioPrintFaceBounds(printTemplate)
   const { width: faceW, height: faceH } = labelRasterDimensionsForBounds({
     width: face.width,
     height: face.height,
   })
   const thermal = options?.thermalImage
-
-  const elementBoxPx = (el: LabelStudioElement) =>
-    twipsBoundsToFacePixels(
-      pctToDymoPrintBounds(el, printTemplate, printOptions),
-      face,
-      faceW,
-      faceH
-    )
 
   try {
     const canvas = document.createElement('canvas')
@@ -217,19 +217,19 @@ export async function composeDurableStudioLabelRasterBase64(
         await drawImageInBox(
           ctx,
           url,
-          elementBoxPx(el),
+          pctBoxPx(el, faceW, faceH),
           el.scaleMode ?? 'Uniform',
           thermal
         )
       } catch {
-        /* skip failed photo — still print text/barcode */
+        /* skip failed photo */
       }
     }
 
     for (const el of template.elements) {
       if (!isBarcodeElement(el)) continue
       try {
-        await drawBarcodeElement(ctx, el, item, elementBoxPx(el))
+        await drawBarcodeElement(ctx, el, item, pctBoxPx(el, faceW, faceH))
       } catch {
         /* skip failed barcode */
       }
@@ -238,15 +238,7 @@ export async function composeDurableStudioLabelRasterBase64(
     for (const el of template.elements) {
       if (!isTextElement(el)) continue
       const lines = mergedLinesForElement(el.content, item)
-      drawTextElement(
-        ctx,
-        el,
-        lines,
-        elementBoxPx(el),
-        faceH,
-        designPaper,
-        0.94
-      )
+      drawTextElement(ctx, el, lines, pctBoxPx(el, faceW, faceH), faceH, designPaper)
     }
 
     const dataUrl = canvas.toDataURL('image/png')

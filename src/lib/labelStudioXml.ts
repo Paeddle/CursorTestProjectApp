@@ -12,6 +12,7 @@ import {
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
 import { fetchDymoUpscaleImagePngBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
+import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
 import { DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS, STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
@@ -31,6 +32,7 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
+  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -48,6 +50,13 @@ function buildStyledTextBlockXml(lines: string[], fontSize: number, bold: boolea
   const attrs = fontAttributesXml(fontSize, bold)
   const block = (lines.length > 0 ? lines : ['']).map(escapeXmlText).join('\n')
   return `<Element><String>${block}</String><Attributes>${attrs}</Attributes></Element>`
+}
+
+/** One face bitmap — Fill maps pixels 1:1 to durable face twips (LW450 ignores per-element ImageObject scale). */
+const DURABLE_FACE_RASTER_OPTIONS = {
+  scaleMode: 'Fill' as const,
+  horizontalAlignment: 'Left' as const,
+  verticalAlignment: 'Top' as const,
 }
 
 function studioPrintEnvelope(
@@ -454,6 +463,24 @@ export async function buildLabelXmlFromStudioForPrint(
   const options: StudioPrintBoundsOptions = {
     ...envelope.printOptions,
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
+  }
+
+  if (designPaper.id === 'Durable1933085') {
+    const base64 = await composeDurableStudioLabelRasterBase64(
+      template,
+      item,
+      designPaper,
+      envelope.printTemplate,
+      options
+    )
+    if (base64) {
+      const face = studioPrintFaceBounds(envelope.printTemplate)
+      return studioDieCutXml(
+        envelope.printTemplate,
+        buildRasterImageObjectXml('LABEL', base64, face, DURABLE_FACE_RASTER_OPTIONS),
+        options
+      )
+    }
   }
 
   const objectParts = await Promise.all(
