@@ -11,8 +11,8 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { composeStudioFaceImageOverlayBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
-import { STUDIO_FACE_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
+import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
@@ -30,7 +30,6 @@ import {
   studioQrPrintBounds,
   usesStudioQrImagePrint,
   studioPrintVerticalAlignment,
-  studioPrintFaceBounds,
   type DymoLabelBounds,
   type StudioPrintBoundsOptions,
 } from './labelStudioGeometry'
@@ -276,46 +275,12 @@ function buildImageObjectXml(
   bounds: DymoLabelBounds
 ): string {
   if (!base64Png) return ''
-  return buildRasterImageObjectXml(el.name || el.id, base64Png, bounds, {
-    scaleMode: 'Uniform',
-    horizontalAlignment: 'Center',
-    verticalAlignment: 'Middle',
-  })
-}
-
-async function buildDurableImageFaceOverlayXml(
-  template: LabelStudioTemplate,
-  item: LabelStudioItem,
-  printTemplate: DymoPaperTemplate,
-  printOptions: StudioPrintBoundsOptions
-): Promise<string> {
-  const face = studioPrintFaceBounds(printTemplate)
-  const layers = (
-    await Promise.all(
-      template.elements.filter(isImageElement).map(async (el) => {
-        const url = mergedImageUrlForElement(el.content, item)
-        if (!url) return null
-        return {
-          url,
-          xPct: el.xPct,
-          yPct: el.yPct,
-          widthPct: el.widthPct,
-          heightPct: el.heightPct,
-          scaleMode: el.scaleMode ?? 'Uniform',
-        }
-      })
-    )
-  ).filter((layer): layer is NonNullable<typeof layer> => layer != null)
-
-  if (layers.length === 0) return ''
-
-  const base64 = await composeStudioFaceImageOverlayBase64(
-    layers,
-    face,
-    printOptions.thermalImage
+  return buildRasterImageObjectXml(
+    el.name || el.id,
+    base64Png,
+    bounds,
+    STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS
   )
-  if (!base64) return ''
-  return buildRasterImageObjectXml('STUDIO_FACE_IMG', base64, face, STUDIO_FACE_IMAGE_OBJECT_OPTIONS)
 }
 
 async function buildElementXmlAsync(
@@ -351,7 +316,7 @@ async function buildElementXmlAsync(
       imageUrl,
       bounds,
       printOptions?.thermalImage,
-      el.scaleMode ?? 'Uniform'
+      'Fill'
     )
     if (!base64) return ''
     return buildImageObjectXml(el, base64, bounds)
@@ -458,30 +423,12 @@ export async function buildLabelXmlFromStudioForPrint(
     ...(buildOptions?.thermalImage ? { thermalImage: buildOptions.thermalImage } : {}),
   }
 
-  const useDurableImageOverlay =
-    designPaper.id === 'Durable1933085' &&
-    template.elements.some((el) => isImageElement(el) && mergedImageUrlForElement(el.content, item))
-
-  const printElements = useDurableImageOverlay
-    ? template.elements.filter((el) => !isImageElement(el))
-    : template.elements
-
   const objectParts = await Promise.all(
-    studioPrintElementOrder(printElements).map((el) =>
+    studioPrintElementOrder(template.elements).map((el) =>
       buildElementXmlAsync(el, item, envelope.printTemplate, options)
     )
   )
   const objects = objectParts.filter(Boolean)
-
-  if (useDurableImageOverlay) {
-    const faceXml = await buildDurableImageFaceOverlayXml(
-      template,
-      item,
-      envelope.printTemplate,
-      options
-    )
-    if (faceXml) objects.push(faceXml)
-  }
 
   if (objects.length === 0) {
     objects.push(

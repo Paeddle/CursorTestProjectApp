@@ -52,9 +52,12 @@ export function labelRasterDimensionsExactTwips(bounds: {
   return { width, height }
 }
 
-/** ImageObject XML options for a full-face transparent photo overlay (canvas % positions). */
-export const STUDIO_FACE_IMAGE_OBJECT_OPTIONS = {
-  scaleMode: 'Uniform' as const,
-  horizontalAlignment: 'Center' as const,
-  verticalAlignment: 'Middle' as const,
+/**
+ * ImageObject XML for studio element boxes — PNG is pre-sized to bounds at 96 dpi with matched
+ * aspect ratio; Left+Top maps pixel (0,0) to the element origin (same as canvas % top-left).
+ */
+export const STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS = {
+  scaleMode: 'Fill' as const,
+  horizontalAlignment: 'Left' as const,
+  verticalAlignment: 'Top' as const,
 }
