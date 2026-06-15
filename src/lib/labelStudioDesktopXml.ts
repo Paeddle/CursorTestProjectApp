@@ -13,6 +13,7 @@ import { isImageElement, isTextElement } from '../types/labelStudio'
 /** Working DYMO Connect export for 1933085 Drbl — printable face in inches. */
 export const DURABLE_CONNECT_LABEL_NAME = '1933085 Drbl 3/4 x 2-1/2 in'
 
+/** DYMORect from Connect — label metadata only (not the canvas % origin). */
 export const DURABLE_CONNECT_FACE_IN = {
   x: 0.22666666,
   y: 0.056666665,
@@ -20,19 +21,26 @@ export const DURABLE_CONNECT_FACE_IN = {
   height: 0.6533333,
 } as const
 
+/** Full die-cut label (2.5″ × 0.75″ landscape) — matches Label Studio canvas 0–100% grid. */
+export const DURABLE_CONNECT_DRAW_IN = {
+  width: 2.5,
+  height: 0.75,
+} as const
+
 function inchStr(n: number): string {
   return n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
 }
 
+/** Canvas xPct/yPct are % of the full label; Connect ObjectLayout uses inches from draw origin. */
 function pctToConnectInches(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  face = DURABLE_CONNECT_FACE_IN
+  draw = DURABLE_CONNECT_DRAW_IN
 ): { x: number; y: number; width: number; height: number } {
   return {
-    x: face.x + (el.xPct / 100) * face.width,
-    y: face.y + (el.yPct / 100) * face.height,
-    width: (el.widthPct / 100) * face.width,
-    height: (el.heightPct / 100) * face.height,
+    x: (el.xPct / 100) * draw.width,
+    y: (el.yPct / 100) * draw.height,
+    width: (el.widthPct / 100) * draw.width,
+    height: (el.heightPct / 100) * draw.height,
   }
 }
 
