@@ -77,20 +77,21 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
   },
   {
     id: 'Durable1933085',
-    /** Designer / canvas id — DYMO Connect on LW450 rejects this PaperName in XML. */
-    paperName: '1933085 LW Durable 3/4 in x 2-1/2 in',
+    /** Canvas / catalog id — print uses 1933085 Drbl via DesktopLabel or DieCut fallback. */
+    paperName: '1933085 Drbl 3/4 x 2-1/2 in',
     catalogSku: '1933085',
     studioLabel: 'LW Durable Labels',
     studioTwinTurboRoll: 'Right',
     /** 3/4" × 2-1/2" durable (19×64 mm), landscape on LabelWriter. */
     widthMm: 64,
     heightMm: 19,
-    drawWidth: mmToTwips(64),
-    drawHeight: mmToTwips(19),
-    boundsX: 127,
-    boundsY: 34,
-    boundsWidth: 3374,
-    boundsHeight: 1009,
+    drawWidth: 3600,
+    drawHeight: 1080,
+    /** DYMO Connect DYMORect (inches × 1440) from working Connect export. */
+    boundsX: 326,
+    boundsY: 82,
+    boundsWidth: 3187,
+    boundsHeight: 941,
   },
   {
     id: 'Address30251',
@@ -110,17 +111,30 @@ export const DYMO_PAPER_TEMPLATES: readonly DymoPaperTemplate[] = [
 ] as const
 
 /**
- * LW450 has no 1933085 durable schema — print with a known PaperName (30323 Shipping) plus
- * durable draw/bounds so canvas % twips map 1:1. 30330 Return Address remaps ImageObject
- * coordinates on this driver (full-label bitmaps letterbox to the left).
+ * LW450: print native durable schema (matches DYMO Connect DesktopLabel LabelName).
+ * Fall back to 30330 hybrid DieCutLabel if Connect format is rejected.
  */
 export function durableLw450PrintHybridTemplate(): DymoPaperTemplate {
   const durable = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Durable1933085')
   if (!durable) throw new Error('Durable1933085 template missing')
   return {
     ...durable,
-    id: 'Shipping',
-    paperName: '30323 Shipping',
+    id: '1933085Durable',
+    paperName: '1933085 Drbl 3/4 x 2-1/2 in',
+    studioVisible: false,
+    studioTwinTurboRoll: 'Right',
+  }
+}
+
+/** 30330 Return Address + durable draw — legacy DieCutLabel fallback. */
+export function durableLw450Print30330Template(): DymoPaperTemplate {
+  const durable = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Durable1933085')
+  if (!durable) throw new Error('Durable1933085 template missing')
+  return {
+    ...durable,
+    id: 'ReturnAddress30330',
+    paperName: '30330 Return Address',
+    catalogSku: '30330',
     studioVisible: false,
     studioTwinTurboRoll: 'Right',
   }
@@ -158,8 +172,7 @@ export function labelStudioPaperTemplates(
 }
 
 /**
- * Map designer roll → DieCutLabel envelope accepted by DYMO Connect on this PC.
- * LW Durable → 30323 Shipping PaperName + durable draw/bounds on LW450 (see durableLw450PrintHybridTemplate).
+ * Map designer roll → print envelope. LW Durable → DYMO Connect DesktopLabel (rev 66+).
  */
 export function dymoTemplateForStudioPrint(template: DymoPaperTemplate): DymoPaperTemplate {
   if (template.id !== 'Durable1933085') return template

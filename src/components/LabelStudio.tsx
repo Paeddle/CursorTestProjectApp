@@ -1215,7 +1215,7 @@ export default function LabelStudio() {
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face
             {paperTemplate.id === 'Durable1933085'
-              ? ' — durable print: native DYMO text + 300 dpi photo in each element box (30323 envelope, durable twips).'
+              ? ' — durable print uses DYMO Connect DesktopLabel XML (same format as Connect), with DieCut fallback.'
               : ' — print uses the same layout on that roll.'}{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow

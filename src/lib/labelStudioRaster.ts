@@ -89,9 +89,5 @@ export const STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS = {
   verticalAlignment: 'Center' as const,
 }
 
-/** LW450 durable — PNG is prerendered to fill the element box at 300 dpi. */
-export const DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS = {
-  scaleMode: 'Fill' as const,
-  horizontalAlignment: 'Left' as const,
-  verticalAlignment: 'Top' as const,
-}
+/** LW450 durable — DieCut fallback uses same Uniform/Center as shipping labels. */
+export const DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS = STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS

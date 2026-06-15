@@ -11,8 +11,10 @@ import {
   resolveBarcodeType,
 } from './labelStudioBarcode'
 import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBarcodeLayout'
-import { fetchDurableElementImagePngBase64, fetchUrlAsPngBase64 } from './labelStudioImage'
-import { DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS, STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
+import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
+import { buildDesktopLabelXmlFromStudioForPrint } from './labelStudioDesktopXml'
+import { durableLw450Print30330Template } from './dymoLabelXml'
 import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
@@ -313,27 +315,14 @@ async function buildElementXmlAsync(
   if (isImageElement(el)) {
     const imageUrl = mergedImageUrlForElement(el.content, item)
     if (!imageUrl) return ''
-    const isDurable = printOptions?.designTemplate?.id === 'Durable1933085'
-    const base64 = isDurable
-      ? await fetchDurableElementImagePngBase64(
-          imageUrl,
-          bounds,
-          el.scaleMode ?? 'Uniform',
-          printOptions?.thermalImage
-        )
-      : await fetchUrlAsPngBase64(
-          imageUrl,
-          bounds,
-          printOptions?.thermalImage,
-          el.scaleMode ?? 'Uniform'
-        )
-    if (!base64) return ''
-    return buildImageObjectXml(
-      el,
-      base64,
+    const base64 = await fetchUrlAsPngBase64(
+      imageUrl,
       bounds,
-      isDurable ? DURABLE_ELEMENT_IMAGE_OBJECT_OPTIONS : STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS
+      printOptions?.thermalImage,
+      el.scaleMode ?? 'Uniform'
     )
+    if (!base64) return ''
+    return buildImageObjectXml(el, base64, bounds, STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS)
   }
   if (isTextElement(el)) {
     const lines = mergedLinesForElement(el.content, item)
@@ -467,7 +456,17 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   if (preferred.id === 'Durable1933085') {
-    return [await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)]
+    const desktop = await buildDesktopLabelXmlFromStudioForPrint(template, item, {
+      thermalImage: buildOptions?.thermalImage,
+    })
+    const diecutFallback = await buildLabelXmlFromStudioForPrint(
+      template,
+      item,
+      preferred,
+      buildOptions,
+      durableLw450Print30330Template()
+    )
+    return [desktop, diecutFallback]
   }
   const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
   if (preferred.id === 'Shipping' || preferred.id === 'Address30251') {
