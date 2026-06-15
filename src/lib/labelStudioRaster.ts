@@ -1,8 +1,24 @@
-/** Max edge DYMO Connect accepts for embedded label images. */
+/** Max edge DYMO Connect accepts for embedded label images (30323 / element boxes). */
 export const MAX_LABEL_RASTER_PX = 320
 
-/** Twips → pixels at 96 dpi (DYMO ImageObject native resolution). */
+/** Twips → pixels at 96 dpi (30323 ImageObject sizing in DYMO Connect). */
 export const LABEL_RASTER_TWIPS_PER_PX = 1440 / 96
+
+/**
+ * LabelWriter 450 maps ImageObject PNG pixels ~1:1 to print dots (~300 dpi).
+ * 96 dpi bitmaps (~242 px on a 2.5″ label) print in the left third — see durable WYSIWYG path.
+ */
+export const DYMO_LABELWRITER_PRINT_DPI = 300
+
+/** Full-label durable bitmap size — aspect-preserving, no 320 cap (755×224 px for LW Durable draw). */
+export function labelWriterRasterDimensionsForBounds(bounds: {
+  width: number
+  height: number
+}): { width: number; height: number } {
+  const height = Math.max(1, Math.round((bounds.height * DYMO_LABELWRITER_PRINT_DPI) / 1440))
+  const width = Math.max(1, Math.round((bounds.width * height) / bounds.height))
+  return { width, height }
+}
 
 /** Map DYMO twips on a printed edge → PNG pixel width (96 dpi). */
 export function labelRasterPxForTwips(sideTwips: number): number {

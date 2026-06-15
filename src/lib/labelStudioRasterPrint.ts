@@ -3,7 +3,7 @@ import {
   loadImageBlobForPrint,
   loadOrientedImageSource,
 } from './labelStudioImage'
-import { labelRasterDimensionsForBounds } from './labelStudioRaster'
+import { labelWriterRasterDimensionsForBounds } from './labelStudioRaster'
 import {
   mergedBarcodeForElement,
   mergedImageUrlForElement,
@@ -186,7 +186,7 @@ async function drawBarcodeElement(
   }
 }
 
-/** Paint the full draw area — canvas layout on durable twips, one bitmap for LW450 30330 hybrid. */
+/** Paint the full draw area at LabelWriter 300 dpi — one bitmap for LW450 30330 hybrid. */
 export async function composeDurableStudioLabelRasterBase64(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
@@ -199,7 +199,7 @@ export async function composeDurableStudioLabelRasterBase64(
     ...options,
   }
   const drawTwips = studioPrintDrawBounds(printTemplate)
-  const { width: canvasW, height: canvasH } = labelRasterDimensionsForBounds(drawTwips)
+  const { width: canvasW, height: canvasH } = labelWriterRasterDimensionsForBounds(drawTwips)
   const faceTwips = studioPrintFaceBounds(printTemplate)
   const facePx = twipsToDrawCanvasPx(faceTwips, drawTwips, canvasW, canvasH)
   const thermal = options?.thermalImage
