@@ -92,6 +92,8 @@ function drawImageIntoBoundsAt(
   targetH: number,
   scaleMode: LabelStudioImageScaleMode
 ): void {
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   const srcW = Math.max(1, src.width)
   const srcH = Math.max(1, src.height)
   const scale =
@@ -112,6 +114,8 @@ function drawImageIntoBounds(
   targetH: number,
   scaleMode: LabelStudioImageScaleMode
 ): void {
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, targetW, targetH)
   const srcW = Math.max(1, src.width)
@@ -214,6 +218,49 @@ export async function fetchProductImagePngBase64(
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
     drawImageIntoBounds(ctx, oriented, targetW, targetH, scaleMode)
+    if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
+      const imageData = ctx.getImageData(0, 0, targetW, targetH)
+      processThermalImageData(imageData, thermal.tone)
+      ctx.putImageData(imageData, 0, 0)
+    }
+    const dataUrl = canvas.toDataURL('image/png')
+    return dataUrl.replace(/^data:image\/png;base64,/, '')
+  } catch {
+    return null
+  } finally {
+    oriented.cleanup?.()
+  }
+}
+
+/** DYMO Connect DesktopLabel embeds full-resolution photos; DYMO scales with Uniform inside ObjectLayout inches. */
+export async function fetchConnectElementImagePngBase64(
+  url: string,
+  thermal?: ThermalImageProcessOptions,
+  maxLongEdge = 720
+): Promise<string | null> {
+  const blob = await loadImageBlob(url)
+  if (!blob) return null
+  const oriented = await loadOrientedImageSource(blob)
+  if (!oriented) return null
+
+  try {
+    let targetW = oriented.width
+    let targetH = oriented.height
+    const longEdge = Math.max(targetW, targetH)
+    if (maxLongEdge > 0 && longEdge > maxLongEdge) {
+      const scale = maxLongEdge / longEdge
+      targetW = Math.max(1, Math.round(targetW * scale))
+      targetH = Math.max(1, Math.round(targetH * scale))
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(oriented.source, 0, 0, targetW, targetH)
     if (thermal && thermalToneNeedsProcessing(thermal.tone)) {
       const imageData = ctx.getImageData(0, 0, targetW, targetH)
       processThermalImageData(imageData, thermal.tone)

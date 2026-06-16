@@ -1,5 +1,5 @@
 import { escapeXmlText } from './dymoLabelXml'
-import { fetchUrlAsPngBase64 } from './labelStudioImage'
+import { fetchConnectElementImagePngBase64 } from './labelStudioImage'
 import { mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import type { StudioPrintBoundsOptions } from './labelStudioGeometry'
 import type {
@@ -27,26 +27,25 @@ export const DURABLE_CONNECT_DRAW_IN = {
   height: 0.75,
 } as const
 
+/** Tame AlwaysFit text — printable face is shorter than full draw height. */
+const DURABLE_CONNECT_TEXT_FONT_SCALE =
+  DURABLE_CONNECT_FACE_IN.height / DURABLE_CONNECT_DRAW_IN.height
+
 function inchStr(n: number): string {
   return n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
 }
 
-/** Canvas xPct/yPct → Connect ObjectLayout inches (position on draw, size on printable face). */
+/** Canvas % → inches on full draw (same grid as Label Studio preview). */
 function pctToConnectInches(
   el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>,
-  draw = DURABLE_CONNECT_DRAW_IN,
-  face = DURABLE_CONNECT_FACE_IN
+  draw = DURABLE_CONNECT_DRAW_IN
 ): { x: number; y: number; width: number; height: number } {
   return {
     x: (el.xPct / 100) * draw.width,
     y: (el.yPct / 100) * draw.height,
-    width: (el.widthPct / 100) * face.width,
-    height: (el.heightPct / 100) * face.height,
+    width: (el.widthPct / 100) * draw.width,
+    height: (el.heightPct / 100) * draw.height,
   }
-}
-
-function connectTwipsFromInches(sideIn: number): number {
-  return Math.max(80, Math.round(sideIn * 1440))
 }
 
 function solidBrushXml(): string {
@@ -78,7 +77,7 @@ function buildConnectTextObjectXml(el: LabelStudioTextElement, item: LabelStudio
   const text = lines.map(escapeXmlText).join('\n')
   const align = connectHorizontalAlignment(el.align)
   const bold = el.bold ? 'True' : 'False'
-  const fontSize = Math.max(8, el.fontSize)
+  const fontSize = Math.max(8, Math.round(el.fontSize * DURABLE_CONNECT_TEXT_FONT_SCALE))
 
   return (
     `<TextObject>` +
@@ -126,19 +125,11 @@ async function buildConnectImageObjectXml(
   const url = mergedImageUrlForElement(el.content, item)
   if (!url) return ''
   const box = pctToConnectInches(el)
-  const boundsTwips = {
-    width: connectTwipsFromInches(box.width),
-    height: connectTwipsFromInches(box.height),
-  }
-  const png = await fetchUrlAsPngBase64(
-    url,
-    boundsTwips,
-    options?.thermalImage,
-    el.scaleMode ?? 'Uniform'
-  )
+  const scaleMode = el.scaleMode ?? 'Uniform'
+  const png = await fetchConnectElementImagePngBase64(url, options?.thermalImage)
   if (!png) return ''
 
-  const scaleMode = el.scaleMode === 'Fill' ? 'Fill' : 'Uniform'
+  const dymoFill = scaleMode === 'Fill'
 
   return (
     `<ImageObject>` +
@@ -150,9 +141,9 @@ async function buildConnectImageObjectXml(
     `<BorderStyle>SolidLine</BorderStyle>` +
     `<Margin><DYMOThickness Left="0" Top="0" Right="0" Bottom="0" /></Margin>` +
     `<Data>${png}</Data>` +
-    `<ScaleMode>${scaleMode}</ScaleMode>` +
-    `<HorizontalAlignment>Center</HorizontalAlignment>` +
-    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    `<ScaleMode>${dymoFill ? 'Fill' : 'Uniform'}</ScaleMode>` +
+    `<HorizontalAlignment>${dymoFill ? 'Left' : 'Center'}</HorizontalAlignment>` +
+    `<VerticalAlignment>${dymoFill ? 'Top' : 'Middle'}</VerticalAlignment>` +
     objectLayoutXml(box) +
     `</ImageObject>`
   )
