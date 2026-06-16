@@ -528,7 +528,7 @@ export default function ItemsPage() {
                           title={row.purchase_url.trim()}
                           className="inv-url-link"
                         >
-                          {row.purchase_url.trim()}
+                          URL
                         </a>
                       ) : (
                         '—'
