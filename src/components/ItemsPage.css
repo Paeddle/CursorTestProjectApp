@@ -340,6 +340,14 @@
   text-decoration: none;
 }
 
+.inv-purchase-cell a.inv-url-link {
+  font-weight: 400;
+  word-break: break-all;
+  display: inline-block;
+  max-width: 14rem;
+  line-height: 1.35;
+}
+
 .inv-purchase-cell a:hover {
   text-decoration: underline;
 }

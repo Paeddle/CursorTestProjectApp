@@ -16,6 +16,7 @@ function fieldsFromItem(row: Record<string, unknown>): Record<string, string> {
   set('part_number', row.part_number)
   set('manufacturer', row.manufacturer)
   set('barcode', row.barcode)
+  set('url', row.purchase_url)
   set('description', row.description_customer)
   set('category', row.category)
   set('vendor', row.vendor_name)

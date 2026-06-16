@@ -90,6 +90,7 @@ export const LABEL_STUDIO_MERGE_FIELDS: { key: string; label: string; example: s
   { key: 'part_number', label: 'Part number', example: 'ABC-123' },
   { key: 'manufacturer', label: 'Manufacturer', example: 'Lutron' },
   { key: 'barcode', label: 'Barcode', example: '012345678901' },
+  { key: 'url', label: 'URL', example: 'https://example.com/product' },
   { key: 'picture', label: 'Product image', example: '(image on label)' },
 ]
 

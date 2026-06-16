@@ -478,7 +478,7 @@ export default function ItemsPage() {
               <th>Part #</th>
               <th>Item</th>
               <th>Barcode</th>
-              <th>Buy</th>
+              <th>URL</th>
               <th>Lookup source</th>
               <th>Stock avail.</th>
               <th>Actions</th>
@@ -521,8 +521,14 @@ export default function ItemsPage() {
                     </td>
                     <td className="inv-purchase-cell">
                       {row.purchase_url?.trim() ? (
-                        <a href={formatExternalUrl(row.purchase_url)} target="_blank" rel="noopener noreferrer">
-                          Buy
+                        <a
+                          href={formatExternalUrl(row.purchase_url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={row.purchase_url.trim()}
+                          className="inv-url-link"
+                        >
+                          {row.purchase_url.trim()}
                         </a>
                       ) : (
                         '—'
@@ -778,7 +784,7 @@ export default function ItemsPage() {
               </label>
             </fieldset>
             <label>
-              Purchase URL
+              URL
               <input
                 type="url"
                 placeholder="https://…"
