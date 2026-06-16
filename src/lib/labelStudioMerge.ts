@@ -1,5 +1,5 @@
 import type { LabelStudioElement, LabelStudioItem } from '../types/labelStudio'
-import { isBarcodeElement, isImageElement } from '../types/labelStudio'
+import { isBarcodeElement, isImageElement, type LabelStudioBarcodeType } from '../types/labelStudio'
 
 const MERGE_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
 
@@ -21,17 +21,39 @@ export function normalizeMergedText(text: string): string {
     .trim()
 }
 
+/** QR payload — keep spaces and line breaks from the designer field after merge. */
+export function mergedQrContentForElement(content: string, item: LabelStudioItem): string {
+  return resolveMergeTemplate(content, item.fields)
+    .split('\n')
+    .map((l) => l.trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
 export function mergedLinesForElement(content: string, item: LabelStudioItem): string[] {
   const raw = normalizeMergedText(resolveMergeTemplate(content, item.fields))
   if (!raw) return []
   return raw.split('\n').map((l) => l.trim()).filter(Boolean)
 }
 
-/** Single-line value for barcode objects (first line only, trimmed). */
+/** Single-line value for linear barcode symbologies (first non-empty line). */
 export function mergedBarcodeForElement(content: string, item: LabelStudioItem): string {
   const raw = normalizeMergedText(resolveMergeTemplate(content, item.fields))
   const line = raw.split('\n').map((l) => l.trim()).find(Boolean)
   return line ?? ''
+}
+
+/** Merged barcode/QR payload — QR keeps full multiline text; linear codes use one line. */
+export function mergedBarcodePayloadForElement(
+  content: string,
+  item: LabelStudioItem,
+  barcodeType: LabelStudioBarcodeType
+): string {
+  if (barcodeType === 'QrCode') {
+    const raw = mergedQrContentForElement(content, item)
+    return raw.trim().length > 0 ? raw : ''
+  }
+  return mergedBarcodeForElement(content, item)
 }
 
 /** Resolved image URL for image objects (from {{picture}} or a direct URL). */
@@ -51,8 +73,11 @@ export function previewTextForTemplate(
   const parts = elements
     .map((el) => {
       if (isBarcodeElement(el)) {
-        const v = mergedBarcodeForElement(el.content, item)
-        return v ? `[barcode] ${v}` : ''
+        const v =
+          el.barcodeType === 'QrCode'
+            ? mergedQrContentForElement(el.content, item)
+            : mergedBarcodeForElement(el.content, item)
+        return v.trim() ? `[barcode] ${v}` : ''
       }
       if (isImageElement(el)) {
         const v = mergedImageUrlForElement(el.content, item)

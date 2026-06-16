@@ -11,11 +11,10 @@ export async function qrPngBase64ForPrint(
   text: string,
   sideTwips?: number
 ): Promise<string | null> {
-  const trimmed = text.trim()
-  if (!trimmed) return null
+  if (!text || !text.trim()) return null
   const width = sideTwips != null ? labelRasterPxForTwips(sideTwips) : MAX_LABEL_RASTER_PX
   try {
-    const dataUrl = await QRCode.toDataURL(trimmed, {
+    const dataUrl = await QRCode.toDataURL(text, {
       margin: 1,
       width,
       errorCorrectionLevel: 'M',
@@ -28,10 +27,9 @@ export async function qrPngBase64ForPrint(
 
 /** Data URL PNG for canvas preview (scaled via CSS to the element box). */
 export async function qrPreviewDataUrl(text: string): Promise<string | null> {
-  const trimmed = text.trim()
-  if (!trimmed) return null
+  if (!text || !text.trim()) return null
   try {
-    return await QRCode.toDataURL(trimmed, {
+    return await QRCode.toDataURL(text, {
       margin: 1,
       width: QR_PREVIEW_RASTER_PX,
       errorCorrectionLevel: 'M',

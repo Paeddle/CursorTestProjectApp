@@ -15,7 +15,7 @@ import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { buildDesktopLabelXmlFromStudioForPrint } from './labelStudioDesktopXml'
 import { durableLw450Print30330Template } from './dymoLabelXml'
-import { mergedBarcodeForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
+import { mergedBarcodePayloadForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint } from './labelStudioQr'
 import type {
   LabelStudioBarcodeElement,
@@ -294,7 +294,7 @@ async function buildElementXmlAsync(
 ): Promise<string> {
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
-    const value = mergedBarcodeForElement(el.content, item)
+    const value = mergedBarcodePayloadForElement(el.content, item, el.barcodeType)
     const symbology = resolveBarcodeType(el.barcodeType, value)
     const encoded = barcodeTextForPrint(value, symbology)
     const qrAsImage =
@@ -346,7 +346,7 @@ function buildElementXml(
 ): string {
   const bounds = pctToDymoPrintBounds(el, template, printOptions)
   if (isBarcodeElement(el)) {
-    const value = mergedBarcodeForElement(el.content, item)
+    const value = mergedBarcodePayloadForElement(el.content, item, el.barcodeType)
     return buildBarcodePrintXml(el, value, bounds, template, printOptions)
   }
   if (isImageElement(el)) {

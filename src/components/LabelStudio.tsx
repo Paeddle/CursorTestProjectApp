@@ -39,12 +39,15 @@ import {
 } from '../lib/labelStudioThermalImage'
 import {
   mergedBarcodeForElement,
+  mergedBarcodePayloadForElement,
   mergedImageUrlForElement,
+  mergedQrContentForElement,
   previewTextForTemplate,
   resolveMergeTemplate,
   normalizeMergedText,
 } from '../lib/labelStudioMerge'
 import { previewBarcodeBarsBoxPx } from '../lib/labelStudioBarcodeLayout'
+import { resolveBarcodeType } from '../lib/labelStudioBarcode'
 import { linearBarcodePreviewDataUrl } from '../lib/labelStudioBarcodePreview'
 import { qrPreviewDataUrl } from '../lib/labelStudioQr'
 import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePreview'
@@ -119,6 +122,8 @@ export default function LabelStudio() {
   const [inventoryTotal, setInventoryTotal] = useState<number | null>(null)
   const [loadProgress, setLoadProgress] = useState<string | null>(null)
   const fullInventoryRef = useRef<LabelStudioItem[] | null>(null)
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const contentSelectionRef = useRef({ start: 0, end: 0 })
   const [barcodePreviewByElementId, setBarcodePreviewByElementId] = useState<
     Record<string, LabelStudioBarcodePreview>
   >({})
@@ -278,10 +283,11 @@ export default function LabelStudio() {
       const next: Record<string, LabelStudioBarcodePreview> = {}
       for (const el of template.elements) {
         if (!isBarcodeElement(el)) continue
-        const text = mergedBarcodeForElement(el.content, previewItem)
+        const text = mergedBarcodePayloadForElement(el.content, previewItem, el.barcodeType)
         if (!text) continue
         const box = previewBarcodeBarsBoxPx(el, printableSizePx.width, printableSizePx.height)
-        if (el.barcodeType === 'QrCode') {
+        const symbology = resolveBarcodeType(el.barcodeType, text)
+        if (symbology === 'QrCode') {
           const dataUrl = await qrPreviewDataUrl(text)
           if (dataUrl) next[el.id] = { format: 'qr', dataUrl }
         } else {
@@ -348,6 +354,46 @@ export default function LabelStudio() {
       ),
     }))
   }
+
+  const rememberContentSelection = useCallback(() => {
+    const textarea = contentTextareaRef.current
+    if (!textarea) return
+    contentSelectionRef.current = {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    }
+  }, [])
+
+  const insertMergeField = useCallback(
+    (key: string) => {
+      if (!selectedElement) return
+      const token = `{{${key}}}`
+      const content = selectedElement.content
+      const textarea = contentTextareaRef.current
+      const live =
+        textarea && document.activeElement === textarea
+          ? { start: textarea.selectionStart, end: textarea.selectionEnd }
+          : contentSelectionRef.current
+      const start = Math.max(0, Math.min(live.start, content.length))
+      const end = Math.max(start, Math.min(live.end, content.length))
+      const newContent = content.slice(0, start) + token + content.slice(end)
+      updateElement(selectedElement.id, { content: newContent })
+      const cursor = start + token.length
+      contentSelectionRef.current = { start: cursor, end: cursor }
+      requestAnimationFrame(() => {
+        const el = contentTextareaRef.current
+        if (!el) return
+        el.focus()
+        el.setSelectionRange(cursor, cursor)
+      })
+    },
+    [selectedElement, updateElement]
+  )
+
+  useEffect(() => {
+    const len = selectedElement?.content.length ?? 0
+    contentSelectionRef.current = { start: len, end: len }
+  }, [selectedElement?.id])
 
   const updateElementRect = (id: string, rect: { xPct: number; yPct: number; widthPct: number; heightPct: number }) => {
     updateElement(id, rect)
@@ -682,6 +728,9 @@ export default function LabelStudio() {
   const canvasPreviewText = (el: LabelStudioElement): string => {
     if (!previewItem) return el.content.replace(/\{\{[^}]+\}\}/g, '…')
     if (isBarcodeElement(el)) {
+      if (el.barcodeType === 'QrCode') {
+        return mergedQrContentForElement(el.content, previewItem).trim() || '(no value)'
+      }
       return mergedBarcodeForElement(el.content, previewItem) || '(no value)'
     }
     return normalizeMergedText(resolveMergeTemplate(el.content, previewItem.fields))
@@ -1249,14 +1298,19 @@ export default function LabelStudio() {
               <label className="ls-field">
                 <span className="ls-field-label">What to print</span>
                 <textarea
+                  ref={contentTextareaRef}
                   className="ls-textarea"
                   value={selectedElement.content}
                   onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })}
+                  onSelect={rememberContentSelection}
+                  onKeyUp={rememberContentSelection}
+                  onMouseUp={rememberContentSelection}
+                  onBlur={rememberContentSelection}
                   placeholder="{{item}} or {{barcode}}"
                 />
                 <span className="ls-field-hint">
                   Type text and/or insert data fields below. Each {'{{name}}'} is filled from the item you
-                  selected.
+                  selected. Click in the text first — insert buttons add fields at the cursor.
                 </span>
               </label>
 
@@ -1269,11 +1323,7 @@ export default function LabelStudio() {
                       type="button"
                       className="ls-merge-chip"
                       title={`Example: ${f.example}`}
-                      onClick={() =>
-                        updateElement(selectedElement.id, {
-                          content: `${selectedElement.content}{{${f.key}}}`,
-                        })
-                      }
+                      onClick={() => insertMergeField(f.key)}
                     >
                       {f.label}
                     </button>

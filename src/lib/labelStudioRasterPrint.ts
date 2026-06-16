@@ -5,7 +5,7 @@ import {
 } from './labelStudioImage'
 import { labelWriterRasterDimensionsForBounds } from './labelStudioRaster'
 import {
-  mergedBarcodeForElement,
+  mergedBarcodePayloadForElement,
   mergedImageUrlForElement,
   mergedLinesForElement,
 } from './labelStudioMerge'
@@ -167,7 +167,7 @@ async function drawBarcodeElement(
   box: { x: number; y: number; w: number; h: number }
 ): Promise<void> {
   if (!isBarcodeElement(el)) return
-  const value = mergedBarcodeForElement(el.content, item)
+  const value = mergedBarcodePayloadForElement(el.content, item, el.barcodeType)
   if (!value) return
   const symbology = resolveBarcodeType(el.barcodeType, value)
   if (symbology === 'QrCode') {
