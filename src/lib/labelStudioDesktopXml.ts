@@ -1,14 +1,16 @@
-import { escapeXmlText } from './dymoLabelXml'
+import { escapeXmlText, DYMO_PAPER_TEMPLATES } from './dymoLabelXml'
+import { barcodeTextForPrint, resolveBarcodeType } from './labelStudioBarcode'
 import { fetchConnectElementImagePngBase64 } from './labelStudioImage'
-import { mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
-import type { StudioPrintBoundsOptions } from './labelStudioGeometry'
+import { mergedBarcodePayloadForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
+import { qrPngBase64ForPrint } from './labelStudioQr'
+import { STUDIO_QR_GRAPHIC_FILL_FRAC, studioPreviewFontScale, type StudioPrintBoundsOptions } from './labelStudioGeometry'
 import type {
   LabelStudioElement,
   LabelStudioItem,
   LabelStudioTemplate,
   LabelStudioTextElement,
 } from '../types/labelStudio'
-import { isImageElement, isTextElement } from '../types/labelStudio'
+import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 
 /** Working DYMO Connect export for 1933085 Drbl — printable face in inches. */
 export const DURABLE_CONNECT_LABEL_NAME = '1933085 Drbl 3/4 x 2-1/2 in'
@@ -28,8 +30,23 @@ export const DURABLE_CONNECT_DRAW_IN = {
 } as const
 
 /** Tame AlwaysFit text — printable face is shorter than full draw height. */
-const DURABLE_CONNECT_TEXT_FONT_SCALE =
-  DURABLE_CONNECT_FACE_IN.height / DURABLE_CONNECT_DRAW_IN.height
+const DURABLE_PRINT_FONT_SCALE = studioPreviewFontScale(
+  paperTemplateById('Durable1933085', DYMO_PAPER_TEMPLATES)
+)
+
+function connectQrInches(
+  el: Pick<LabelStudioElement, 'xPct' | 'yPct' | 'widthPct' | 'heightPct'>
+): { x: number; y: number; width: number; height: number } {
+  const box = pctToConnectInches(el)
+  let side = Math.min(box.width, box.height) * STUDIO_QR_GRAPHIC_FILL_FRAC
+  side = Math.max(0.08, side)
+  return {
+    x: box.x + (box.width - side) / 2,
+    y: box.y + (box.height - side) / 2,
+    width: side,
+    height: side,
+  }
+}
 
 function inchStr(n: number): string {
   return n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
@@ -77,7 +94,7 @@ function buildConnectTextObjectXml(el: LabelStudioTextElement, item: LabelStudio
   const text = lines.map(escapeXmlText).join('\n')
   const align = connectHorizontalAlignment(el.align)
   const bold = el.bold ? 'True' : 'False'
-  const fontSize = Math.max(8, Math.round(el.fontSize * DURABLE_CONNECT_TEXT_FONT_SCALE))
+  const fontSize = Math.max(8, Math.round(el.fontSize * DURABLE_PRINT_FONT_SCALE))
 
   return (
     `<TextObject>` +
@@ -149,6 +166,40 @@ async function buildConnectImageObjectXml(
   )
 }
 
+async function buildConnectBarcodeObjectXml(
+  el: LabelStudioElement,
+  item: LabelStudioItem
+): Promise<string> {
+  if (!isBarcodeElement(el)) return ''
+  const value = mergedBarcodePayloadForElement(el.content, item, el.barcodeType)
+  if (!value) return ''
+  const symbology = resolveBarcodeType(el.barcodeType, value)
+  if (symbology !== 'QrCode') return ''
+  const encoded = barcodeTextForPrint(value, symbology)
+  if (!encoded) return ''
+  const box = connectQrInches(el)
+  const sideTwips = Math.max(80, Math.round(Math.min(box.width, box.height) * 1440))
+  const png = await qrPngBase64ForPrint(encoded, sideTwips)
+  if (!png) return ''
+
+  return (
+    `<ImageObject>` +
+    `<Name>${escapeXmlText(el.name || el.id)}</Name>` +
+    `<Brushes>${solidBrushXml()}</Brushes>` +
+    `<Rotation>Rotation0</Rotation>` +
+    `<OutlineThickness>1</OutlineThickness>` +
+    `<IsOutlined>False</IsOutlined>` +
+    `<BorderStyle>SolidLine</BorderStyle>` +
+    `<Margin><DYMOThickness Left="0" Top="0" Right="0" Bottom="0" /></Margin>` +
+    `<Data>${png}</Data>` +
+    `<ScaleMode>Uniform</ScaleMode>` +
+    `<HorizontalAlignment>Center</HorizontalAlignment>` +
+    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    objectLayoutXml(box) +
+    `</ImageObject>`
+  )
+}
+
 /** DYMO Connect DesktopLabel XML — same schema as a label designed in Connect. */
 export async function buildDesktopLabelXmlFromStudioForPrint(
   template: LabelStudioTemplate,
@@ -163,7 +214,10 @@ export async function buildDesktopLabelXmlFromStudioForPrint(
   const imageParts = await Promise.all(
     template.elements.filter(isImageElement).map((el) => buildConnectImageObjectXml(el, item, buildOptions))
   )
-  const objects = [...textParts, ...imageParts.filter(Boolean)].join('')
+  const barcodeParts = await Promise.all(
+    template.elements.filter(isBarcodeElement).map((el) => buildConnectBarcodeObjectXml(el, item))
+  )
+  const objects = [...textParts, ...barcodeParts.filter(Boolean), ...imageParts.filter(Boolean)].join('')
 
   return (
     '<?xml version="1.0" encoding="utf-8"?>' +

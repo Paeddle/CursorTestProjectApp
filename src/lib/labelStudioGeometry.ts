@@ -308,6 +308,13 @@ export function studioPrintVerticalAlignment(align: LabelStudioTextElement['alig
   return align === 'Center' ? 'Middle' : 'Top'
 }
 
+/** Canvas preview font scale — matches DYMO Connect AlwaysFit on LW Durable (face vs draw height). */
+export function studioPreviewFontScale(template: DymoPaperTemplate): number {
+  if (template.id !== 'Durable1933085') return 1
+  if (template.drawHeight <= 0) return 1
+  return template.boundsHeight / template.drawHeight
+}
+
 export function previewMaxFontSizePx(
   el: LabelStudioTextElement,
   printableAreaHeightPx: number,
@@ -316,7 +323,9 @@ export function previewMaxFontSizePx(
   const studioH = studioBoundsHeightTwips(template)
   const boxHeightTwips = (el.heightPct / 100) * studioH
   const boxHeightPx = Math.max(8, (el.heightPct / 100) * printableAreaHeightPx)
-  if (boxHeightPx <= 0 || boxHeightTwips <= 0) return Math.max(8, el.fontSize * 0.75)
+  if (boxHeightPx <= 0 || boxHeightTwips <= 0) {
+    return Math.max(8, Math.floor(el.fontSize * studioPreviewFontScale(template) * 0.75))
+  }
   const px = (el.fontSize * LABEL_TWIPS_PER_PT * boxHeightPx) / boxHeightTwips
-  return Math.max(6, Math.floor(px))
+  return Math.max(6, Math.floor(px * studioPreviewFontScale(template)))
 }

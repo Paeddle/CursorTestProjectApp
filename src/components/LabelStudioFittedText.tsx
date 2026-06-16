@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { fittedPreviewLayout, splitPreviewTextLines } from '../lib/labelStudioTextFit'
 
 type LabelStudioFittedTextProps = {
   text: string
@@ -11,16 +12,7 @@ type LabelStudioFittedTextProps = {
   className?: string
 }
 
-const FIT_TOLERANCE_PX = 2
-
-function textFitsBox(span: HTMLSpanElement, box: HTMLElement): boolean {
-  return (
-    span.scrollHeight <= box.clientHeight + FIT_TOLERANCE_PX &&
-    span.scrollWidth <= box.clientWidth + FIT_TOLERANCE_PX
-  )
-}
-
-/** Binary-search font size so wrapped text fits inside the dotted element box. */
+/** Binary-search font size with word wrap — mirrors DYMO AlwaysFit / ShrinkToFit on print. */
 export default function LabelStudioFittedText({
   text,
   maxFontSizePx,
@@ -31,40 +23,25 @@ export default function LabelStudioFittedText({
   className = '',
 }: LabelStudioFittedTextProps) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const textRef = useRef<HTMLSpanElement>(null)
-  const [fontPx, setFontPx] = useState(() => Math.max(4, maxFontSizePx))
+  const [layout, setLayout] = useState(() => ({
+    fontPx: Math.max(4, maxFontSizePx),
+    displayLines: splitPreviewTextLines(text),
+    lineHeightPx: Math.max(4, maxFontSizePx) * 1.1,
+  }))
 
   useLayoutEffect(() => {
-    const span = textRef.current
     const box = hostRef.current
-    if (!span || !box) return
+    if (!box) return
 
-    const ceiling = Math.max(4, Math.floor(maxFontSizePx))
-    if (!shrink) {
-      setFontPx(ceiling)
-      return
+    const lines = nowrap ? [text.replace(/\s+/g, ' ').trim()] : splitPreviewTextLines(text)
+    const boxSize = {
+      w: Math.max(1, box.clientWidth),
+      h: Math.max(1, box.clientHeight),
     }
-
-    const trySize = (size: number): boolean => {
-      span.style.fontSize = `${size}px`
-      span.style.lineHeight = '1.1'
-      return textFitsBox(span, box)
-    }
-
-    if (trySize(ceiling)) {
-      setFontPx(ceiling)
-      return
-    }
-
-    let lo = 4
-    let hi = ceiling
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2)
-      if (trySize(mid)) lo = mid
-      else hi = mid - 1
-    }
-    setFontPx(Math.max(4, lo))
-  }, [text, maxFontSizePx, shrink, align])
+    setLayout(
+      fittedPreviewLayout(lines, boxSize, maxFontSizePx, bold, shrink && !nowrap, !nowrap)
+    )
+  }, [text, maxFontSizePx, shrink, bold, nowrap, align])
 
   const hostJustify =
     align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start'
@@ -76,17 +53,21 @@ export default function LabelStudioFittedText({
       style={{ justifyContent: hostJustify }}
     >
       <span
-        ref={textRef}
-        className="ls-element-text"
+        className="ls-element-text ls-fitted-text-block"
         style={{
-          fontSize: `${fontPx}px`,
+          fontSize: `${layout.fontPx}px`,
           fontWeight: bold ? 700 : 400,
           textAlign: align,
-          whiteSpace: nowrap ? 'nowrap' : undefined,
+          lineHeight: `${layout.lineHeightPx}px`,
+          whiteSpace: nowrap ? 'nowrap' : 'normal',
           fontFamily: nowrap ? 'monospace' : undefined,
         }}
       >
-        {text}
+        {layout.displayLines.map((line, i) => (
+          <span key={i} className="ls-fitted-text-line" style={{ display: 'block' }}>
+            {line || '\u00a0'}
+          </span>
+        ))}
       </span>
     </div>
   )

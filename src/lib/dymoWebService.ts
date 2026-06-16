@@ -118,6 +118,48 @@ function isDymoLabelRejected(result: unknown): boolean {
   return /error|exception|invalid|not declared|not found|failed/i.test(s)
 }
 
+function extractRenderLabelPngBase64(result: unknown): string | null {
+  const body = String(result ?? '').trim().replace(/^"|"$/g, '')
+  if (body.length < 100) return null
+  if (isDymoLabelRejected(body)) return null
+  if (/^[A-Za-z0-9+/=\s]+$/.test(body.slice(0, 120).replace(/\s/g, ''))) {
+    return body.replace(/\s/g, '')
+  }
+  return null
+}
+
+/** RenderLabel PNG as a data URL (same engine as physical print). */
+export async function renderLabelPreviewDataUrl(
+  candidates: string[],
+  printerName?: string
+): Promise<string | null> {
+  if (candidates.length === 0) return null
+  const service = await findDymoWebService()
+  if (!service) return null
+
+  let printer = printerName
+  try {
+    if (!printer) printer = await resolveDymoWebPrinter(service)
+  } catch {
+    return null
+  }
+
+  for (const labelXml of candidates) {
+    try {
+      const result = await dymoRequest(service.host, service.port, 'RenderLabel', 'POST', {
+        printerName: printer,
+        labelXml,
+        renderParamsXml: '<RenderParams LabelColor="Black" />',
+      })
+      const b64 = extractRenderLabelPngBase64(result)
+      if (b64) return `data:image/png;base64,${b64}`
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
 async function renderLabelOk(
   service: DymoServiceEndpoint,
   printerName: string,

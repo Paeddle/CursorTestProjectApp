@@ -42,6 +42,8 @@ export type LabelStudioCanvasProps = {
   renderPreview: (el: LabelStudioElement) => string
   imagePreviewUrl?: (el: LabelStudioElement) => string | null
   barcodePreview?: (el: LabelStudioElement) => LabelStudioBarcodePreview | null
+  /** DYMO RenderLabel PNG — exact print preview when DYMO Connect is running locally. */
+  printPreviewImageUrl?: string | null
   onPrintableSizeChange?: (size: { width: number; height: number }) => void
   showGrid?: boolean
   gridStepPct?: number
@@ -61,6 +63,7 @@ export default function LabelStudioCanvas({
   renderPreview,
   imagePreviewUrl,
   barcodePreview,
+  printPreviewImageUrl,
   onPrintableSizeChange,
   showGrid = false,
   gridStepPct = 5,
@@ -152,6 +155,8 @@ export default function LabelStudioCanvas({
     ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
   }
 
+  const hasDymoPreview = Boolean(printPreviewImageUrl)
+
   return (
     <div
       className="label-studio-canvas"
@@ -163,7 +168,7 @@ export default function LabelStudioCanvas({
     >
       <div
         ref={printableRef}
-        className={`ls-printable-area${showGrid ? ' ls-printable-area-grid' : ''}`}
+        className={`ls-printable-area${showGrid ? ' ls-printable-area-grid' : ''}${hasDymoPreview ? ' ls-has-dymo-preview' : ''}`}
         style={
           showGrid && gridStepPct > 0
             ? ({
@@ -172,6 +177,9 @@ export default function LabelStudioCanvas({
             : undefined
         }
       >
+        {hasDymoPreview && (
+          <img className="ls-dymo-preview-image" src={printPreviewImageUrl!} alt="" aria-hidden />
+        )}
         {elements.length === 0 && (
           <p className="ls-canvas-empty">Add text, image, or a barcode. Positions match what will print.</p>
         )}
@@ -196,7 +204,7 @@ export default function LabelStudioCanvas({
           return (
             <div
               key={el.id}
-              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}${barcodeShowText ? ' ls-barcode-has-caption' : ''}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textEl ? ` label-studio-canvas-text ls-text-align-${textEl.align.toLowerCase()}` : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
+              className={`label-studio-canvas-element${isSelected ? ' active' : ''}${hasDymoPreview ? ' ls-print-preview-outline' : ''}${isBarcode ? ` label-studio-canvas-barcode ls-barcode-text-${el.textPosition.toLowerCase()}${barcodeShowText ? ' ls-barcode-has-caption' : ''}` : ''}${isImage ? ' label-studio-canvas-image' : ''}${textEl ? ` label-studio-canvas-text ls-text-align-${textEl.align.toLowerCase()}` : ''}${textFitShrink ? ' ls-text-shrink' : ''}`}
               style={{
                 left: `${el.xPct}%`,
                 top: `${el.yPct}%`,

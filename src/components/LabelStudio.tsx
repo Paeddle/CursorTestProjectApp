@@ -41,15 +41,15 @@ import {
   mergedBarcodeForElement,
   mergedBarcodePayloadForElement,
   mergedImageUrlForElement,
+  mergedLinesForElement,
   mergedQrContentForElement,
   previewTextForTemplate,
-  resolveMergeTemplate,
-  normalizeMergedText,
 } from '../lib/labelStudioMerge'
 import { previewBarcodeBarsBoxPx } from '../lib/labelStudioBarcodeLayout'
 import { resolveBarcodeType } from '../lib/labelStudioBarcode'
 import { linearBarcodePreviewDataUrl } from '../lib/labelStudioBarcodePreview'
 import { qrPreviewDataUrl } from '../lib/labelStudioQr'
+import { buildStudioLabelPreviewDataUrl } from '../lib/labelStudioPreview'
 import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePreview'
 import {
   deleteLabelStudioTemplate,
@@ -127,6 +127,8 @@ export default function LabelStudio() {
   const [barcodePreviewByElementId, setBarcodePreviewByElementId] = useState<
     Record<string, LabelStudioBarcodePreview>
   >({})
+  const [printPreviewImageUrl, setPrintPreviewImageUrl] = useState<string | null>(null)
+  const [printPreviewPending, setPrintPreviewPending] = useState(false)
   const [printableSizePx, setPrintableSizePx] = useState({ width: 0, height: 0 })
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<LabelStudioInventorySortKey>('name')
@@ -329,6 +331,32 @@ export default function LabelStudio() {
       cancelled = true
     }
   }, [previewItem, template.elements, printableSizePx.width, printableSizePx.height, thermalImageTone])
+
+  useEffect(() => {
+    if (!previewItem) {
+      setPrintPreviewImageUrl(null)
+      setPrintPreviewPending(false)
+      return
+    }
+
+    let cancelled = false
+    setPrintPreviewPending(true)
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const dataUrl = await buildStudioLabelPreviewDataUrl(template, previewItem, {
+          thermalImage: { tone: thermalImageTone },
+        })
+        if (cancelled) return
+        setPrintPreviewImageUrl(dataUrl)
+        setPrintPreviewPending(false)
+      })()
+    }, 350)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [previewItem, template, thermalImageTone])
 
   useEffect(() => {
     void getDymoDiagnostics().then((d) => setDymoSummary(d.summary))
@@ -733,7 +761,8 @@ export default function LabelStudio() {
       }
       return mergedBarcodeForElement(el.content, previewItem) || '(no value)'
     }
-    return normalizeMergedText(resolveMergeTemplate(el.content, previewItem.fields))
+    const lines = mergedLinesForElement(el.content, previewItem)
+    return lines.length > 0 ? lines.join('\n') : '(empty)'
   }
 
   return (
@@ -1255,6 +1284,7 @@ export default function LabelStudio() {
             renderPreview={canvasPreviewText}
             imagePreviewUrl={canvasImagePreviewUrl}
             barcodePreview={canvasBarcodePreview}
+            printPreviewImageUrl={printPreviewImageUrl}
             onPrintableSizeChange={setPrintableSizePx}
             showGrid={showGrid}
             gridStepPct={gridStepPct}
@@ -1263,9 +1293,13 @@ export default function LabelStudio() {
 
           <p className="ls-canvas-hint">
             The preview is the full {paperTemplate.widthMm}×{paperTemplate.heightMm} mm label face
-            {paperTemplate.id === 'Durable1933085'
-              ? ' — durable print uses DYMO Connect DesktopLabel XML (same format as Connect), with DieCut fallback.'
-              : ' — print uses the same layout on that roll.'}{' '}
+            {printPreviewImageUrl
+              ? ' — showing an exact render from DYMO Connect (matches print). Drag the dashed boxes to adjust layout.'
+              : printPreviewPending
+                ? ' — loading print preview from DYMO Connect…'
+                : paperTemplate.id === 'Durable1933085'
+                  ? ' — open DYMO Connect on this PC for an exact print preview overlay.'
+                  : ' — print uses the same layout on that roll.'}{' '}
             <strong>Move</strong> drag · <strong>Resize</strong> blue handles · <strong>Delete</strong> key removes the
             field. Enable <strong>Snap to grid</strong> to lock fields to the grid when you release a drag or use arrow
             keys.
