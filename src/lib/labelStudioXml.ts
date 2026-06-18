@@ -16,7 +16,7 @@ import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { buildDesktopLabelXmlFromStudioForPrint } from './labelStudioDesktopXml'
 import { durableLw450Print30330Template } from './dymoLabelXml'
 import { mergedBarcodePayloadForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
-import { qrPngBase64ForPrint } from './labelStudioQr'
+import { qrPngBase64ForPrint, STUDIO_QR_PRINT_IMAGE_OPTIONS } from './labelStudioQr'
 import type {
   LabelStudioBarcodeElement,
   LabelStudioElement,
@@ -307,7 +307,7 @@ async function buildElementXmlAsync(
         Math.min(qrBounds.width, qrBounds.height)
       )
       if (png) {
-        return buildRasterImageObjectXml(el.name || el.id, png, qrBounds)
+        return buildRasterImageObjectXml(el.name || el.id, png, qrBounds, STUDIO_QR_PRINT_IMAGE_OPTIONS)
       }
     }
     return buildBarcodePrintXml(el, value, bounds, template, printOptions)

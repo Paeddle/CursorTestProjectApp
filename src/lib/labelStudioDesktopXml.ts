@@ -192,9 +192,9 @@ async function buildConnectBarcodeObjectXml(
     `<BorderStyle>SolidLine</BorderStyle>` +
     `<Margin><DYMOThickness Left="0" Top="0" Right="0" Bottom="0" /></Margin>` +
     `<Data>${png}</Data>` +
-    `<ScaleMode>Uniform</ScaleMode>` +
-    `<HorizontalAlignment>Center</HorizontalAlignment>` +
-    `<VerticalAlignment>Middle</VerticalAlignment>` +
+    `<ScaleMode>Fill</ScaleMode>` +
+    `<HorizontalAlignment>Left</HorizontalAlignment>` +
+    `<VerticalAlignment>Top</VerticalAlignment>` +
     objectLayoutXml(box) +
     `</ImageObject>`
   )

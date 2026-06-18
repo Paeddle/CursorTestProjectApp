@@ -31,6 +31,15 @@ export function labelWriterRasterDimensionsExactTwips(bounds: {
   }
 }
 
+/** Max PNG edge for embedded QR on LabelWriter (high-res for scannable modules). */
+export const MAX_QR_PRINT_RASTER_PX = 512
+
+/** QR PNG pixels at LabelWriter ~300 dpi — maps ~1:1 to thermal dots with Fill ImageObject. */
+export function qrPrintRasterPxForTwips(sideTwips: number): number {
+  const px = Math.round((sideTwips * DYMO_LABELWRITER_PRINT_DPI) / 1440)
+  return Math.max(96, Math.min(MAX_QR_PRINT_RASTER_PX, px))
+}
+
 /** Map DYMO twips on a printed edge → PNG pixel width (96 dpi). */
 export function labelRasterPxForTwips(sideTwips: number): number {
   const px = Math.round((sideTwips * 96) / 1440)
