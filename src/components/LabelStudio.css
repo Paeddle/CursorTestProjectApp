@@ -1123,10 +1123,10 @@
 
 .ls-canvas-qr {
   display: block;
-  width: 92%;
-  height: 92%;
-  max-width: 92%;
-  max-height: 92%;
+  width: var(--ls-qr-fill, 84%);
+  height: var(--ls-qr-fill, 84%);
+  max-width: var(--ls-qr-fill, 84%);
+  max-height: var(--ls-qr-fill, 84%);
   min-width: 0;
   min-height: 0;
   aspect-ratio: 1;

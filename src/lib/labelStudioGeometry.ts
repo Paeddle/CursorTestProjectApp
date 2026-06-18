@@ -9,13 +9,16 @@ export const LABEL_TWIPS_PER_PT = 20
 export const LABEL_STUDIO_CONTENT_INSET_PX = 6
 
 /** Bumped when print mapping changes — shown after print so you can confirm the loaded app. */
-export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 70
+export const LABEL_STUDIO_PRINT_GEOMETRY_REV = 71
 
 /** @deprecated Durable uses WYSIWYG raster print — native TextObject no longer needs a fudge factor. */
 export const DURABLE_STUDIO_TEXT_PRINT_SCALE = 1
 
-/** QR square fills this fraction of the barcode element box (canvas CSS + print bounds). */
-export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.92
+/** QR square fills this fraction of the barcode element box — inset avoids printer edge clipping. */
+export const STUDIO_QR_GRAPHIC_FILL_FRAC = 0.84
+
+/** Quiet zone (modules) baked into QR PNG — ISO minimum is 4; margin 1 was getting clipped on print. */
+export const STUDIO_QR_QUIET_ZONE_MODULES = 4
 
 /** Rolls that map designer % on the catalog face (same grid as the Label Studio canvas). */
 const STUDIO_FACE_PRINT_TEMPLATE_IDS = new Set([

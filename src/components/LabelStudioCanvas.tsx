@@ -2,7 +2,7 @@ import { useRef, useCallback, useState, useLayoutEffect } from 'react'
 import { DYMO_PAPER_TEMPLATES } from '../lib/dymoLabelXml'
 import LabelStudioFittedText from './LabelStudioFittedText'
 import { BARCODE_CAPTION_BAND_PCT, previewBarcodeCaptionMaxFontPx } from '../lib/labelStudioBarcodeLayout'
-import { printableMetricsForTemplate, previewMaxFontSizePx } from '../lib/labelStudioGeometry'
+import { printableMetricsForTemplate, previewMaxFontSizePx, STUDIO_QR_GRAPHIC_FILL_FRAC } from '../lib/labelStudioGeometry'
 import type { LabelStudioElement } from '../types/labelStudio'
 import { isBarcodeElement, isImageElement, isTextElement, paperTemplateById } from '../types/labelStudio'
 import type { LabelStudioBarcodePreview } from '../types/labelStudioBarcodePreview'
@@ -223,7 +223,16 @@ export default function LabelStudioCanvas({
               <div className="ls-element-inset">
                 {isBarcode ? (
                   <>
-                    <div className="ls-barcode-graphic-wrap">
+                    <div
+                      className="ls-barcode-graphic-wrap"
+                      style={
+                        isQrBarcode
+                          ? ({
+                              '--ls-qr-fill': `${Math.round(STUDIO_QR_GRAPHIC_FILL_FRAC * 100)}%`,
+                            } as React.CSSProperties)
+                          : undefined
+                      }
+                    >
                       {isQrBarcode ? (
                         barcodePreviewHit?.format === 'qr' ? (
                           <img className="ls-canvas-qr" src={barcodePreviewHit.dataUrl} alt="" />
