@@ -1,4 +1,5 @@
 import type { ProductLookupInput } from './types'
+import { enrichLookupInput } from './barcodeExtract'
 
 /** AV distributors and pro-AV retailers — prioritized for barcode and image lookup. */
 export const AV_DISTRIBUTOR_HOSTS = [
@@ -120,9 +121,10 @@ export function buildAvBarcodeSearchQueries(barcode: string): string[] {
 }
 
 export function buildAvProductSearchQueries(input: ProductLookupInput): string[] {
-  const part = (input.part_number || '').trim()
-  const mfr = (input.manufacturer || '').trim()
-  const item = (input.item || '').trim()
+  const enriched = enrichLookupInput(input)
+  const part = (enriched.part_number || '').trim()
+  const mfr = (enriched.manufacturer || '').trim()
+  const item = (enriched.item || '').trim()
   const queries = new Set<string>()
 
   if (part) {
@@ -140,11 +142,16 @@ export function buildAvProductSearchQueries(input: ProductLookupInput): string[]
   }
 
   if (item && item !== part) {
+    queries.add(`${mfr ? `${mfr} ` : ''}${item} site:bhphotovideo.com`)
     queries.add(`${mfr ? `${mfr} ` : ''}${item} site:adiglobaldistribution.com`)
     if (mfr) queries.add(`${mfr} ${item} product image`)
+    if (part) {
+      queries.add(`${mfr ? `${mfr} ` : ''}${part} site:bhphotovideo.com`)
+      queries.add(`${mfr ? `${mfr} ` : ''}${part} UPC EAN barcode`)
+    }
   }
 
-  return [...queries].slice(0, 6)
+  return [...queries].slice(0, 8)
 }
 
 export function buildAvImageSearchQueries(input: ProductLookupInput): string[] {

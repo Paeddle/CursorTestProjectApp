@@ -1,6 +1,7 @@
 import type { BarcodeCatalogItem } from '../../types/poCheckin'
 import type { BarcodeProviderStatus } from '../../types/items'
 import type { BarcodeFindResult, ProductLookupInput, ProviderAttempt } from './types'
+import { enrichLookupInput } from './barcodeExtract'
 import {
   lookupCatalogByProduct,
   lookupAvProductByPart,
@@ -103,23 +104,24 @@ export async function findBarcodeForItem(
   input: ProductLookupInput,
   options?: { catalog?: BarcodeCatalogItem[]; skipSerper?: boolean }
 ): Promise<{ best: BarcodeFindResult | null; attempts: ProviderAttempt[] }> {
+  const enriched = enrichLookupInput(input)
   const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
 
   const attempts = await Promise.all([
-    runProvider('catalog', 'Your items', () => lookupCatalogByProduct(input, options?.catalog)),
+    runProvider('catalog', 'Your items', () => lookupCatalogByProduct(enriched, options?.catalog)),
     ...(options?.skipSerper || !serperKey
       ? []
       : [
           runProvider('av_distributor', 'AV distributors & manufacturers', () =>
-            lookupAvProductByPart(input, serperKey)
+            lookupAvProductByPart(enriched, serperKey)
           ),
         ]),
-    runProvider('upcitemdb', 'UPCitemdb', () => lookupMarketplaceSearch(input)),
+    runProvider('upcitemdb', 'UPCitemdb', () => lookupMarketplaceSearch(enriched)),
     ...(options?.skipSerper || !serperKey
       ? []
       : [
           runProvider('serper', 'Web search (Serper)', () =>
-            lookupSerperProduct(input, serperKey)
+            lookupSerperProduct(enriched, serperKey)
           ),
         ]),
   ])

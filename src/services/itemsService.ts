@@ -139,6 +139,26 @@ export async function fetchItemByBarcode(barcode: string): Promise<ItemRecord | 
   return null
 }
 
+export class BarcodeAlreadyAssignedError extends Error {
+  readonly barcode: string
+  readonly existingItem: ItemRecord
+
+  constructor(barcode: string, existingItem: ItemRecord) {
+    const label = existingItem.item || existingItem.part_number || existingItem.id
+    super(`Barcode ${barcode} is already on "${label}".`)
+    this.name = 'BarcodeAlreadyAssignedError'
+    this.barcode = barcode
+    this.existingItem = existingItem
+  }
+}
+
+async function assertBarcodeAvailable(barcode: string, excludeId?: string): Promise<void> {
+  const existing = await fetchItemByBarcode(barcode)
+  if (existing && existing.id !== excludeId) {
+    throw new BarcodeAlreadyAssignedError(barcode.replace(/\D/g, ''), existing)
+  }
+}
+
 export async function createItemRow(input: NewItemInput): Promise<ItemRecord> {
   if (!supabase) throw new Error('Supabase is not configured.')
 
@@ -149,12 +169,15 @@ export async function createItemRow(input: NewItemInput): Promise<ItemRecord> {
   }
 
   const barcodeRaw = input.barcode?.trim()
+  const barcodeDigits = barcodeRaw ? barcodeRaw.replace(/\D/g, '') : null
+  if (barcodeDigits) await assertBarcodeAvailable(barcodeDigits)
+
   const row = {
     manufacturer: input.manufacturer?.trim() || null,
     part_number: partNumber,
     item,
     description_customer: input.description_customer?.trim() || null,
-    barcode: barcodeRaw ? barcodeRaw.replace(/\D/g, '') : null,
+    barcode: barcodeDigits,
     vendor_name: input.vendor_name?.trim() || null,
     category: input.category?.trim() || null,
     picture_url: input.picture_url?.trim() || null,
@@ -182,6 +205,9 @@ export async function updateItemRow(
   }
 ): Promise<ItemRecord> {
   if (!supabase) throw new Error('Supabase is not configured.')
+  if (patch.barcode != null && String(patch.barcode).trim()) {
+    await assertBarcodeAvailable(String(patch.barcode).replace(/\D/g, ''), id)
+  }
   const { data, error } = await supabase.from(ITEMS_TABLE).update(patch).eq('id', id).select('*').single()
   if (error) throw new Error(error.message)
   return data as ItemRecord
@@ -193,8 +219,10 @@ export async function applyBarcodeLookupToItem(
   source: string,
   options?: { purchaseUrl?: string | null; pictureUrl?: string | null }
 ): Promise<ItemRecord> {
+  const digits = barcode.replace(/\D/g, '')
+  await assertBarcodeAvailable(digits, id)
   const patch: Parameters<typeof updateItemRow>[1] = {
-    barcode: barcode.replace(/\D/g, ''),
+    barcode: digits,
     barcode_lookup_source: source,
     barcode_lookup_at: new Date().toISOString(),
   }

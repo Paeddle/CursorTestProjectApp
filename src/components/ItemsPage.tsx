@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BarcodeCatalogItem } from '../types/poCheckin'
 import type { ItemBarcodeFilter, ItemRecord } from '../types/items'
+import type { BarcodeFindResult } from '../services/barcodeLookup/types'
 import {
   applyBarcodeLookupToItem,
+  BarcodeAlreadyAssignedError,
   createItemRow,
   deleteItemRow,
   fetchAllItemsList,
@@ -166,6 +168,28 @@ export default function ItemsPage() {
     void refresh()
   }, [refresh])
 
+  const applyLookupMetadata = async (row: ItemRecord, best: BarcodeFindResult) => {
+    const patch: Parameters<typeof updateItemRow>[1] = {}
+    if (best.matchedPartNumber?.trim() && !row.part_number?.trim()) {
+      patch.part_number = best.matchedPartNumber.trim()
+    }
+    if (best.title?.trim() && (!row.item?.trim() || row.item.trim().length < best.title.trim().length)) {
+      patch.item = best.title.trim()
+    }
+    if (best.productUrl?.trim() && !row.purchase_url?.trim()) patch.purchase_url = best.productUrl.trim()
+    if (best.imageUrl?.trim() && rowNeedsPicture(row)) patch.picture_url = best.imageUrl.trim()
+    if (Object.keys(patch).length === 0) return row
+    let updated = await updateItemRow(row.id, patch)
+    if (patch.picture_url && !updated.picture_path) {
+      try {
+        updated = await importItemPictureFromUrl(row.id, patch.picture_url)
+      } catch {
+        /* keep external URL */
+      }
+    }
+    return updated
+  }
+
   const runLookupForRow = async (row: ItemRecord, applyIfFound: boolean) => {
     setLookupRow(row)
     setLookupLoading(true)
@@ -177,12 +201,28 @@ export default function ItemsPage() {
       if (best && applyIfFound) {
         const pictureUrl =
           best.imageUrl && rowNeedsPicture(row) ? best.imageUrl : undefined
-        const updated = await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
-          purchaseUrl:
-            best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
-          pictureUrl,
-        })
-        let finalRow = updated
+        let finalRow = row
+        try {
+          finalRow = await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
+            purchaseUrl:
+              best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
+            pictureUrl,
+          })
+        } catch (e) {
+          if (e instanceof BarcodeAlreadyAssignedError) {
+            finalRow = await applyLookupMetadata(row, best)
+            const existingLabel =
+              e.existingItem.item || e.existingItem.part_number || e.existingItem.barcode
+            setRows((prev) => prev.map((r) => (r.id === finalRow.id ? finalRow : r)))
+            setStatus({
+              kind: 'info',
+              text: `Barcode ${e.barcode} is already on "${existingLabel}". Filled in other fields on this row — delete this duplicate if it is the same product.`,
+            })
+            setLookupRow(null)
+            return best
+          }
+          throw e
+        }
         if (pictureUrl && !finalRow.picture_path) {
           try {
             finalRow = await importItemPictureFromUrl(row.id, pictureUrl)

@@ -1,3 +1,6 @@
+import type { ProductLookupInput } from './types'
+import { extractManufacturerFromTitle, extractModelFromTitle, extractTvSkuHintFromTitle } from './productPageExtract'
+
 /** Pull plausible UPC/EAN/GTIN values from free text (search snippets, titles). */
 export function extractBarcodesFromText(text: string): string[] {
   const found = new Set<string>()
@@ -14,14 +17,30 @@ export function normalizePartKey(s: string): string {
   return s.trim().toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-export function buildSearchQueries(input: {
-  part_number?: string | null
-  manufacturer?: string | null
-  item?: string | null
-}): string[] {
-  const part = (input.part_number || '').trim()
-  const mfr = (input.manufacturer || '').trim()
-  const item = (input.item || '').trim()
+/** Derive part # and manufacturer from item title when fields are missing (e.g. TVs). */
+export function enrichLookupInput(input: ProductLookupInput): ProductLookupInput {
+  const item = (input.item || '').trim() || null
+  const part = (input.part_number || '').trim() || null
+  const mfr = (input.manufacturer || '').trim() || null
+  const derivedMfr = mfr || extractManufacturerFromTitle(item)
+  const derivedPart =
+    part ||
+    extractModelFromTitle(item) ||
+    extractTvSkuHintFromTitle(item) ||
+    extractModelFromTitle(derivedMfr ? `${derivedMfr} ${item ?? ''}` : null)
+
+  return {
+    ...input,
+    part_number: derivedPart || input.part_number,
+    manufacturer: derivedMfr || input.manufacturer,
+  }
+}
+
+export function buildSearchQueries(input: ProductLookupInput): string[] {
+  const enriched = enrichLookupInput(input)
+  const part = (enriched.part_number || '').trim()
+  const mfr = (enriched.manufacturer || '').trim()
+  const item = (enriched.item || '').trim()
   const queries = new Set<string>()
   if (part) {
     queries.add(part)
@@ -36,6 +55,10 @@ export function buildSearchQueries(input: {
   if (item && item !== part) {
     queries.add(item)
     if (mfr) queries.add(`${mfr} ${item}`)
+    if (part && !item.toUpperCase().includes(part.toUpperCase())) {
+      queries.add(`${mfr ? `${mfr} ` : ''}${part}`)
+      queries.add(`${mfr ? `${mfr} ` : ''}${part} UPC barcode`)
+    }
   }
-  return [...queries].slice(0, 6)
+  return [...queries].slice(0, 8)
 }

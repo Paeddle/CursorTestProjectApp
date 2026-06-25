@@ -1,4 +1,5 @@
 import type { ImageProviderAttempt, ProductImageResult, ProductLookupInput } from './types'
+import { enrichLookupInput } from './barcodeExtract'
 import { buildAvImageSearchQueries, buildAvProductSearchQueries, linkMatchesAvSource } from './avSources'
 import {
   fetchProductPageDetails,
@@ -139,13 +140,16 @@ export async function findProductImageForItem(
   input: ProductLookupInput,
   options?: { skipSerper?: boolean; productUrl?: string | null }
 ): Promise<{ best: ProductImageResult | null; attempts: ImageProviderAttempt[] }> {
+  const enriched = enrichLookupInput(input)
   const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
   const hasQuery = Boolean(
-    (input.part_number || '').trim() || (input.item || '').trim() || (input.manufacturer || '').trim()
+    (enriched.part_number || '').trim() ||
+      (enriched.item || '').trim() ||
+      (enriched.manufacturer || '').trim()
   )
   if (!hasQuery && !options?.productUrl) return { best: null, attempts: [] }
 
-  const hint = modelHintFromInput(input)
+  const hint = modelHintFromInput(enriched)
 
   if (options?.productUrl) {
     const details = await fetchProductPageDetails(options.productUrl, hint)
@@ -168,15 +172,15 @@ export async function findProductImageForItem(
       ? []
       : [
           runImageProvider('product_page', 'Product page scrape', () =>
-            lookupProductPageImage(input, serperKey)
+            lookupProductPageImage(enriched, serperKey)
           ),
         ]),
-    runImageProvider('upcitemdb', 'UPCitemdb images', () => lookupUpcItemDbImage(input)),
+    runImageProvider('upcitemdb', 'UPCitemdb images', () => lookupUpcItemDbImage(enriched)),
     ...(options?.skipSerper || !serperKey
       ? []
       : [
           runImageProvider('serper_images', 'Image search (Serper)', () =>
-            lookupSerperImages(input, serperKey)
+            lookupSerperImages(enriched, serperKey)
           ),
         ]),
   ])

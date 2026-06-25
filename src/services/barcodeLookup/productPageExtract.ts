@@ -140,6 +140,28 @@ export function extractModelFromTitle(title: string | null | undefined): string 
   return null
 }
 
+/** Build a Samsung-style SKU hint from series + screen size (e.g. QN90F + 65 → QN65QN90F). */
+export function extractTvSkuHintFromTitle(title: string | null | undefined): string | null {
+  if (!title?.trim()) return null
+  const t = title.replace(/[""]/g, '"')
+
+  const series =
+    t.match(/\b(QN\d{2}F|UN\d{2}[A-Z]+|OLED\d{2}[A-Z0-9]+|XR\d{2}[A-Z0-9]+)\b/i)?.[1] ?? null
+  const size =
+    t.match(/\b(32|43|48|50|55|65|75|77|83|85|98)\s*(?:"|''|inch|in|class)\b/i)?.[1] ??
+    t.match(/\b(32|43|48|50|55|65|75|77|83|85|98)\s*(?:4k|hdr|uhd)\b/i)?.[1] ??
+    null
+
+  if (series && size) {
+    const s = series.toUpperCase()
+    if (s.startsWith('QN') && s.length <= 6) return `QN${size}${s}`
+    if (s.startsWith('UN') && s.length <= 8) return `UN${size}${s}`
+    return `${s}${size}`
+  }
+  if (series) return series.toUpperCase()
+  return null
+}
+
 export function extractManufacturerFromTitle(title: string | null): string | null {
   if (!title) return null
   const lower = title.toLowerCase()

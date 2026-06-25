@@ -1,5 +1,5 @@
 import { fetchItemsAsCatalog } from '../itemsService'
-import { normalizePartKey, extractBarcodesFromText, buildSearchQueries } from './barcodeExtract'
+import { normalizePartKey, extractBarcodesFromText, buildSearchQueries, enrichLookupInput } from './barcodeExtract'
 import {
   buildAvBarcodeSearchQueries,
   buildAvProductSearchQueries,
@@ -65,11 +65,19 @@ export async function lookupCatalogByProduct(
     rows = await fetchItemsAsCatalog()
   }
 
-  const partKey = normalizePartKey(input.part_number || '')
+  const enriched = enrichLookupInput(input)
+  const partKey = normalizePartKey(enriched.part_number || '')
   if (partKey) {
     const exact = rows.find((r) => normalizePartKey(r.part_number || '') === partKey)
     if (exact?.barcode_value) {
       return catalogToFindResult(exact, 'Your items', 'high')
+    }
+    const partial = rows.find((r) => {
+      const pk = normalizePartKey(r.part_number || '')
+      return pk && pk.length >= 5 && (pk.includes(partKey) || partKey.includes(pk))
+    })
+    if (partial?.barcode_value) {
+      return catalogToFindResult(partial, 'Your items', 'medium')
     }
   }
 
@@ -284,10 +292,11 @@ export async function lookupAvProductByPart(
   apiKey: string | undefined
 ): Promise<BarcodeFindResult | null> {
   if (!apiKey) return null
-  const part = (input.part_number || '').trim()
+  const enriched = enrichLookupInput(input)
+  const part = (enriched.part_number || '').trim()
   if (!part) return null
 
-  for (const q of buildAvProductSearchQueries(input)) {
+  for (const q of buildAvProductSearchQueries(enriched)) {
     const organic = await serperWebSearch(q, apiKey, 8)
     const chosen = await pickAvOrganicResult(organic, true)
     if (!chosen) continue
