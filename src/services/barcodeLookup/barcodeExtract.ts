@@ -25,13 +25,17 @@ export function buildSearchQueries(input: {
   const queries = new Set<string>()
   if (part) {
     queries.add(part)
-    if (mfr) queries.add(`${mfr} ${part}`)
+    if (mfr) {
+      queries.add(`${mfr} ${part}`)
+      queries.add(`${mfr} ${part} UPC EAN barcode`)
+    }
     queries.add(`${part} UPC barcode`)
-    queries.add(`${part} EAN`)
+    queries.add(`${part} EAN GTIN`)
+    queries.add(`${part} pro AV`)
   }
   if (item && item !== part) {
     queries.add(item)
     if (mfr) queries.add(`${mfr} ${item}`)
   }
-  return [...queries].slice(0, 4)
+  return [...queries].slice(0, 6)
 }

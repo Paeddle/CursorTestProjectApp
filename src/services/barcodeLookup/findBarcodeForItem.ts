@@ -3,9 +3,19 @@ import type { BarcodeProviderStatus } from '../../types/items'
 import type { BarcodeFindResult, ProductLookupInput, ProviderAttempt } from './types'
 import {
   lookupCatalogByProduct,
+  lookupAvProductByPart,
   lookupMarketplaceSearch,
   lookupSerperProduct,
 } from './providers'
+
+const SOURCE_RANK: Record<string, number> = {
+  'Your items': 100,
+  'Your items (item name)': 90,
+  'AV distributor': 80,
+  'AV manufacturer': 70,
+  UPCitemdb: 60,
+  'Web search (Serper)': 40,
+}
 
 const CONFIDENCE_RANK: Record<BarcodeFindResult['confidence'], number> = {
   high: 3,
@@ -15,7 +25,11 @@ const CONFIDENCE_RANK: Record<BarcodeFindResult['confidence'], number> = {
 
 function pickBest(hits: BarcodeFindResult[]): BarcodeFindResult | null {
   if (hits.length === 0) return null
-  return hits.sort((a, b) => CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence])[0]
+  return hits.sort((a, b) => {
+    const src = (SOURCE_RANK[b.source] ?? 0) - (SOURCE_RANK[a.source] ?? 0)
+    if (src !== 0) return src
+    return CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence]
+  })[0]
 }
 
 export function getBarcodeProviderStatus(): BarcodeProviderStatus[] {
@@ -29,6 +43,14 @@ export function getBarcodeProviderStatus(): BarcodeProviderStatus[] {
       note: 'Matches part number or item name from saved items.',
     },
     {
+      id: 'av_distributor',
+      label: 'AV distributors & manufacturers',
+      enabled: serper,
+      note: serper
+        ? 'ADI, Snap One, B&H, Markertek, Lutron, Crestron, and similar pro-AV sources.'
+        : 'Add VITE_SERPER_API_KEY for AV distributor lookups.',
+    },
+    {
       id: 'upcitemdb',
       label: 'UPCitemdb',
       enabled: true,
@@ -37,17 +59,11 @@ export function getBarcodeProviderStatus(): BarcodeProviderStatus[] {
         : 'Trial API (~100 searches/day). Add VITE_UPCITEMDB_USER_KEY for more.',
     },
     {
-      id: 'openfoodfacts',
-      label: 'Open Food Facts',
-      enabled: true,
-      note: 'Free product search; best for consumer packaged goods.',
-    },
-    {
       id: 'serper',
-      label: 'Google search (Serper)',
+      label: 'Web search (Serper)',
       enabled: serper,
       note: serper
-        ? 'Searches the web and extracts UPC/EAN from results — good for ADI/Lutron/low-voltage SKUs.'
+        ? 'Extracts UPC/EAN from pro-AV web results when distributor pages lack a code.'
         : 'Add VITE_SERPER_API_KEY in .env for web search lookups.',
     },
   ]
@@ -81,7 +97,7 @@ async function runProvider(
 
 /**
  * Find a barcode for an inventory row (part # / item / manufacturer).
- * Queries multiple sources and returns the best-confidence match.
+ * Queries AV-focused sources first, then UPC databases and web search.
  */
 export async function findBarcodeForItem(
   input: ProductLookupInput,
@@ -90,8 +106,15 @@ export async function findBarcodeForItem(
   const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
 
   const attempts = await Promise.all([
-    runProvider('catalog', 'Barcode catalog', () => lookupCatalogByProduct(input, options?.catalog)),
-    runProvider('marketplace', 'UPCitemdb + Open Food Facts', () => lookupMarketplaceSearch(input)),
+    runProvider('catalog', 'Your items', () => lookupCatalogByProduct(input, options?.catalog)),
+    ...(options?.skipSerper || !serperKey
+      ? []
+      : [
+          runProvider('av_distributor', 'AV distributors & manufacturers', () =>
+            lookupAvProductByPart(input, serperKey)
+          ),
+        ]),
+    runProvider('upcitemdb', 'UPCitemdb', () => lookupMarketplaceSearch(input)),
     ...(options?.skipSerper || !serperKey
       ? []
       : [

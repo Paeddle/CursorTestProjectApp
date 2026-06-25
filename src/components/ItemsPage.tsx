@@ -18,7 +18,11 @@ import {
   getBarcodeProviderStatus,
   sleep,
 } from '../services/barcodeLookup/findBarcodeForItem'
-import type { ProviderAttempt } from '../services/barcodeLookup/types'
+import {
+  findProductImageForItem,
+  getImageProviderStatus,
+} from '../services/barcodeLookup/findProductImage'
+import type { ImageProviderAttempt, ProviderAttempt } from '../services/barcodeLookup/types'
 import {
   formatExternalUrl,
   getItemPicturePublicUrl,
@@ -48,10 +52,14 @@ export default function ItemsPage() {
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [bulkRunning, setBulkRunning] = useState(false)
+  const [bulkImageRunning, setBulkImageRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, found: 0 })
+  const [bulkImageProgress, setBulkImageProgress] = useState({ done: 0, total: 0, found: 0 })
   const [lookupRow, setLookupRow] = useState<ItemRecord | null>(null)
   const [lookupAttempts, setLookupAttempts] = useState<ProviderAttempt[]>([])
+  const [imageAttempts, setImageAttempts] = useState<ImageProviderAttempt[]>([])
   const [lookupLoading, setLookupLoading] = useState(false)
+  const [imageLookupLoading, setImageLookupLoading] = useState(false)
   const [editRow, setEditRow] = useState<ItemRecord | null>(null)
   const [editDraft, setEditDraft] = useState<Partial<ItemRecord>>({})
   const [addOpen, setAddOpen] = useState(false)
@@ -63,6 +71,41 @@ export default function ItemsPage() {
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const providers = getBarcodeProviderStatus()
+  const imageProviders = getImageProviderStatus()
+
+  const itemLookupInput = (row: ItemRecord) => ({
+    part_number: row.part_number,
+    manufacturer: row.manufacturer,
+    item: row.item,
+    description: row.description_customer,
+  })
+
+  const rowNeedsPicture = (row: ItemRecord) =>
+    !row.picture_path?.trim() && !row.picture_url?.trim()
+
+  const applyImageToRow = async (row: ItemRecord, imageUrl: string, productUrl?: string | null) => {
+    const patch: Parameters<typeof updateItemRow>[1] = { picture_url: imageUrl }
+    if (productUrl?.trim() && !row.purchase_url?.trim()) patch.purchase_url = productUrl.trim()
+    let updated = await updateItemRow(row.id, patch)
+    try {
+      updated = await importItemPictureFromUrl(row.id, imageUrl)
+    } catch {
+      /* keep external URL if Edge Function unavailable */
+    }
+    return updated
+  }
+
+  const enrichRowWithImage = async (row: ItemRecord, applyIfFound: boolean) => {
+    if (!rowNeedsPicture(row)) return null
+    const { best, attempts } = await findProductImageForItem(itemLookupInput(row))
+    setImageAttempts(attempts)
+    if (best && applyIfFound) {
+      const updated = await applyImageToRow(row, best.imageUrl, best.productUrl)
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+      return best
+    }
+    return best
+  }
 
   const loadCatalog = useCallback(async () => {
     try {
@@ -110,34 +153,57 @@ export default function ItemsPage() {
     setLookupRow(row)
     setLookupLoading(true)
     setLookupAttempts([])
+    setImageAttempts([])
     try {
-      const { best, attempts } = await findBarcodeForItem(
-        {
-          part_number: row.part_number,
-          manufacturer: row.manufacturer,
-          item: row.item,
-          description: row.description_customer,
-        },
-        { catalog }
-      )
+      const { best, attempts } = await findBarcodeForItem(itemLookupInput(row), { catalog })
       setLookupAttempts(attempts)
       if (best && applyIfFound) {
+        const pictureUrl =
+          best.imageUrl && rowNeedsPicture(row) ? best.imageUrl : undefined
         const updated = await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
           purchaseUrl:
             best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
+          pictureUrl,
         })
-        setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+        let finalRow = updated
+        if (pictureUrl && !finalRow.picture_path) {
+          try {
+            finalRow = await importItemPictureFromUrl(row.id, pictureUrl)
+          } catch {
+            /* external URL saved */
+          }
+        }
+        if (rowNeedsPicture(finalRow)) {
+          const { best: img, attempts: imgAttempts } = await findProductImageForItem(itemLookupInput(finalRow))
+          setImageAttempts(imgAttempts)
+          if (img) {
+            finalRow = await applyImageToRow(finalRow, img.imageUrl, img.productUrl)
+          }
+        }
+        setRows((prev) => prev.map((r) => (r.id === finalRow.id ? finalRow : r)))
         setStats((s) => ({
           ...s,
           missingBarcode: Math.max(0, s.missingBarcode - 1),
           hasBarcode: s.hasBarcode + 1,
         }))
+        const imageNote = finalRow.picture_path || finalRow.picture_url ? ' Picture found.' : ''
         setStatus({
           kind: 'ok',
-          text: `Found ${best.barcode} via ${best.source} (${best.confidence} confidence).`,
+          text: `Found ${best.barcode} via ${best.source} (${best.confidence} confidence).${imageNote}`,
         })
         setLookupRow(null)
       } else if (!best) {
+        if (applyIfFound && rowNeedsPicture(row)) {
+          const img = await enrichRowWithImage(row, true)
+          if (img) {
+            setStatus({
+              kind: 'ok',
+              text: `No barcode found, but found a product image via ${img.source}.`,
+            })
+            setLookupRow(null)
+            return null
+          }
+        }
         setStatus({ kind: 'info', text: `No barcode found for ${row.part_number || row.item || 'this row'}.` })
       }
       return best
@@ -146,6 +212,27 @@ export default function ItemsPage() {
       return null
     } finally {
       setLookupLoading(false)
+    }
+  }
+
+  const runImageLookupForRow = async (row: ItemRecord, applyIfFound: boolean) => {
+    setLookupRow(row)
+    setImageLookupLoading(true)
+    setImageAttempts([])
+    try {
+      const best = await enrichRowWithImage(row, applyIfFound)
+      if (best && applyIfFound) {
+        setStatus({ kind: 'ok', text: `Found image via ${best.source} (${best.confidence} confidence).` })
+        setLookupRow(null)
+      } else if (!best) {
+        setStatus({ kind: 'info', text: `No product image found for ${row.part_number || row.item || 'this row'}.` })
+      }
+      return best
+    } catch (e) {
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Image lookup failed' })
+      return null
+    } finally {
+      setImageLookupLoading(false)
     }
   }
 
@@ -169,15 +256,7 @@ export default function ItemsPage() {
       for (let i = 0; i < missing.length; i++) {
         if (bulkCancelRef.current) break
         const row = missing[i]
-        const { best } = await findBarcodeForItem(
-          {
-            part_number: row.part_number,
-            manufacturer: row.manufacturer,
-            item: row.item,
-            description: row.description_customer,
-          },
-          { catalog }
-        )
+        const { best } = await findBarcodeForItem(itemLookupInput(row), { catalog })
         if (best) {
           await applyBarcodeLookupToItem(row.id, best.barcode, best.source)
           found++
@@ -197,9 +276,47 @@ export default function ItemsPage() {
     }
   }
 
+  const runBulkImageLookup = async () => {
+    if (!isItemsConfigured()) return
+    bulkCancelRef.current = false
+    setBulkImageRunning(true)
+    setStatus({ kind: 'info', text: 'Loading rows missing pictures…' })
+    try {
+      const { rows: all } = await fetchItemsList({ filter: 'all', limit: 500, offset: 0 })
+      const missing = all.filter(rowNeedsPicture)
+      if (missing.length === 0) {
+        setStatus({ kind: 'ok', text: 'No rows missing pictures in the first 500 items.' })
+        return
+      }
+      setBulkImageProgress({ done: 0, total: missing.length, found: 0 })
+      let found = 0
+      for (let i = 0; i < missing.length; i++) {
+        if (bulkCancelRef.current) break
+        const row = missing[i]
+        const { best } = await findProductImageForItem(itemLookupInput(row))
+        if (best) {
+          await applyImageToRow(row, best.imageUrl, best.productUrl)
+          found++
+        }
+        setBulkImageProgress({ done: i + 1, total: missing.length, found })
+        await sleep(400)
+      }
+      setStatus({
+        kind: 'ok',
+        text: `Picture search finished: ${found} of ${missing.length} rows got an image.`,
+      })
+      await refresh()
+    } catch (e) {
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Bulk picture search failed' })
+    } finally {
+      setBulkImageRunning(false)
+    }
+  }
+
   const stopBulk = () => {
     bulkCancelRef.current = true
     setBulkRunning(false)
+    setBulkImageRunning(false)
   }
 
   const saveEdit = async () => {
@@ -376,10 +493,9 @@ export default function ItemsPage() {
       <header className="inv-header">
         <h1>Items</h1>
         <p>
-          View and edit your items database, fill in missing barcodes using multiple lookup sources, and
-          keep data in sync with Purchase List uploads (sidebar). Run{' '}
-          <code>supabase/rename-inventory-to-items-merge-catalog.sql</code> and picture migrations in Supabase. Deploy the{' '}
-          <code>inventory-image-import</code> Edge Function to copy vendor image URLs into storage.
+          View and edit your items database, fill in missing barcodes and product images using AV-focused
+          lookup sources (ADI, Snap One, B&H, manufacturers), and keep data in sync with Purchase List uploads.
+          Deploy the <code>inventory-image-import</code> Edge Function to copy vendor image URLs into storage.
         </p>
       </header>
 
@@ -399,9 +515,17 @@ export default function ItemsPage() {
       </div>
 
       <section className="inv-providers" aria-label="Barcode lookup sources">
-        <strong>Lookup sources checked (in order, best match wins)</strong>
+        <strong>Barcode lookup sources (best match wins)</strong>
         <ul>
           {providers.map((p) => (
+            <li key={p.id} className={p.enabled ? '' : 'disabled'}>
+              <strong>{p.label}</strong> — {p.note}
+            </li>
+          ))}
+        </ul>
+        <strong style={{ display: 'block', marginTop: '0.75rem' }}>Picture search sources</strong>
+        <ul>
+          {imageProviders.map((p) => (
             <li key={p.id} className={p.enabled ? '' : 'disabled'}>
               <strong>{p.label}</strong> — {p.note}
             </li>
@@ -411,10 +535,21 @@ export default function ItemsPage() {
 
       {status && <div className={`inv-status ${status.kind}`}>{status.text}</div>}
 
-      {bulkRunning && (
+      {(bulkRunning || bulkImageRunning) && (
         <div className="inv-bulk-progress">
-          Looking up barcodes… {bulkProgress.done} / {bulkProgress.total} ({bulkProgress.found} found)
-          <progress value={bulkProgress.done} max={bulkProgress.total || 1} />
+          {bulkRunning && (
+            <>
+              Looking up barcodes… {bulkProgress.done} / {bulkProgress.total} ({bulkProgress.found} found)
+              <progress value={bulkProgress.done} max={bulkProgress.total || 1} />
+            </>
+          )}
+          {bulkImageRunning && (
+            <>
+              Searching for pictures… {bulkImageProgress.done} / {bulkImageProgress.total} (
+              {bulkImageProgress.found} found)
+              <progress value={bulkImageProgress.done} max={bulkImageProgress.total || 1} />
+            </>
+          )}
           <button type="button" className="inv-btn" onClick={stopBulk} style={{ marginTop: '0.35rem' }}>
             Stop
           </button>
@@ -463,9 +598,17 @@ export default function ItemsPage() {
           type="button"
           className="inv-btn inv-btn-primary"
           onClick={() => void runBulkLookup()}
-          disabled={bulkRunning || stats.missingBarcode === 0}
+          disabled={bulkRunning || bulkImageRunning || stats.missingBarcode === 0}
         >
           Auto-fill missing barcodes
+        </button>
+        <button
+          type="button"
+          className="inv-btn inv-btn-primary"
+          onClick={() => void runBulkImageLookup()}
+          disabled={bulkRunning || bulkImageRunning}
+        >
+          Auto-fill missing pictures
         </button>
       </div>
 
@@ -544,9 +687,17 @@ export default function ItemsPage() {
                         type="button"
                         className="inv-btn"
                         onClick={() => void runLookupForRow(row, true)}
-                        disabled={lookupLoading}
+                        disabled={lookupLoading || imageLookupLoading}
                       >
                         Find barcode
+                      </button>
+                      <button
+                        type="button"
+                        className="inv-btn"
+                        onClick={() => void runImageLookupForRow(row, true)}
+                        disabled={lookupLoading || imageLookupLoading}
+                      >
+                        Find picture
                       </button>
                       <button
                         type="button"
@@ -577,16 +728,38 @@ export default function ItemsPage() {
         <div className="inv-lookup-panel">
           <h3>
             Lookup: {lookupRow.part_number || lookupRow.item || lookupRow.id}
-            {lookupLoading && ' — searching…'}
+            {(lookupLoading || imageLookupLoading) && ' — searching…'}
           </h3>
-          <ul className="inv-attempts">
-            {lookupAttempts.map((a) => (
-              <li key={a.providerId} className={a.hit ? 'hit' : 'miss'}>
-                <strong>{a.label}</strong> ({a.durationMs}ms)
-                {a.hit ? `: ${a.hit.barcode} — ${a.hit.source}` : a.error ? `: ${a.error}` : ': no match'}
-              </li>
-            ))}
-          </ul>
+          {lookupAttempts.length > 0 && (
+            <>
+              <strong>Barcode sources</strong>
+              <ul className="inv-attempts">
+                {lookupAttempts.map((a) => (
+                  <li key={a.providerId} className={a.hit ? 'hit' : 'miss'}>
+                    <strong>{a.label}</strong> ({a.durationMs}ms)
+                    {a.hit
+                      ? `: ${a.hit.barcode} — ${a.hit.source}${a.hit.imageUrl ? ' (with image)' : ''}`
+                      : a.error
+                        ? `: ${a.error}`
+                        : ': no match'}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {imageAttempts.length > 0 && (
+            <>
+              <strong>Picture sources</strong>
+              <ul className="inv-attempts">
+                {imageAttempts.map((a) => (
+                  <li key={a.providerId} className={a.hit ? 'hit' : 'miss'}>
+                    <strong>{a.label}</strong> ({a.durationMs}ms)
+                    {a.hit ? `: ${a.hit.source}` : a.error ? `: ${a.error}` : ': no match'}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           <button type="button" className="inv-btn" onClick={() => setLookupRow(null)} style={{ marginTop: '0.5rem' }}>
             Close
           </button>
@@ -799,14 +972,22 @@ export default function ItemsPage() {
               <button type="button" className="inv-btn inv-btn-primary" onClick={() => void saveEdit()} disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button
-                type="button"
-                className="inv-btn"
-                onClick={() => void runLookupForRow(editRow, false)}
-                disabled={lookupLoading}
-              >
-                Preview lookup
-              </button>
+                <button
+                  type="button"
+                  className="inv-btn"
+                  disabled={imageBusy || !editRow}
+                  onClick={() => editRow && void runImageLookupForRow(editRow, true)}
+                >
+                  Search for picture
+                </button>
+                <button
+                  type="button"
+                  className="inv-btn"
+                  onClick={() => void runLookupForRow(editRow, false)}
+                  disabled={lookupLoading || imageLookupLoading}
+                >
+                  Preview barcode lookup
+                </button>
             </div>
           </div>
         </div>

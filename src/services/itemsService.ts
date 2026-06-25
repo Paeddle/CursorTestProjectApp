@@ -169,7 +169,7 @@ export async function applyBarcodeLookupToItem(
   id: string,
   barcode: string,
   source: string,
-  options?: { purchaseUrl?: string | null }
+  options?: { purchaseUrl?: string | null; pictureUrl?: string | null }
 ): Promise<ItemRecord> {
   const patch: Parameters<typeof updateItemRow>[1] = {
     barcode: barcode.replace(/\D/g, ''),
@@ -178,6 +178,8 @@ export async function applyBarcodeLookupToItem(
   }
   const purchaseUrl = options?.purchaseUrl?.trim()
   if (purchaseUrl) patch.purchase_url = purchaseUrl
+  const pictureUrl = options?.pictureUrl?.trim()
+  if (pictureUrl) patch.picture_url = pictureUrl
   return updateItemRow(id, patch)
 }
 

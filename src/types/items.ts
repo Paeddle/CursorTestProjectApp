@@ -19,6 +19,7 @@ export type BarcodeLookupHit = {
   title: string | null
   matchedPartNumber: string | null
   productUrl: string | null
+  imageUrl: string | null
 }
 
 export type BarcodeProviderStatus = {
