@@ -22,6 +22,8 @@ function Sidebar({ activePage, onNavigate, open, onOpenChange }: SidebarProps) {
     { id: 'wire', label: 'Wire Tracker', icon: '🔌' },
     { id: 'purchase-list', label: 'Purchase List', icon: '📑' },
     { id: 'items', label: 'Items', icon: '📦' },
+    { id: 'ebay', label: 'eBay', icon: '🛒' },
+    { id: 'scanners', label: 'Scanners', icon: '📱' },
     { id: 'analytics', label: 'Analytics', icon: '📊' },
   ]
 

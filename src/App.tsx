@@ -11,6 +11,8 @@ import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
 import LabelStudio from './components/LabelStudio'
 import ItemsPage from './components/ItemsPage'
+import EbayPage from './components/EbayPage'
+import ScannersPage from './components/ScannersPage'
 import { extractPdfPlainTextForPoLineReport } from './lib/extractPdfLines'
 import { parsePoLineReportText, poLineReportRowsToCsv } from './lib/parsePoLineReport'
 import { formatPoDisplay } from './lib/poIpointMatch'
@@ -616,6 +618,10 @@ function App() {
           <LabelStudio />
         ) : activePage === 'items' ? (
           <ItemsPage />
+        ) : activePage === 'ebay' ? (
+          <EbayPage />
+        ) : activePage === 'scanners' ? (
+          <ScannersPage />
         ) : (
         <>
         <header className="header">

@@ -23,6 +23,27 @@ static_sites:
         type: SECRET
         value: "__VITE_SUPABASE_ANON_KEY__"
 
+  - name: ebay-scanner
+    github:
+      repo: __GITHUB_REPO__
+      branch: __GITHUB_BRANCH__
+      deploy_on_push: true
+    environment_slug: node-js
+    source_dir: ebay-scanner-app
+    output_dir: dist
+    build_command: npm install && npm run build
+    routes:
+      - path: /ebay-scanner
+    envs:
+      - key: VITE_SUPABASE_URL
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_URL__"
+      - key: VITE_SUPABASE_ANON_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_ANON_KEY__"
+
   - name: web
     github:
       repo: __GITHUB_REPO__

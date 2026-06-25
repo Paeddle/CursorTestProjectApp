@@ -1,0 +1,87 @@
+.scanners-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding-bottom: 2rem;
+}
+
+.scanners-header h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.5rem;
+}
+
+.scanners-header p {
+  margin: 0;
+  color: #555;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.scanners-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.scanner-card {
+  padding: 1rem 1.1rem;
+  border: 1px solid #dde3ea;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.scanner-card-icon {
+  font-size: 2rem;
+  margin-bottom: 0.35rem;
+}
+
+.scanner-card h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.scanner-card > p {
+  margin: 0 0 0.65rem;
+  color: #555;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.scanner-features {
+  margin: 0 0 0.85rem;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: #444;
+}
+
+.scanner-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.scanner-btn {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.88rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.scanner-btn-primary {
+  background: #1a56db;
+  border-color: #1a56db;
+  color: #fff;
+}
+
+.scanner-url {
+  display: block;
+  font-size: 0.75rem;
+  color: #666;
+  word-break: break-all;
+}
