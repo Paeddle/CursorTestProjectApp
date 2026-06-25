@@ -1,6 +1,8 @@
 import { findBarcodeForItem } from './barcodeLookup/findBarcodeForItem'
 import { findProductImageForItem } from './barcodeLookup/findProductImage'
 import { lookupProductByBarcode } from './barcodeLookup/providers'
+import { fetchProductPageDetails, scoreProductImageUrl } from './barcodeLookup/htmlExtract'
+import { cleanProductTitle } from './barcodeLookup/productPageExtract'
 import { fetchItemsAsCatalog } from './itemsService'
 import {
   applyBarcodeLookupToItem,
@@ -27,6 +29,30 @@ async function safeLookup<T>(label: string, fn: () => Promise<T>): Promise<T | n
     console.warn(`${label} failed:`, e)
     return null
   }
+}
+
+function applyPageDetails(
+  purchaseUrl: string,
+  details: Awaited<ReturnType<typeof fetchProductPageDetails>>,
+  state: {
+    partNumber: string | null
+    manufacturer: string | null
+    itemName: string | null
+    pictureUrl: string | null
+    purchaseUrl: string | null
+  }
+) {
+  if (details?.partNumber) state.partNumber = details.partNumber
+  if (details?.manufacturer) state.manufacturer = details.manufacturer
+  if (details?.cleanTitle || details?.title) {
+    state.itemName = cleanProductTitle(details.cleanTitle ?? details.title) ?? state.itemName
+  }
+  if (details?.imageUrl) {
+    const newScore = scoreProductImageUrl(details.imageUrl, state.partNumber)
+    const oldScore = scoreProductImageUrl(state.pictureUrl ?? '', state.partNumber)
+    if (newScore >= oldScore) state.pictureUrl = details.imageUrl
+  }
+  state.purchaseUrl = purchaseUrl
 }
 
 /**
@@ -64,6 +90,23 @@ export async function enrichEbayBarcodeToItem(barcodeValue: string): Promise<Eba
   let barcodeSource = reverse?.sourceLabel ?? null
   let imageSource: string | null = reverse?.imageUrl ? reverse.sourceLabel : null
 
+  // Re-scrape the product page URL for accurate model number and hero image.
+  if (purchaseUrl?.trim()) {
+    const details = await safeLookup('fetchProductPageDetails', () =>
+      fetchProductPageDetails(purchaseUrl!, partNumber)
+    )
+    if (details) {
+      const bag = { partNumber, manufacturer, itemName, pictureUrl, purchaseUrl }
+      applyPageDetails(purchaseUrl, details, bag)
+      partNumber = bag.partNumber
+      manufacturer = bag.manufacturer
+      itemName = bag.itemName
+      pictureUrl = bag.pictureUrl
+      purchaseUrl = bag.purchaseUrl
+      if (details.imageUrl) imageSource = 'Product page'
+    }
+  }
+
   if (!itemName || (!partNumber && !pictureUrl)) {
     const barcodeResult = await safeLookup('findBarcodeForItem', () =>
       findBarcodeForItem(
@@ -75,21 +118,32 @@ export async function enrichEbayBarcodeToItem(barcodeValue: string): Promise<Eba
     if (barcodeHit) {
       if (!partNumber && barcodeHit.matchedPartNumber) partNumber = barcodeHit.matchedPartNumber
       if (!itemName && barcodeHit.title) itemName = barcodeHit.title
-      if (!pictureUrl && barcodeHit.imageUrl) pictureUrl = barcodeHit.imageUrl
-      if (!purchaseUrl && barcodeHit.productUrl) purchaseUrl = barcodeHit.productUrl
+      if (barcodeHit.productUrl && !purchaseUrl) purchaseUrl = barcodeHit.productUrl
+      if (barcodeHit.imageUrl) {
+        const newScore = scoreProductImageUrl(barcodeHit.imageUrl, partNumber)
+        const oldScore = scoreProductImageUrl(pictureUrl ?? '', partNumber)
+        if (newScore >= oldScore) pictureUrl = barcodeHit.imageUrl
+      }
       barcodeSource = barcodeHit.source
       if (barcodeHit.imageUrl) imageSource = barcodeHit.source
     }
   }
 
-  if (!pictureUrl) {
+  const pictureScore = scoreProductImageUrl(pictureUrl ?? '', partNumber)
+  if (pictureScore < 15) {
     const imageResult = await safeLookup('findProductImageForItem', () =>
-      findProductImageForItem({ part_number: partNumber, manufacturer, item: itemName })
+      findProductImageForItem(
+        { part_number: partNumber, manufacturer, item: itemName },
+        { productUrl: purchaseUrl }
+      )
     )
     const img = imageResult?.best ?? null
     if (img) {
-      pictureUrl = img.imageUrl
-      imageSource = img.source
+      const newScore = scoreProductImageUrl(img.imageUrl, partNumber)
+      if (newScore > pictureScore) {
+        pictureUrl = img.imageUrl
+        imageSource = img.source
+      }
       if (!purchaseUrl && img.productUrl) purchaseUrl = img.productUrl
       if (!itemName && img.title) itemName = img.title
     }

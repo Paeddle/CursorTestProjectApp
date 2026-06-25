@@ -165,14 +165,21 @@ Deno.serve(async (req) => {
       }
       const res = await fetch(jinaFetchUrl(pageUrl), { headers: { Accept: 'text/plain' } })
       if (!res.ok) {
-        return new Response(JSON.stringify({ title: null, imageUrl: null, partNumber: null }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+        return new Response(
+          JSON.stringify({
+            title: null,
+            cleanTitle: null,
+            imageUrl: null,
+            partNumber: null,
+            manufacturer: null,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
       const text = await res.text()
-      const title = extractMetaContent(text, 'og:title') || extractTitle(text)
-      const imageUrl = extractMetaContent(text, 'og:image')
-      return new Response(JSON.stringify({ title, imageUrl, partNumber: null }), {
+      const { parseProductPageFromHtml } = await import('../_shared/productPageExtract.ts')
+      const details = parseProductPageFromHtml(text, pageUrl, body.partHint ?? null)
+      return new Response(JSON.stringify(details), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

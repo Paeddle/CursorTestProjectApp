@@ -1,6 +1,12 @@
 import type { ImageProviderAttempt, ProductImageResult, ProductLookupInput } from './types'
 import { buildAvImageSearchQueries, buildAvProductSearchQueries, linkMatchesAvSource } from './avSources'
-import { fetchPageMeta, isLikelyProductImageUrl } from './htmlExtract'
+import {
+  fetchProductPageDetails,
+  isLikelyProductImageUrl,
+  pickBestProductImage,
+  scoreProductImageUrl,
+} from './htmlExtract'
+import { extractModelFromTitle } from './productPageExtract'
 import { lookupUpcItemDbSearch } from './providers'
 import { serperImageSearch, serperWebSearch } from './serperClient'
 
@@ -41,23 +47,35 @@ async function runImageProvider(
   }
 }
 
-async function lookupAvDistributorImage(
+function modelHintFromInput(input: ProductLookupInput): string | null {
+  return (
+    (input.part_number || '').trim() ||
+    extractModelFromTitle(input.item) ||
+    extractModelFromTitle(`${input.manufacturer ?? ''} ${input.item ?? ''}`)
+  )
+}
+
+async function lookupProductPageImage(
   input: ProductLookupInput,
   apiKey: string
 ): Promise<ProductImageResult | null> {
+  const hint = modelHintFromInput(input)
   for (const q of buildAvProductSearchQueries(input)) {
-    const organic = await serperWebSearch(q, apiKey, 6)
-    const row = organic.find((r) => r.link && linkMatchesAvSource(r.link)) ?? organic[0]
+    const organic = await serperWebSearch(q, apiKey, 8)
+    const row =
+      organic.find((r) => r.link && linkMatchesAvSource(r.link)) ??
+      organic.find((r) => /\/product|\/p\/|\/dp\//i.test(r.link ?? '')) ??
+      organic[0]
     if (!row?.link) continue
 
-    const meta = await fetchPageMeta(row.link, input.part_number)
-    if (meta?.imageUrl && isLikelyProductImageUrl(meta.imageUrl)) {
+    const details = await fetchProductPageDetails(row.link, hint)
+    if (details?.imageUrl && isLikelyProductImageUrl(details.imageUrl)) {
       return {
-        imageUrl: meta.imageUrl,
-        source: linkMatchesAvSource(row.link) ? 'AV distributor / manufacturer' : 'Web product page',
+        imageUrl: details.imageUrl,
+        source: 'Product page',
         confidence: 'high',
         productUrl: row.link,
-        title: meta.title,
+        title: details.cleanTitle ?? details.title,
       }
     }
   }
@@ -68,25 +86,31 @@ async function lookupSerperImages(
   input: ProductLookupInput,
   apiKey: string
 ): Promise<ProductImageResult | null> {
+  const hint = modelHintFromInput(input)
+  let best: ProductImageResult | null = null
+  let bestScore = 0
+
   for (const q of buildAvImageSearchQueries(input)) {
-    const images = await serperImageSearch(q, apiKey, 6)
+    const images = await serperImageSearch(q, apiKey, 10)
     for (const img of images) {
       if (!img.imageUrl || !isLikelyProductImageUrl(img.imageUrl)) continue
-      const confidence: ProductImageResult['confidence'] =
-        img.link && linkMatchesAvSource(img.link) ? 'medium' : 'low'
-      return {
+      const score = scoreProductImageUrl(img.imageUrl, hint)
+      if (score <= bestScore) continue
+      bestScore = score
+      best = {
         imageUrl: img.imageUrl,
         source: 'Image search (Serper)',
-        confidence,
+        confidence: img.link && linkMatchesAvSource(img.link) ? 'medium' : 'low',
         productUrl: img.link ?? null,
         title: img.title ?? null,
       }
     }
   }
-  return null
+  return best
 }
 
 async function lookupUpcItemDbImage(input: ProductLookupInput): Promise<ProductImageResult | null> {
+  const hint = modelHintFromInput(input)
   const part = (input.part_number || '').trim()
   const mfr = (input.manufacturer || '').trim()
   const item = (input.item || '').trim()
@@ -94,8 +118,9 @@ async function lookupUpcItemDbImage(input: ProductLookupInput): Promise<ProductI
   for (const q of queries) {
     const hit = await lookupUpcItemDbSearch(q)
     if (hit?.imageUrl) {
+      const imageUrl = pickBestProductImage([hit.imageUrl], hint) ?? hit.imageUrl
       return {
-        imageUrl: hit.imageUrl,
+        imageUrl,
         source: 'UPCitemdb',
         confidence: 'medium',
         productUrl: hit.productUrl,
@@ -108,24 +133,42 @@ async function lookupUpcItemDbImage(input: ProductLookupInput): Promise<ProductI
 
 /**
  * Find a product image for an inventory row (part # / manufacturer / item name).
- * Prioritizes AV distributor pages, then UPCitemdb, then image search.
+ * Prioritizes product page scrape, then UPCitemdb, then scored image search.
  */
 export async function findProductImageForItem(
   input: ProductLookupInput,
-  options?: { skipSerper?: boolean }
+  options?: { skipSerper?: boolean; productUrl?: string | null }
 ): Promise<{ best: ProductImageResult | null; attempts: ImageProviderAttempt[] }> {
   const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
   const hasQuery = Boolean(
     (input.part_number || '').trim() || (input.item || '').trim() || (input.manufacturer || '').trim()
   )
-  if (!hasQuery) return { best: null, attempts: [] }
+  if (!hasQuery && !options?.productUrl) return { best: null, attempts: [] }
+
+  const hint = modelHintFromInput(input)
+
+  if (options?.productUrl) {
+    const details = await fetchProductPageDetails(options.productUrl, hint)
+    if (details?.imageUrl) {
+      return {
+        best: {
+          imageUrl: details.imageUrl,
+          source: 'Product page',
+          confidence: 'high',
+          productUrl: options.productUrl,
+          title: details.cleanTitle ?? details.title,
+        },
+        attempts: [],
+      }
+    }
+  }
 
   const attempts = await Promise.all([
     ...(options?.skipSerper || !serperKey
       ? []
       : [
-          runImageProvider('av_pages', 'AV distributor / manufacturer pages', () =>
-            lookupAvDistributorImage(input, serperKey)
+          runImageProvider('product_page', 'Product page scrape', () =>
+            lookupProductPageImage(input, serperKey)
           ),
         ]),
     runImageProvider('upcitemdb', 'UPCitemdb images', () => lookupUpcItemDbImage(input)),
@@ -146,11 +189,11 @@ export function getImageProviderStatus(): Array<{ id: string; label: string; ena
   const serper = Boolean(import.meta.env.VITE_SERPER_API_KEY)
   return [
     {
-      id: 'av_pages',
-      label: 'AV distributor pages',
+      id: 'product_page',
+      label: 'Product page scrape',
       enabled: serper,
       note: serper
-        ? 'ADI, Snap One, B&H, Markertek, and manufacturer sites.'
+        ? 'Extracts images from the retailer product page (B&H, Best Buy, etc.).'
         : 'Requires VITE_SERPER_API_KEY.',
     },
     {
@@ -163,7 +206,7 @@ export function getImageProviderStatus(): Array<{ id: string; label: string; ena
       id: 'serper_images',
       label: 'Google image search (Serper)',
       enabled: serper,
-      note: serper ? 'Fallback image search across the web.' : 'Requires VITE_SERPER_API_KEY.',
+      note: serper ? 'Fallback only — scored against model number.' : 'Requires VITE_SERPER_API_KEY.',
     },
   ]
 }

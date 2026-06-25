@@ -6,7 +6,12 @@ import {
   linkMatchesAvDistributor,
   linkMatchesAvSource,
 } from './avSources'
-import { fetchPageMeta, isLikelyProductImageUrl } from './htmlExtract'
+import { fetchProductPageDetails, isLikelyProductImageUrl, pickBestProductImage, scoreProductImageUrl } from './htmlExtract'
+import {
+  extractModelFromTitle,
+  extractModelFromUpcTitle,
+  cleanProductTitle,
+} from './productPageExtract'
 import { invokeProductLookup, safeFetchJson } from './lookupProxy'
 import { serperWebSearch } from './serperClient'
 import type { BarcodeFindResult, ProductLookupInput, ProductLookupResult } from './types'
@@ -118,9 +123,13 @@ export async function lookupUpcItemDbSearch(query: string): Promise<BarcodeFindR
   const code = (item.ean || item.upc || '').replace(/\D/g, '')
   if (!validBarcode(code)) return null
   const title = item.title || item.brand || null
-  const imageUrl = item.images?.find((u) => isLikelyProductImageUrl(u)) ?? item.images?.[0] ?? null
+  const partNumber = extractModelFromUpcTitle(item.title ?? null, item.brand ?? null)
+  const imageUrl =
+    pickBestProductImage(item.images ?? [], partNumber) ??
+    item.images?.find((u) => isLikelyProductImageUrl(u)) ??
+    null
   const productUrl = item.offers?.[0]?.link ?? null
-  return resultFromBarcode(code, 'UPCitemdb', 'medium', title, null, productUrl, imageUrl)
+  return resultFromBarcode(code, 'UPCitemdb', 'medium', title, partNumber, productUrl, imageUrl)
 }
 
 /** UPCitemdb — lookup when barcode is already known. */
@@ -157,15 +166,55 @@ export async function lookupUpcItemDbByBarcode(barcode: string): Promise<Barcode
   const item = data?.items?.[0]
   if (!item) return null
   const title = item.title || item.brand || null
-  const imageUrl = item.images?.find((u) => isLikelyProductImageUrl(u)) ?? item.images?.[0] ?? null
+  const partNumber = extractModelFromUpcTitle(item.title ?? null, item.brand ?? null)
+  const imageUrl =
+    pickBestProductImage(item.images ?? [], partNumber) ??
+    item.images?.find((u) => isLikelyProductImageUrl(u)) ??
+    null
   const productUrl = item.offers?.[0]?.link ?? null
-  return resultFromBarcode(code, 'UPCitemdb', 'high', title, null, productUrl, imageUrl)
+  return resultFromBarcode(code, 'UPCitemdb', 'high', title, partNumber, productUrl, imageUrl)
+}
+
+async function scoreOrganicProductResult(
+  row: { title?: string; snippet?: string; link?: string },
+  barcode: string
+): Promise<number> {
+  const link = (row.link ?? '').toLowerCase()
+  const blob = `${row.title ?? ''} ${row.snippet ?? ''}`.toLowerCase()
+  let score = 0
+  if (linkMatchesAvDistributor(link)) score += 40
+  else if (linkMatchesAvSource(link)) score += 30
+  if (/\/product|\/p\/|\/dp\/|\/sku\/|item=/i.test(link)) score += 25
+  if (blob.includes(barcode.replace(/\D/g, ''))) score += 20
+  if (/bestbuy|bhphoto|amazon|samsung|sony|lg\.com|crutchfield/i.test(link)) score += 15
+  if (/support\.|manual|pdf|warranty|forum/i.test(link)) score -= 30
+  return score
+}
+
+async function pickBestOrganicResult(
+  organic: Array<{ title?: string; snippet?: string; link?: string }>,
+  barcode: string
+): Promise<{ link: string; title?: string } | null> {
+  const ranked = await Promise.all(
+    organic
+      .filter((r) => r.link?.startsWith('http'))
+      .map(async (r) => ({ r, score: await scoreOrganicProductResult(r, barcode) }))
+  )
+  ranked.sort((a, b) => b.score - a.score)
+  const best = ranked[0]
+  if (!best || best.score < 5) return null
+  return { link: best.r.link!, title: best.r.title }
 }
 
 async function pickAvOrganicResult(
   organic: Array<{ title?: string; snippet?: string; link?: string }>,
-  preferDistributor = true
+  preferDistributor = true,
+  barcode = ''
 ): Promise<{ link: string; title?: string } | null> {
+  if (barcode) {
+    const best = await pickBestOrganicResult(organic, barcode)
+    if (best) return best
+  }
   const pick = (fn: (url: string) => boolean) =>
     organic.find((r) => r.link && fn(r.link)) ?? null
 
@@ -180,6 +229,22 @@ async function pickAvOrganicResult(
   return null
 }
 
+function mergePageDetails(
+  chosen: { link: string; title?: string },
+  details: Awaited<ReturnType<typeof fetchProductPageDetails>>,
+  upcTitle: string | null,
+  upcBrand: string | null
+) {
+  const title = details?.cleanTitle ?? details?.title ?? chosen.title ?? upcTitle
+  const partNumber =
+    details?.partNumber ??
+    extractModelFromUpcTitle(upcTitle, upcBrand) ??
+    extractModelFromTitle(title)
+  const manufacturer = details?.manufacturer ?? upcBrand ?? null
+  const imageUrl = details?.imageUrl ?? null
+  return { title, partNumber, manufacturer, imageUrl }
+}
+
 /** AV distributor / manufacturer pages — barcode → product info. */
 export async function lookupAvProductByBarcode(
   barcode: string,
@@ -190,21 +255,20 @@ export async function lookupAvProductByBarcode(
   if (!code) return null
 
   for (const q of buildAvBarcodeSearchQueries(code)) {
-    const organic = await serperWebSearch(q, apiKey, 8)
-    const chosen = await pickAvOrganicResult(organic, true)
+    const organic = await serperWebSearch(q, apiKey, 10)
+    const chosen = await pickAvOrganicResult(organic, true, code)
     if (!chosen) continue
 
-    const meta = await fetchPageMeta(chosen.link)
-    const title = meta?.title || chosen.title || null
-    const imageUrl = meta?.imageUrl && isLikelyProductImageUrl(meta.imageUrl) ? meta.imageUrl : null
-    const sourceLabel = linkMatchesAvDistributor(chosen.link) ? 'AV distributor' : 'AV manufacturer'
+    const details = await fetchProductPageDetails(chosen.link, null)
+    const merged = mergePageDetails(chosen, details, null, null)
+    const sourceLabel = linkMatchesAvDistributor(chosen.link) ? 'AV distributor' : 'Product page'
 
     return {
       barcode: code,
-      name: title,
-      partNumber: meta?.partNumber ?? null,
-      manufacturer: null,
-      imageUrl,
+      name: merged.title ? cleanProductTitle(merged.title) : null,
+      partNumber: merged.partNumber,
+      manufacturer: merged.manufacturer,
+      imageUrl: merged.imageUrl,
       sourceUrl: chosen.link,
       sourceLabel,
       confidence: linkMatchesAvDistributor(chosen.link) ? 'high' : 'medium',
@@ -230,12 +294,12 @@ export async function lookupAvProductByPart(
 
     const blob = `${chosen.title ?? ''} ${organic.find((r) => r.link === chosen.link)?.snippet ?? ''}`
     const codes = extractBarcodesFromText(blob)
-    const meta = await fetchPageMeta(chosen.link, part)
+    const meta = await fetchProductPageDetails(chosen.link, part)
     const pageCodes = meta ? extractBarcodesFromText(`${meta.title ?? ''}`) : []
     const allCodes = [...new Set([...codes, ...pageCodes])]
 
     const imageUrl = meta?.imageUrl && isLikelyProductImageUrl(meta.imageUrl) ? meta.imageUrl : null
-    const title = meta?.title || chosen.title || null
+    const title = meta?.cleanTitle ?? meta?.title ?? chosen.title ?? null
     const source = linkMatchesAvDistributor(chosen.link) ? 'AV distributor' : 'AV manufacturer'
     const confidence: BarcodeFindResult['confidence'] = linkMatchesAvDistributor(chosen.link)
       ? 'high'
@@ -355,15 +419,42 @@ export async function lookupProductByBarcode(
   if (validBarcode(code)) {
     const upc = await lookupUpcItemDbByBarcode(code)
     if (upc) {
+      let name = upc.title
+      let partNumber = upc.matchedPartNumber
+      let manufacturer: string | null = null
+      let imageUrl = upc.imageUrl
+      let sourceUrl = upc.productUrl
+      let sourceLabel = upc.source
+      let confidence = upc.confidence
+
+      const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
+      if (serperKey) {
+        const organic = await serperWebSearch(`${code} UPC model`, serperKey, 10)
+        const chosen = await pickBestOrganicResult(organic, code)
+        if (chosen) {
+          const details = await fetchProductPageDetails(chosen.link, partNumber)
+          const merged = mergePageDetails(chosen, details, upc.title, null)
+          if (merged.title) name = cleanProductTitle(merged.title) ?? merged.title
+          if (merged.partNumber) partNumber = merged.partNumber
+          if (merged.manufacturer) manufacturer = merged.manufacturer
+          if (merged.imageUrl && scoreProductImageUrl(merged.imageUrl, partNumber) >= scoreProductImageUrl(imageUrl ?? '', partNumber)) {
+            imageUrl = merged.imageUrl
+          }
+          sourceUrl = chosen.link
+          sourceLabel = 'Product page'
+          confidence = 'high'
+        }
+      }
+
       return {
         barcode: upc.barcode,
-        name: upc.title,
-        partNumber: upc.matchedPartNumber,
-        manufacturer: null,
-        imageUrl: upc.imageUrl,
-        sourceUrl: upc.productUrl,
-        sourceLabel: upc.source,
-        confidence: upc.confidence,
+        name,
+        partNumber,
+        manufacturer,
+        imageUrl,
+        sourceUrl,
+        sourceLabel,
+        confidence,
       }
     }
   }

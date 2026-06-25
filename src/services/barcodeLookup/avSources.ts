@@ -106,12 +106,14 @@ export function manufacturerHostHint(manufacturer: string | null | undefined): s
 export function buildAvBarcodeSearchQueries(barcode: string): string[] {
   const code = barcode.replace(/\D/g, '')
   const queries = [
-    `${code} site:adiglobaldistribution.com`,
-    `${code} site:adiglobaldistribution.us`,
-    `${code} site:snapone.com`,
     `${code} site:bhphotovideo.com`,
-    `${code} site:markertek.com`,
-    `${code} pro AV UPC`,
+    `${code} site:bestbuy.com`,
+    `${code} site:crutchfield.com`,
+    `${code} site:adiglobaldistribution.com`,
+    `${code} site:samsung.com`,
+    `${code} site:sony.com`,
+    `${code} site:lg.com`,
+    `${code} UPC model number`,
     `${code} barcode`,
   ]
   return [...new Set(queries)]
