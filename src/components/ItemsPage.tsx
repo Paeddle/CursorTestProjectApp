@@ -46,9 +46,11 @@ export default function ItemsPage() {
   const [stats, setStats] = useState({ total: 0, missingBarcode: 0, hasBarcode: 0 })
   const [rows, setRows] = useState<ItemRecord[]>([])
   const [total, setTotal] = useState(0)
-  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filter, setFilter] = useState<ItemBarcodeFilter>('all')
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [bulkRunning, setBulkRunning] = useState(false)
@@ -107,6 +109,14 @@ export default function ItemsPage() {
     return best
   }
 
+  const initialLoadDone = useRef(false)
+  const searchRequestId = useRef(0)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
+
   const loadCatalog = useCallback(async () => {
     try {
       setCatalog(await fetchItemsAsCatalog())
@@ -120,26 +130,33 @@ export default function ItemsPage() {
       setLoading(false)
       return
     }
-    setLoading(true)
+    const requestId = ++searchRequestId.current
+    const isInitial = !initialLoadDone.current
+    if (isInitial) setLoading(true)
+    else setSearching(true)
     try {
-      const searchTrimmed = search.trim()
+      const searchTrimmed = debouncedSearch.trim()
       const [s, list] = await Promise.all([
         fetchItemsStats(),
         fetchAllItemsList({
-          search,
-          /** Search always scans the full table (matches Label Studio). */
+          search: debouncedSearch,
           filter: searchTrimmed ? 'all' : filter,
         }),
       ])
+      if (requestId !== searchRequestId.current) return
       setStats(s)
       setRows(list.rows)
       setTotal(list.total)
+      initialLoadDone.current = true
     } catch (e) {
+      if (requestId !== searchRequestId.current) return
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Failed to load items' })
     } finally {
+      if (requestId !== searchRequestId.current) return
       setLoading(false)
+      setSearching(false)
     }
-  }, [search, filter])
+  }, [debouncedSearch, filter])
 
   useEffect(() => {
     void loadCatalog()
@@ -561,9 +578,10 @@ export default function ItemsPage() {
           className="inv-search"
           type="search"
           placeholder="Search part #, item, manufacturer, barcode…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
+        {searching && <span className="inv-searching-hint">Searching…</span>}
         <select
           value={filter}
           onChange={(e) => setFilter(e.target.value as ItemBarcodeFilter)}
@@ -574,7 +592,7 @@ export default function ItemsPage() {
           <option value="missing">Missing barcode only</option>
           <option value="has_barcode">Has barcode</option>
         </select>
-        {filter === 'missing' && stats.hasBarcode > 0 && !search.trim() && (
+        {filter === 'missing' && stats.hasBarcode > 0 && !searchInput.trim() && (
           <span className="inv-filter-hint">
             {stats.hasBarcode.toLocaleString()} item{stats.hasBarcode !== 1 ? 's' : ''} with barcodes hidden
             (e.g. items you print in Label Studio). Choose <strong>All items</strong> or <strong>Has barcode</strong>{' '}
@@ -720,8 +738,8 @@ export default function ItemsPage() {
         {loading
           ? 'Loading items…'
           : `${rows.length.toLocaleString()} item${rows.length !== 1 ? 's' : ''} shown${
-              total !== rows.length ? ` (${total.toLocaleString()} match filter)` : ''
-            } — scroll the list to see more`}
+              total !== rows.length ? ` (${total.toLocaleString()} match${searchInput.trim() ? ` "${searchInput.trim()}"` : ''})` : ''
+            }${searching ? ' — updating…' : ''} — scroll the list to see more`}
       </p>
 
       {lookupRow && (

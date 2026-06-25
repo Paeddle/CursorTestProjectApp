@@ -103,20 +103,19 @@ export function extractModelFromUrl(pageUrl: string): string | null {
   try {
     const u = new URL(pageUrl)
     const path = decodeURIComponent(u.pathname)
-    const slug = path.split('/').filter(Boolean).pop() ?? ''
-    const candidates = [
-      slug,
-      path.replace(/\.(html?|php|aspx)$/i, '').split('/').pop() ?? '',
-    ]
+    const segments = path.split('/').filter(Boolean)
+    const slug = (segments.pop() ?? '').replace(/\.(html?|php|aspx)$/i, '')
+    const candidates = [slug, ...slug.split(/[-_]+/), path.replace(/\.(html?|php|aspx)$/i, '')]
+
     for (const c of candidates) {
+      if (!c) continue
       const cleaned = c.replace(/[-_]+/g, ' ')
       for (const re of MODEL_PATTERNS) {
         const m = cleaned.match(re)
         if (m?.[1] && m[1].length >= 4 && m[1].length <= 24) return m[1].toUpperCase()
       }
-      // B&H slugs: samsung-un55du7200fxza-55-inch...
       const slugModel = c.match(
-        /(?:^|[-_])([a-z]{2,5}\d{2}[a-z0-9]{3,}|[a-z]{2}\d{2}[a-z0-9]{4,})(?:[-_]|$)/i
+        /^(?:[a-z]+[-_])?([a-z]{2,5}\d{2}[a-z0-9]{3,}|[a-z]{2}\d{2}[a-z0-9]{4,})$/i
       )
       if (slugModel?.[1] && slugModel[1].length >= 5) return slugModel[1].toUpperCase()
     }
@@ -230,6 +229,7 @@ export function scoreProductImageUrl(url: string, modelHint?: string | null): nu
   if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(u)) score += 5
   if (u.includes('product') || u.includes('/images/') || u.includes('/media/')) score += 8
   if (u.includes('gallery') || u.includes('hero') || u.includes('large') || u.includes('main')) score += 6
+  if (u.includes('bhphotovideo') || u.includes('images.b-h') || u.includes('static.bhphoto')) score += 12
   if (modelHint) {
     const hint = modelHint.toLowerCase().replace(/[^a-z0-9]/g, '')
     const normalized = u.replace(/[^a-z0-9]/g, '')

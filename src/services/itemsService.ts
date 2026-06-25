@@ -56,7 +56,7 @@ export async function fetchItemsList(options: {
   }
 
   if (search) {
-    const term = search.replace(/[%_,]/g, '').trim()
+    const term = search.replace(/[%_,.()]/g, '').trim()
     if (term) {
       const q = `%${term}%`
       query = query.or(
@@ -115,6 +115,28 @@ export async function fetchItemsStats(): Promise<{
   const total = totalRes.count ?? 0
   const missingBarcode = missingRes.count ?? 0
   return { total, missingBarcode, hasBarcode: total - missingBarcode }
+}
+
+export async function fetchItemById(id: string): Promise<ItemRecord | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.from(ITEMS_TABLE).select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as ItemRecord | null) ?? null
+}
+
+export async function fetchItemByBarcode(barcode: string): Promise<ItemRecord | null> {
+  if (!supabase) return null
+  const trimmed = barcode.trim()
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits) {
+    const { data } = await supabase.from(ITEMS_TABLE).select('*').eq('barcode', digits).maybeSingle()
+    if (data) return data as ItemRecord
+  }
+  if (trimmed) {
+    const { data } = await supabase.from(ITEMS_TABLE).select('*').eq('barcode', trimmed).maybeSingle()
+    if (data) return data as ItemRecord
+  }
+  return null
 }
 
 export async function createItemRow(input: NewItemInput): Promise<ItemRecord> {

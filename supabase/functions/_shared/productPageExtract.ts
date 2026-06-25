@@ -89,15 +89,22 @@ function extractModelFromUrl(pageUrl: string): string | null {
   try {
     const u = new URL(pageUrl)
     const path = decodeURIComponent(u.pathname)
-    const slug = path.split('/').filter(Boolean).pop() ?? ''
-    for (const re of MODEL_PATTERNS) {
-      const m = slug.replace(/[-_]+/g, ' ').match(re)
-      if (m?.[1] && m[1].length >= 4) return m[1].toUpperCase()
+    const segments = path.split('/').filter(Boolean)
+    const slug = (segments.pop() ?? '').replace(/\.(html?|php|aspx)$/i, '')
+    const candidates = [slug, ...slug.split(/[-_]+/), path.replace(/\.(html?|php|aspx)$/i, '')]
+
+    for (const c of candidates) {
+      if (!c) continue
+      const cleaned = c.replace(/[-_]+/g, ' ')
+      for (const re of MODEL_PATTERNS) {
+        const m = cleaned.match(re)
+        if (m?.[1] && m[1].length >= 4 && m[1].length <= 24) return m[1].toUpperCase()
+      }
+      const slugModel = c.match(
+        /^(?:[a-z]+[-_])?([a-z]{2,5}\d{2}[a-z0-9]{3,}|[a-z]{2}\d{2}[a-z0-9]{4,})$/i
+      )
+      if (slugModel?.[1] && slugModel[1].length >= 5) return slugModel[1].toUpperCase()
     }
-    const slugModel = slug.match(
-      /(?:^|[-_])([a-z]{2,5}\d{2}[a-z0-9]{3,}|[a-z]{2}\d{2}[a-z0-9]{4,})(?:[-_]|$)/i
-    )
-    if (slugModel?.[1]) return slugModel[1].toUpperCase()
   } catch {
     /* ignore */
   }

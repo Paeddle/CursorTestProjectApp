@@ -63,6 +63,12 @@
   flex: 1;
 }
 
+.inv-searching-hint {
+  font-size: 0.82rem;
+  color: #555;
+  white-space: nowrap;
+}
+
 .inv-filter-hint {
   flex: 1 1 100%;
   margin: 0;

@@ -47,18 +47,31 @@ export default function EbayPage() {
   const linked = groups.filter((g) => g.item)
   const totalQty = groups.reduce((sum, g) => sum + g.scan_count, 0)
 
-  const runEnrich = async (barcode: string) => {
+  const runEnrich = async (group: (typeof groups)[0]) => {
+    const barcode = group.barcode_value
+    const isRefresh = Boolean(group.item)
     setEnrichingBarcode(barcode)
     setStatus(null)
     try {
-      const result = await enrichEbayBarcodeToItem(barcode)
-      const detailNote = result.lookupNote ? ` ${result.lookupNote}` : ''
-      setStatus({
-        kind: 'ok',
-        text: (result.created
-          ? `Added "${result.item.item || result.item.part_number}" to Items and linked ${barcode}.`
-          : `Updated Items row for ${barcode}.`) + detailNote,
+      const result = await enrichEbayBarcodeToItem(barcode, {
+        forceRefresh: isRefresh,
+        existingItemId: group.item_id ?? group.item?.id,
+        knownProductUrl: group.item?.purchase_url,
       })
+      const detailNote = result.lookupNote ? ` ${result.lookupNote}` : ''
+      if (isRefresh && !result.updated) {
+        setStatus({
+          kind: 'info',
+          text: `Lookup finished for ${barcode} but nothing changed.${detailNote}`,
+        })
+      } else {
+        setStatus({
+          kind: 'ok',
+          text: (result.created
+            ? `Added "${result.item.item || result.item.part_number}" to Items and linked ${barcode}.`
+            : `Updated "${result.item.item || result.item.part_number || barcode}" — part # ${result.item.part_number || '—'}.`) + detailNote,
+        })
+      }
       await refresh()
     } catch (e) {
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Enrichment failed' })
@@ -76,7 +89,10 @@ export default function EbayPage() {
       for (let i = 0; i < unlinked.length; i++) {
         const g = unlinked[i]
         try {
-          await enrichEbayBarcodeToItem(g.barcode_value)
+          await enrichEbayBarcodeToItem(g.barcode_value, {
+            existingItemId: g.item_id ?? g.item?.id,
+            knownProductUrl: g.item?.purchase_url,
+          })
           ok++
         } catch {
           /* continue with next */
@@ -239,7 +255,7 @@ export default function EbayPage() {
                           type="button"
                           className="ebay-btn ebay-btn-primary"
                           disabled={busy || bulkRunning}
-                          onClick={() => void runEnrich(g.barcode_value)}
+                          onClick={() => void runEnrich(g)}
                         >
                           {busy ? 'Finding info…' : 'Find info & add to Items'}
                         </button>
@@ -249,7 +265,7 @@ export default function EbayPage() {
                           type="button"
                           className="ebay-btn"
                           disabled={busy || bulkRunning}
-                          onClick={() => void runEnrich(g.barcode_value)}
+                          onClick={() => void runEnrich(g)}
                         >
                           {busy ? 'Updating…' : 'Refresh from lookup'}
                         </button>
