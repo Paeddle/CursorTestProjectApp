@@ -1,3 +1,5 @@
+import { invokeProductLookup, safeFetchJson } from './lookupProxy'
+
 export type SerperOrganicResult = {
   title?: string
   snippet?: string
@@ -17,14 +19,22 @@ export async function serperWebSearch(
 ): Promise<SerperOrganicResult[]> {
   const q = query.trim()
   if (!q || !apiKey) return []
-  const res = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    body: JSON.stringify({ q, num }),
+
+  const proxied = await invokeProductLookup<{ organic?: SerperOrganicResult[] }>('serper_search', {
+    query: q,
+    num,
   })
-  if (!res.ok) return []
-  const data = (await res.json()) as { organic?: SerperOrganicResult[] }
-  return data.organic ?? []
+  if (proxied?.organic) return proxied.organic
+
+  const data = await safeFetchJson<{ organic?: SerperOrganicResult[] }>(
+    'https://google.serper.dev/search',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
+      body: JSON.stringify({ q, num }),
+    }
+  )
+  return data?.organic ?? []
 }
 
 export async function serperImageSearch(
@@ -34,12 +44,20 @@ export async function serperImageSearch(
 ): Promise<SerperImageResult[]> {
   const q = query.trim()
   if (!q || !apiKey) return []
-  const res = await fetch('https://google.serper.dev/images', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    body: JSON.stringify({ q, num }),
+
+  const proxied = await invokeProductLookup<{ images?: SerperImageResult[] }>('serper_images', {
+    query: q,
+    num,
   })
-  if (!res.ok) return []
-  const data = (await res.json()) as { images?: SerperImageResult[] }
-  return data.images ?? []
+  if (proxied?.images) return proxied.images
+
+  const data = await safeFetchJson<{ images?: SerperImageResult[] }>(
+    'https://google.serper.dev/images',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
+      body: JSON.stringify({ q, num }),
+    }
+  )
+  return data?.images ?? []
 }

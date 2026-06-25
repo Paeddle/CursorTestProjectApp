@@ -7,6 +7,7 @@ import {
   linkMatchesAvSource,
 } from './avSources'
 import { fetchPageMeta, isLikelyProductImageUrl } from './htmlExtract'
+import { invokeProductLookup, safeFetchJson } from './lookupProxy'
 import { serperWebSearch } from './serperClient'
 import type { BarcodeFindResult, ProductLookupInput, ProductLookupResult } from './types'
 import type { BarcodeCatalogItem } from '../../types/poCheckin'
@@ -86,15 +87,8 @@ export async function lookupUpcItemDbSearch(query: string): Promise<BarcodeFindR
   const q = query.trim()
   if (!q) return null
   const userKey = import.meta.env.VITE_UPCITEMDB_USER_KEY as string | undefined
-  const base = userKey
-    ? `https://api.upcitemdb.com/prod/v1/search?s=${encodeURIComponent(q)}`
-    : `https://api.upcitemdb.com/prod/trial/search?s=${encodeURIComponent(q)}`
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  if (userKey) headers.user_key = userKey
 
-  const res = await fetch(base, { headers })
-  if (!res.ok) return null
-  const data = (await res.json()) as {
+  type UpcResponse = {
     items?: Array<{
       ean?: string
       upc?: string
@@ -104,7 +98,22 @@ export async function lookupUpcItemDbSearch(query: string): Promise<BarcodeFindR
       offers?: Array<{ merchant?: string; link?: string }>
     }>
   }
-  const item = data.items?.[0]
+
+  const data =
+    (await invokeProductLookup<UpcResponse>('upc_search', { query: q })) ??
+    (await safeFetchJson<UpcResponse>(
+      userKey
+        ? `https://api.upcitemdb.com/prod/v1/search?s=${encodeURIComponent(q)}`
+        : `https://api.upcitemdb.com/prod/trial/search?s=${encodeURIComponent(q)}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          ...(userKey ? { user_key: userKey } : {}),
+        },
+      }
+    ))
+
+  const item = data?.items?.[0]
   if (!item) return null
   const code = (item.ean || item.upc || '').replace(/\D/g, '')
   if (!validBarcode(code)) return null
@@ -119,15 +128,8 @@ export async function lookupUpcItemDbByBarcode(barcode: string): Promise<Barcode
   const code = barcode.replace(/\D/g, '')
   if (!validBarcode(code)) return null
   const userKey = import.meta.env.VITE_UPCITEMDB_USER_KEY as string | undefined
-  const base = userKey
-    ? `https://api.upcitemdb.com/prod/v1/lookup?upc=${encodeURIComponent(code)}`
-    : `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  if (userKey) headers.user_key = userKey
 
-  const res = await fetch(base, { headers })
-  if (!res.ok) return null
-  const data = (await res.json()) as {
+  type UpcResponse = {
     items?: Array<{
       ean?: string
       upc?: string
@@ -137,7 +139,22 @@ export async function lookupUpcItemDbByBarcode(barcode: string): Promise<Barcode
       offers?: Array<{ link?: string }>
     }>
   }
-  const item = data.items?.[0]
+
+  const data =
+    (await invokeProductLookup<UpcResponse>('upc_lookup', { barcode: code })) ??
+    (await safeFetchJson<UpcResponse>(
+      userKey
+        ? `https://api.upcitemdb.com/prod/v1/lookup?upc=${encodeURIComponent(code)}`
+        : `https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          ...(userKey ? { user_key: userKey } : {}),
+        },
+      }
+    ))
+
+  const item = data?.items?.[0]
   if (!item) return null
   const title = item.title || item.brand || null
   const imageUrl = item.images?.find((u) => isLikelyProductImageUrl(u)) ?? item.images?.[0] ?? null

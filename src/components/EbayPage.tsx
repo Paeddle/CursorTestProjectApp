@@ -52,11 +52,12 @@ export default function EbayPage() {
     setStatus(null)
     try {
       const result = await enrichEbayBarcodeToItem(barcode)
+      const detailNote = result.lookupNote ? ` ${result.lookupNote}` : ''
       setStatus({
         kind: 'ok',
-        text: result.created
+        text: (result.created
           ? `Added "${result.item.item || result.item.part_number}" to Items and linked ${barcode}.`
-          : `Updated Items row for ${barcode}.`,
+          : `Updated Items row for ${barcode}.`) + detailNote,
       })
       await refresh()
     } catch (e) {
@@ -127,7 +128,9 @@ export default function EbayPage() {
           pictures.
         </p>
         <p className="ebay-migration-hint">
-          Run <code>supabase/add-ebay-scans.sql</code> in Supabase SQL Editor before first use.
+          Run <code>supabase/add-ebay-scans.sql</code> in Supabase SQL Editor. For product lookup, deploy{' '}
+          <code>supabase functions deploy product-lookup --no-verify-jwt</code> (uses your Serper key from
+          the app).
         </p>
       </header>
 

@@ -17,6 +17,16 @@ export type EbayEnrichResult = {
   created: boolean
   barcodeSource: string | null
   imageSource: string | null
+  lookupNote: string | null
+}
+
+async function safeLookup<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn()
+  } catch (e) {
+    console.warn(`${label} failed:`, e)
+    return null
+  }
 }
 
 /**
@@ -37,7 +47,15 @@ export async function enrichEbayBarcodeToItem(barcodeValue: string): Promise<Eba
     rows.find((r) => (r.barcode ?? '').trim() === barcode) ??
     null
 
-  const reverse = await lookupProductByBarcode(barcode, { catalog })
+  const lookupErrors: string[] = []
+
+  const reverse = await safeLookup('lookupProductByBarcode', () =>
+    lookupProductByBarcode(barcode, { catalog })
+  )
+  if (reverse === null) {
+    lookupErrors.push('external product lookup unavailable')
+  }
+
   let partNumber = reverse?.partNumber ?? existing?.part_number ?? null
   let manufacturer = reverse?.manufacturer ?? existing?.manufacturer ?? null
   let itemName = reverse?.name ?? existing?.item ?? null
@@ -47,12 +65,13 @@ export async function enrichEbayBarcodeToItem(barcodeValue: string): Promise<Eba
   let imageSource: string | null = reverse?.imageUrl ? reverse.sourceLabel : null
 
   if (!itemName || (!partNumber && !pictureUrl)) {
-    const lookupInput = {
-      part_number: partNumber,
-      manufacturer,
-      item: itemName,
-    }
-    const { best: barcodeHit } = await findBarcodeForItem(lookupInput, { catalog })
+    const barcodeResult = await safeLookup('findBarcodeForItem', () =>
+      findBarcodeForItem(
+        { part_number: partNumber, manufacturer, item: itemName },
+        { catalog }
+      )
+    )
+    const barcodeHit = barcodeResult?.best ?? null
     if (barcodeHit) {
       if (!partNumber && barcodeHit.matchedPartNumber) partNumber = barcodeHit.matchedPartNumber
       if (!itemName && barcodeHit.title) itemName = barcodeHit.title
@@ -64,11 +83,10 @@ export async function enrichEbayBarcodeToItem(barcodeValue: string): Promise<Eba
   }
 
   if (!pictureUrl) {
-    const { best: img } = await findProductImageForItem({
-      part_number: partNumber,
-      manufacturer,
-      item: itemName,
-    })
+    const imageResult = await safeLookup('findProductImageForItem', () =>
+      findProductImageForItem({ part_number: partNumber, manufacturer, item: itemName })
+    )
+    const img = imageResult?.best ?? null
     if (img) {
       pictureUrl = img.imageUrl
       imageSource = img.source
@@ -132,5 +150,15 @@ export async function enrichEbayBarcodeToItem(barcodeValue: string): Promise<Eba
 
   await linkEbayScansToItem(barcodeValue, item.id)
 
-  return { item, created, barcodeSource, imageSource }
+  const foundDetails = Boolean(
+    barcodeSource || pictureUrl || (partNumber && itemName !== `eBay item ${barcode}`)
+  )
+  const lookupNote =
+    lookupErrors.length > 0 && !foundDetails
+      ? 'Item saved with basic info. Deploy the product-lookup Edge Function in Supabase for full AV/UPC lookup.'
+      : lookupErrors.length > 0 && foundDetails
+        ? 'Item saved; some lookup sources were unavailable.'
+        : null
+
+  return { item, created, barcodeSource, imageSource, lookupNote }
 }

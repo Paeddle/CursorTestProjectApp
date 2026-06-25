@@ -1,3 +1,5 @@
+import { invokeProductLookup, safeFetchText } from './lookupProxy'
+
 export function jinaFetchUrl(targetUrl: string): string {
   const trimmed = targetUrl.trim()
   if (trimmed.startsWith('http://')) return `https://r.jina.ai/http://${trimmed.slice('http://'.length)}`
@@ -52,9 +54,14 @@ export async function fetchPageMeta(
   pageUrl: string,
   partHint?: string | null
 ): Promise<PageMeta | null> {
-  const res = await fetch(jinaFetchUrl(pageUrl), { headers: { Accept: 'text/plain' } })
-  if (!res.ok) return null
-  const text = await res.text()
+  const proxied = await invokeProductLookup<PageMeta>('page_meta', { url: pageUrl, partHint })
+  if (proxied) {
+    const partNumber = proxied.partNumber ?? extractPartNumberFromText(proxied.title ?? '', partHint)
+    return { ...proxied, partNumber }
+  }
+
+  const text = await safeFetchText(jinaFetchUrl(pageUrl), { headers: { Accept: 'text/plain' } })
+  if (!text) return null
   const ogTitle = extractMetaContent(text, 'og:title')
   const ogImage = extractMetaContent(text, 'og:image')
   const title = ogTitle || extractTitle(text)
