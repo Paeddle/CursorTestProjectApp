@@ -11,9 +11,15 @@ export type ProductPageDetails = {
 }
 
 const BAD_IMAGE_RE =
-  /logo|icon|sprite|pixel|placeholder|avatar|badge|banner|favicon|social|share|spacer|1x1|tracking|blank\.|default-image|no-image|loading/i
+  /logo|icon|sprite|pixel|placeholder|avatar|badge|banner|favicon|social|share|spacer|1x1|tracking|blank\.|default-image|no-image|loading|boarding|passport|ticket|itinerary|airline|flight|luggage|receipt|invoice|document|envelope|barcode|qrcode|qr-code|shipping-label|warranty-card/i
 
 const THUMB_RE = /[\/_-](thumb|thumbnail|small|tiny|xs|sm|50x|100x|150x)([\/_.-]|$)/i
+
+/** Minimum score to treat an image URL as a product photo (not a random web hit). */
+export const MIN_PRODUCT_IMAGE_SCORE = 18
+
+const RETAILER_IMAGE_HOST_RE =
+  /bhphoto|images\.b-h|static\.bhphoto|bestbuy|samsung|sony|lg\.com|crutchfield|markertek|adiglobal|snapone|costco|target\.com|walmart|amazon|media-amazon|ssl-images/i
 
 /** Common TV / electronics model patterns (Samsung UN55…, Sony XR50…, LG OLED55…, etc.) */
 const MODEL_PATTERNS = [
@@ -251,7 +257,8 @@ export function scoreProductImageUrl(url: string, modelHint?: string | null): nu
   if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(u)) score += 5
   if (u.includes('product') || u.includes('/images/') || u.includes('/media/')) score += 8
   if (u.includes('gallery') || u.includes('hero') || u.includes('large') || u.includes('main')) score += 6
-  if (u.includes('bhphotovideo') || u.includes('images.b-h') || u.includes('static.bhphoto')) score += 12
+  if (u.includes('bhphotovideo') || u.includes('images.b-h') || u.includes('static.bhphoto')) score += 18
+  if (RETAILER_IMAGE_HOST_RE.test(u)) score += 10
   if (modelHint) {
     const hint = modelHint.toLowerCase().replace(/[^a-z0-9]/g, '')
     const normalized = u.replace(/[^a-z0-9]/g, '')
@@ -263,17 +270,18 @@ export function scoreProductImageUrl(url: string, modelHint?: string | null): nu
     if (w >= 400) score += 10
     if (w < 200) score -= 15
   }
+  if (!RETAILER_IMAGE_HOST_RE.test(u) && score < 28) score -= 12
   return score
 }
 
 export function isLikelyProductImageUrl(url: string | null | undefined): boolean {
-  return scoreProductImageUrl(url ?? '') >= 5
+  return scoreProductImageUrl(url ?? '') >= MIN_PRODUCT_IMAGE_SCORE
 }
 
 export function pickBestProductImage(urls: string[], modelHint?: string | null): string | null {
   const ranked = urls
     .map((u) => ({ u, score: scoreProductImageUrl(u, modelHint) }))
-    .filter((x) => x.score >= 5)
+    .filter((x) => x.score >= MIN_PRODUCT_IMAGE_SCORE)
     .sort((a, b) => b.score - a.score)
   return ranked[0]?.u ?? null
 }

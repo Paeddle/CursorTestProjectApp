@@ -12,9 +12,14 @@ export type ProductPageDetails = {
 }
 
 const BAD_IMAGE_RE =
-  /logo|icon|sprite|pixel|placeholder|avatar|badge|banner|favicon|social|share|spacer|1x1|tracking|blank\.|default-image|no-image|loading/i
+  /logo|icon|sprite|pixel|placeholder|avatar|badge|banner|favicon|social|share|spacer|1x1|tracking|blank\.|default-image|no-image|loading|boarding|passport|ticket|itinerary|airline|flight|luggage|receipt|invoice|document|envelope|barcode|qrcode|qr-code|shipping-label|warranty-card/i
 
 const THUMB_RE = /[\/_-](thumb|thumbnail|small|tiny|xs|sm|50x|100x|150x)([\/_.-]|$)/i
+
+export const MIN_PRODUCT_IMAGE_SCORE = 18
+
+const RETAILER_IMAGE_HOST_RE =
+  /bhphoto|images\.b-h|static\.bhphoto|bestbuy|samsung|sony|lg\.com|crutchfield|markertek|adiglobal|snapone|costco|target\.com|walmart|amazon|media-amazon|ssl-images/i
 
 const MODEL_PATTERNS = [
   /\b(UN\d{2}[A-Z0-9]{4,}[A-Z]?(?:FXZA|FXZC|FXZP)?)\b/i,
@@ -201,6 +206,8 @@ function scoreProductImageUrl(url: string, modelHint?: string | null): number {
   if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(u)) score += 5
   if (u.includes('product') || u.includes('/images/') || u.includes('/media/')) score += 8
   if (u.includes('gallery') || u.includes('hero') || u.includes('large') || u.includes('main')) score += 6
+  if (u.includes('bhphotovideo') || u.includes('images.b-h') || u.includes('static.bhphoto')) score += 18
+  if (RETAILER_IMAGE_HOST_RE.test(u)) score += 10
   if (modelHint) {
     const hint = modelHint.toLowerCase().replace(/[^a-z0-9]/g, '')
     if (hint.length >= 4 && u.replace(/[^a-z0-9]/g, '').includes(hint)) score += 25
@@ -211,13 +218,14 @@ function scoreProductImageUrl(url: string, modelHint?: string | null): number {
     if (w >= 400) score += 10
     if (w < 200) score -= 15
   }
+  if (!RETAILER_IMAGE_HOST_RE.test(u) && score < 28) score -= 12
   return score
 }
 
 function pickBestProductImage(urls: string[], modelHint?: string | null): string | null {
   const ranked = urls
     .map((u) => ({ u, score: scoreProductImageUrl(u, modelHint) }))
-    .filter((x) => x.score >= 5)
+    .filter((x) => x.score >= MIN_PRODUCT_IMAGE_SCORE)
     .sort((a, b) => b.score - a.score)
   return ranked[0]?.u ?? null
 }

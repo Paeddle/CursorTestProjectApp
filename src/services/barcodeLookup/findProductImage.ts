@@ -7,7 +7,7 @@ import {
   pickBestProductImage,
   scoreProductImageUrl,
 } from './htmlExtract'
-import { extractModelFromTitle } from './productPageExtract'
+import { extractModelFromTitle, MIN_PRODUCT_IMAGE_SCORE } from './productPageExtract'
 import { lookupUpcItemDbSearch } from './providers'
 import { serperImageSearch, serperWebSearch } from './serperClient'
 
@@ -19,7 +19,12 @@ const CONFIDENCE_RANK: Record<ProductImageResult['confidence'], number> = {
 
 function pickBestImage(hits: ProductImageResult[]): ProductImageResult | null {
   if (hits.length === 0) return null
-  return hits.sort((a, b) => CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence])[0]
+  return hits.sort((a, b) => {
+    const scoreA = scoreProductImageUrl(a.imageUrl, a.title)
+    const scoreB = scoreProductImageUrl(b.imageUrl, b.title)
+    if (scoreB !== scoreA) return scoreB - scoreA
+    return CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence]
+  })[0]
 }
 
 async function runImageProvider(
@@ -88,8 +93,9 @@ async function lookupSerperImages(
   apiKey: string
 ): Promise<ProductImageResult | null> {
   const hint = modelHintFromInput(input)
+  if (!hint || hint.length < 4) return null
   let best: ProductImageResult | null = null
-  let bestScore = 0
+  let bestScore = MIN_PRODUCT_IMAGE_SCORE - 1
 
   for (const q of buildAvImageSearchQueries(input)) {
     const images = await serperImageSearch(q, apiKey, 10)
@@ -153,7 +159,7 @@ export async function findProductImageForItem(
 
   if (options?.productUrl) {
     const details = await fetchProductPageDetails(options.productUrl, hint)
-    if (details?.imageUrl) {
+    if (details?.imageUrl && isLikelyProductImageUrl(details.imageUrl)) {
       return {
         best: {
           imageUrl: details.imageUrl,
@@ -186,7 +192,11 @@ export async function findProductImageForItem(
   ])
 
   const hits = attempts.map((a) => a.hit).filter((h): h is ProductImageResult => h != null)
-  return { best: pickBestImage(hits), attempts }
+  const best = pickBestImage(hits)
+  if (best && !isLikelyProductImageUrl(best.imageUrl)) {
+    return { best: null, attempts }
+  }
+  return { best, attempts }
 }
 
 export function getImageProviderStatus(): Array<{ id: string; label: string; enabled: boolean; note: string }> {

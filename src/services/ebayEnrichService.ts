@@ -1,8 +1,9 @@
 import { findBarcodeForItem } from './barcodeLookup/findBarcodeForItem'
 import { findProductImageForItem } from './barcodeLookup/findProductImage'
 import { lookupProductByBarcode } from './barcodeLookup/providers'
-import { fetchProductPageDetails, scoreProductImageUrl } from './barcodeLookup/htmlExtract'
-import { cleanProductTitle, extractModelFromUrl } from './barcodeLookup/productPageExtract'
+import { fetchProductPageDetails, isLikelyProductImageUrl, scoreProductImageUrl } from './barcodeLookup/htmlExtract'
+import { cleanProductTitle, extractModelFromUrl, MIN_PRODUCT_IMAGE_SCORE } from './barcodeLookup/productPageExtract'
+import { enrichLookupInput } from './barcodeLookup/barcodeExtract'
 import {
   applyBarcodeLookupToItem,
   createItemRow,
@@ -97,12 +98,16 @@ function applyPageDetails(
   force: boolean
 ) {
   if (details?.partNumber && (force || !state.partNumber)) state.partNumber = details.partNumber
+  if (!state.partNumber) {
+    const fromUrl = extractModelFromUrl(purchaseUrl)
+    if (fromUrl && (force || !state.partNumber)) state.partNumber = fromUrl
+  }
   if (details?.manufacturer && (force || !state.manufacturer)) state.manufacturer = details.manufacturer
   if (details?.cleanTitle || details?.title) {
     const title = cleanProductTitle(details.cleanTitle ?? details.title)
     if (title && (force || !state.itemName)) state.itemName = title
   }
-  if (details?.imageUrl) {
+  if (details?.imageUrl && scoreProductImageUrl(details.imageUrl, state.partNumber) >= MIN_PRODUCT_IMAGE_SCORE) {
     const newScore = scoreProductImageUrl(details.imageUrl, state.partNumber)
     const oldScore = scoreProductImageUrl(state.pictureUrl ?? '', state.partNumber)
     if (force ? newScore >= oldScore : newScore > oldScore || !state.pictureUrl) {
@@ -176,7 +181,11 @@ export async function enrichEbayBarcodeToItem(
     if (shouldSet(manufacturer, reverse.manufacturer, force)) manufacturer = reverse.manufacturer
     if (shouldSet(itemName, reverse.name, force)) itemName = reverse.name ?? null
     if (reverse.sourceUrl && (force || !purchaseUrl)) purchaseUrl = reverse.sourceUrl
-    if (reverse.imageUrl) {
+    if (!partNumber && purchaseUrl) {
+      const fromUrl = extractModelFromUrl(purchaseUrl)
+      if (fromUrl) partNumber = fromUrl
+    }
+    if (reverse.imageUrl && scoreProductImageUrl(reverse.imageUrl, partNumber) >= MIN_PRODUCT_IMAGE_SCORE) {
       const newScore = scoreProductImageUrl(reverse.imageUrl, partNumber)
       const oldScore = scoreProductImageUrl(pictureUrl ?? '', partNumber)
       if (force ? newScore >= oldScore : newScore > oldScore || !pictureUrl) {
@@ -217,7 +226,7 @@ export async function enrichEbayBarcodeToItem(
       }
       if (shouldSet(itemName, barcodeHit.title, force)) itemName = barcodeHit.title
       if (barcodeHit.productUrl && (force || !purchaseUrl)) purchaseUrl = barcodeHit.productUrl
-      if (barcodeHit.imageUrl) {
+      if (barcodeHit.imageUrl && scoreProductImageUrl(barcodeHit.imageUrl, partNumber) >= MIN_PRODUCT_IMAGE_SCORE) {
         const newScore = scoreProductImageUrl(barcodeHit.imageUrl, partNumber)
         const oldScore = scoreProductImageUrl(pictureUrl ?? '', partNumber)
         if (force ? newScore >= oldScore : newScore > oldScore || !pictureUrl) {
@@ -230,15 +239,15 @@ export async function enrichEbayBarcodeToItem(
   }
 
   const pictureScore = scoreProductImageUrl(pictureUrl ?? '', partNumber)
-  if (pictureScore < 20 || force) {
+  if (pictureScore < MIN_PRODUCT_IMAGE_SCORE || force) {
     const imageResult = await safeLookup('findProductImageForItem', () =>
       findProductImageForItem(
-        { part_number: partNumber, manufacturer, item: itemName },
+        enrichLookupInput({ part_number: partNumber, manufacturer, item: itemName }),
         { productUrl: purchaseUrl }
       )
     )
     const img = imageResult?.best ?? null
-    if (img) {
+    if (img && isLikelyProductImageUrl(img.imageUrl)) {
       const newScore = scoreProductImageUrl(img.imageUrl, partNumber)
       if (force ? newScore >= pictureScore : newScore > pictureScore) {
         pictureUrl = img.imageUrl
@@ -298,6 +307,7 @@ export async function enrichEbayBarcodeToItem(
 
   const shouldImportImage =
     Boolean(pictureUrl) &&
+    isLikelyProductImageUrl(pictureUrl) &&
     (force || !item.picture_path) &&
     (force || shouldSet(existing?.picture_url, pictureUrl, true))
 

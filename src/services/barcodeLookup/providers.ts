@@ -10,7 +10,9 @@ import { fetchProductPageDetails, isLikelyProductImageUrl, pickBestProductImage,
 import {
   extractModelFromTitle,
   extractModelFromUpcTitle,
+  extractModelFromUrl,
   cleanProductTitle,
+  MIN_PRODUCT_IMAGE_SCORE,
 } from './productPageExtract'
 import { invokeProductLookup, safeFetchJson } from './lookupProxy'
 import { serperWebSearch } from './serperClient'
@@ -246,11 +248,71 @@ function mergePageDetails(
   const title = details?.cleanTitle ?? details?.title ?? chosen.title ?? upcTitle
   const partNumber =
     details?.partNumber ??
+    extractModelFromUrl(chosen.link) ??
     extractModelFromUpcTitle(upcTitle, upcBrand) ??
     extractModelFromTitle(title)
   const manufacturer = details?.manufacturer ?? upcBrand ?? null
-  const imageUrl = details?.imageUrl ?? null
+  const imageUrl =
+    details?.imageUrl && isLikelyProductImageUrl(details.imageUrl) ? details.imageUrl : null
   return { title, partNumber, manufacturer, imageUrl }
+}
+
+function barcodeFindToProductLookup(hit: BarcodeFindResult): ProductLookupResult {
+  return {
+    barcode: hit.barcode,
+    name: hit.title,
+    partNumber: hit.matchedPartNumber,
+    manufacturer: null,
+    imageUrl: hit.imageUrl,
+    sourceUrl: hit.productUrl,
+    sourceLabel: hit.source,
+    confidence: hit.confidence,
+  }
+}
+
+function pickBetterImage(
+  a: string | null | undefined,
+  b: string | null | undefined,
+  hint: string | null
+): string | null {
+  const scoreA = a ? scoreProductImageUrl(a, hint) : -100
+  const scoreB = b ? scoreProductImageUrl(b, hint) : -100
+  const best = scoreB > scoreA ? b : a
+  const bestScore = Math.max(scoreA, scoreB)
+  return best && bestScore >= MIN_PRODUCT_IMAGE_SCORE ? best : null
+}
+
+function mergeBarcodeLookupResults(
+  upc: ProductLookupResult | null,
+  av: ProductLookupResult | null
+): ProductLookupResult | null {
+  if (!upc && !av) return null
+  if (!upc) return av
+  if (!av) return upc
+
+  const partNumber =
+    av.partNumber ??
+    upc.partNumber ??
+    extractModelFromUrl(av.sourceUrl ?? '') ??
+    extractModelFromUrl(upc.sourceUrl ?? '') ??
+    null
+  const hint = partNumber ?? extractModelFromTitle(av.name ?? upc.name ?? null)
+  const imageUrl = pickBetterImage(upc.imageUrl, av.imageUrl, hint)
+  const preferAvMeta = Boolean(
+    av.partNumber || linkMatchesAvDistributor(av.sourceUrl ?? '') || (imageUrl && imageUrl === av.imageUrl)
+  )
+
+  return {
+    barcode: upc.barcode || av.barcode,
+    name: cleanProductTitle(av.name ?? upc.name ?? null) ?? upc.name ?? av.name,
+    partNumber,
+    manufacturer: av.manufacturer ?? upc.manufacturer,
+    imageUrl,
+    sourceUrl: preferAvMeta ? av.sourceUrl ?? upc.sourceUrl : upc.sourceUrl ?? av.sourceUrl,
+    sourceLabel: preferAvMeta ? av.sourceLabel : upc.sourceLabel,
+    confidence:
+      av.confidence === 'high' || linkMatchesAvDistributor(av.sourceUrl ?? '') ? 'high' : upc.confidence,
+  }
 }
 
 /** AV distributor / manufacturer pages — barcode → product info. */
@@ -274,7 +336,7 @@ export async function lookupAvProductByBarcode(
     return {
       barcode: code,
       name: merged.title ? cleanProductTitle(merged.title) : null,
-      partNumber: merged.partNumber,
+      partNumber: merged.partNumber ?? extractModelFromUrl(chosen.link),
       manufacturer: merged.manufacturer,
       imageUrl: merged.imageUrl,
       sourceUrl: chosen.link,
@@ -426,46 +488,11 @@ export async function lookupProductByBarcode(
   }
 
   if (validBarcode(code)) {
-    const upc = await lookupUpcItemDbByBarcode(code)
-    if (upc) {
-      let name = upc.title
-      let partNumber = upc.matchedPartNumber
-      let manufacturer: string | null = null
-      let imageUrl = upc.imageUrl
-      let sourceUrl = upc.productUrl
-      let sourceLabel = upc.source
-      let confidence = upc.confidence
-
-      const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
-      if (serperKey) {
-        const organic = await serperWebSearch(`${code} UPC model`, serperKey, 10)
-        const chosen = await pickBestOrganicResult(organic, code)
-        if (chosen) {
-          const details = await fetchProductPageDetails(chosen.link, partNumber)
-          const merged = mergePageDetails(chosen, details, upc.title, null)
-          if (merged.title) name = cleanProductTitle(merged.title) ?? merged.title
-          if (merged.partNumber) partNumber = merged.partNumber
-          if (merged.manufacturer) manufacturer = merged.manufacturer
-          if (merged.imageUrl && scoreProductImageUrl(merged.imageUrl, partNumber) >= scoreProductImageUrl(imageUrl ?? '', partNumber)) {
-            imageUrl = merged.imageUrl
-          }
-          sourceUrl = chosen.link
-          sourceLabel = 'Product page'
-          confidence = 'high'
-        }
-      }
-
-      return {
-        barcode: upc.barcode,
-        name,
-        partNumber,
-        manufacturer,
-        imageUrl,
-        sourceUrl,
-        sourceLabel,
-        confidence,
-      }
-    }
+    const upcHit = await lookupUpcItemDbByBarcode(code)
+    const upc = upcHit ? barcodeFindToProductLookup(upcHit) : null
+    const av = serperKey ? await lookupAvProductByBarcode(code, serperKey) : null
+    const merged = mergeBarcodeLookupResults(upc, av)
+    if (merged) return merged
   }
 
   if (serperKey) {
