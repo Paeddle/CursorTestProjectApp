@@ -136,6 +136,53 @@
   color: #888;
 }
 
+.inv-providers-hint {
+  margin: 0.35rem 0 0.65rem;
+  font-size: 0.88rem;
+  color: #555;
+  line-height: 1.45;
+}
+
+.inv-lookup-default {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.82rem;
+  color: #444;
+}
+
+.inv-lookup-default select {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  min-width: 11rem;
+}
+
+.inv-lookup-source-cell {
+  min-width: 10.5rem;
+  vertical-align: top;
+}
+
+.inv-lookup-source-select {
+  display: block;
+  width: 100%;
+  max-width: 11rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  background: #fff;
+}
+
+.inv-lookup-source-last {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: #666;
+  word-break: break-word;
+}
+
 .inv-status {
   padding: 0.5rem 0.75rem;
   border-radius: 6px;

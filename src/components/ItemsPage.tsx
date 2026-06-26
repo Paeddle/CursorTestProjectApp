@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BarcodeCatalogItem } from '../types/poCheckin'
 import type { ItemBarcodeFilter, ItemRecord } from '../types/items'
-import type { BarcodeFindResult } from '../services/barcodeLookup/types'
 import {
   applyBarcodeLookupToItem,
   BarcodeAlreadyAssignedError,
@@ -17,14 +16,12 @@ import {
 } from '../services/itemsService'
 import {
   findBarcodeForItem,
-  getBarcodeProviderStatus,
-  sleep,
-} from '../services/barcodeLookup/findBarcodeForItem'
-import {
   findProductImageForItem,
-  getImageProviderStatus,
-} from '../services/barcodeLookup/findProductImage'
-import type { ImageProviderAttempt, ProviderAttempt } from '../services/barcodeLookup/types'
+  sleep,
+} from '../services/barcodeLookup/lookupProviders'
+import { getBarcodeProviderStatus } from '../services/barcodeLookup/findBarcodeForItem'
+import type { BarcodeFindResult, BarcodeLookupProviderId, ImageProviderAttempt, ProviderAttempt } from '../services/barcodeLookup/types'
+import { BARCODE_LOOKUP_PROVIDER_OPTIONS } from '../services/barcodeLookup/types'
 import {
   formatExternalUrl,
   getItemPicturePublicUrl,
@@ -33,6 +30,20 @@ import {
   uploadItemPictureFile,
 } from '../lib/itemsImageStorage'
 import './ItemsPage.css'
+
+const LOOKUP_SOURCE_STORAGE_KEY = 'items-default-lookup-source'
+
+function readDefaultLookupSource(): BarcodeLookupProviderId {
+  try {
+    const v = localStorage.getItem(LOOKUP_SOURCE_STORAGE_KEY)
+    if (v && BARCODE_LOOKUP_PROVIDER_OPTIONS.some((o) => o.id === v)) {
+      return v as BarcodeLookupProviderId
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'av_distributor'
+}
 
 const EMPTY_NEW_ITEM: NewItemInput = {
   manufacturer: '',
@@ -56,14 +67,13 @@ export default function ItemsPage() {
   const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null)
   const [catalog, setCatalog] = useState<BarcodeCatalogItem[]>([])
   const [bulkRunning, setBulkRunning] = useState(false)
-  const [bulkImageRunning, setBulkImageRunning] = useState(false)
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, found: 0 })
-  const [bulkImageProgress, setBulkImageProgress] = useState({ done: 0, total: 0, found: 0 })
   const [lookupRow, setLookupRow] = useState<ItemRecord | null>(null)
   const [lookupAttempts, setLookupAttempts] = useState<ProviderAttempt[]>([])
   const [imageAttempts, setImageAttempts] = useState<ImageProviderAttempt[]>([])
-  const [lookupLoading, setLookupLoading] = useState(false)
-  const [imageLookupLoading, setImageLookupLoading] = useState(false)
+  const [infoLookupLoading, setInfoLookupLoading] = useState(false)
+  const [defaultLookupSource, setDefaultLookupSource] = useState<BarcodeLookupProviderId>(readDefaultLookupSource)
+  const [lookupSourceByRow, setLookupSourceByRow] = useState<Record<string, BarcodeLookupProviderId>>({})
   const [editRow, setEditRow] = useState<ItemRecord | null>(null)
   const [editDraft, setEditDraft] = useState<Partial<ItemRecord>>({})
   const [addOpen, setAddOpen] = useState(false)
@@ -75,7 +85,6 @@ export default function ItemsPage() {
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const providers = getBarcodeProviderStatus()
-  const imageProviders = getImageProviderStatus()
 
   const itemLookupInput = (row: ItemRecord) => ({
     part_number: row.part_number,
@@ -99,16 +108,39 @@ export default function ItemsPage() {
     return updated
   }
 
-  const enrichRowWithImage = async (row: ItemRecord, applyIfFound: boolean) => {
-    if (!rowNeedsPicture(row)) return null
-    const { best, attempts } = await findProductImageForItem(itemLookupInput(row))
+  const getLookupSource = (rowId: string): BarcodeLookupProviderId =>
+    lookupSourceByRow[rowId] ?? defaultLookupSource
+
+  const setLookupSourceForRow = (rowId: string, source: BarcodeLookupProviderId) => {
+    setLookupSourceByRow((prev) => ({ ...prev, [rowId]: source }))
+  }
+
+  const setDefaultLookupSourceAndStore = (source: BarcodeLookupProviderId) => {
+    setDefaultLookupSource(source)
+    try {
+      localStorage.setItem(LOOKUP_SOURCE_STORAGE_KEY, source)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const enrichRowWithImage = async (
+    row: ItemRecord,
+    applyIfFound: boolean,
+    providerId: BarcodeLookupProviderId,
+    productUrl?: string | null
+  ): Promise<{ hit: Awaited<ReturnType<typeof findProductImageForItem>>['best']; row: ItemRecord }> => {
+    const { best, attempts } = await findProductImageForItem(itemLookupInput(row), {
+      providerId,
+      productUrl: productUrl ?? row.purchase_url,
+    })
     setImageAttempts(attempts)
     if (best && applyIfFound) {
       const updated = await applyImageToRow(row, best.imageUrl, best.productUrl)
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
-      return best
+      return { hit: best, row: updated }
     }
-    return best
+    return { hit: best, row }
   }
 
   const initialLoadDone = useRef(false)
@@ -190,190 +222,156 @@ export default function ItemsPage() {
     return updated
   }
 
-  const runLookupForRow = async (row: ItemRecord, applyIfFound: boolean) => {
+  const runFindInfoForRow = async (row: ItemRecord, applyIfFound: boolean) => {
+    const providerId = getLookupSource(row.id)
     setLookupRow(row)
-    setLookupLoading(true)
+    setInfoLookupLoading(true)
     setLookupAttempts([])
     setImageAttempts([])
     try {
-      const { best, attempts } = await findBarcodeForItem(itemLookupInput(row), { catalog })
+      const { best, attempts } = await findBarcodeForItem(itemLookupInput(row), { catalog, providerId })
       setLookupAttempts(attempts)
+      let finalRow = row
+      let barcodeApplied = false
+      let imageApplied = false
+
       if (best && applyIfFound) {
         const pictureUrl =
           best.imageUrl && rowNeedsPicture(row) ? best.imageUrl : undefined
-        let finalRow = row
         try {
           finalRow = await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
             purchaseUrl:
               best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
             pictureUrl,
           })
+          barcodeApplied = true
         } catch (e) {
           if (e instanceof BarcodeAlreadyAssignedError) {
             finalRow = await applyLookupMetadata(row, best)
             const existingLabel =
               e.existingItem.item || e.existingItem.part_number || e.existingItem.barcode
-            setRows((prev) => prev.map((r) => (r.id === finalRow.id ? finalRow : r)))
             setStatus({
               kind: 'info',
-              text: `Barcode ${e.barcode} is already on "${existingLabel}". Filled in other fields on this row — delete this duplicate if it is the same product.`,
+              text: `Barcode ${e.barcode} is already on "${existingLabel}". Filled other fields — delete duplicate if same product.`,
             })
-            setLookupRow(null)
-            return best
+          } else {
+            throw e
           }
-          throw e
         }
         if (pictureUrl && !finalRow.picture_path) {
           try {
             finalRow = await importItemPictureFromUrl(row.id, pictureUrl)
+            imageApplied = true
           } catch {
             /* external URL saved */
           }
         }
-        if (rowNeedsPicture(finalRow)) {
-          const { best: img, attempts: imgAttempts } = await findProductImageForItem(itemLookupInput(finalRow))
-          setImageAttempts(imgAttempts)
-          if (img) {
-            finalRow = await applyImageToRow(finalRow, img.imageUrl, img.productUrl)
-          }
-        }
-        setRows((prev) => prev.map((r) => (r.id === finalRow.id ? finalRow : r)))
-        setStats((s) => ({
-          ...s,
-          missingBarcode: Math.max(0, s.missingBarcode - 1),
-          hasBarcode: s.hasBarcode + 1,
-        }))
-        const imageNote = finalRow.picture_path || finalRow.picture_url ? ' Picture found.' : ''
-        setStatus({
-          kind: 'ok',
-          text: `Found ${best.barcode} via ${best.source} (${best.confidence} confidence).${imageNote}`,
-        })
-        setLookupRow(null)
-      } else if (!best) {
-        if (applyIfFound && rowNeedsPicture(row)) {
-          const img = await enrichRowWithImage(row, true)
-          if (img) {
-            setStatus({
-              kind: 'ok',
-              text: `No barcode found, but found a product image via ${img.source}.`,
-            })
-            setLookupRow(null)
-            return null
-          }
-        }
-        setStatus({ kind: 'info', text: `No barcode found for ${row.part_number || row.item || 'this row'}.` })
+      } else if (best && !applyIfFound) {
+        /* preview only — attempts shown in panel */
       }
-      return best
+
+      const productUrl =
+        best?.productUrl?.trim() || finalRow.purchase_url?.trim() || row.purchase_url?.trim() || null
+      if (applyIfFound && rowNeedsPicture(finalRow)) {
+        const imgResult = await enrichRowWithImage(finalRow, true, providerId, productUrl)
+        finalRow = imgResult.row
+        imageApplied = imageApplied || Boolean(imgResult.hit)
+      }
+
+      if (applyIfFound) {
+        setRows((prev) => prev.map((r) => (r.id === finalRow.id ? finalRow : r)))
+        if (barcodeApplied) {
+          setStats((s) => ({
+            ...s,
+            missingBarcode: Math.max(0, s.missingBarcode - 1),
+            hasBarcode: s.hasBarcode + 1,
+          }))
+        }
+        const sourceLabel =
+          BARCODE_LOOKUP_PROVIDER_OPTIONS.find((o) => o.id === providerId)?.label ?? providerId
+        if (best) {
+          const imageNote = finalRow.picture_path || finalRow.picture_url ? ' Picture saved.' : ''
+          setStatus({
+            kind: 'ok',
+            text: `Found ${best.barcode} via ${best.source} (${sourceLabel}).${imageNote}`,
+          })
+        } else if (imageApplied) {
+          setStatus({ kind: 'ok', text: `No barcode from ${sourceLabel}, but found a product image.` })
+        } else {
+          setStatus({
+            kind: 'info',
+            text: `No product info found via ${sourceLabel} for ${row.part_number || row.item || 'this row'}.`,
+          })
+        }
+        setLookupRow(null)
+      }
+
+      return { barcode: best, image: imageApplied ? finalRow : null }
     } catch (e) {
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Lookup failed' })
       return null
     } finally {
-      setLookupLoading(false)
+      setInfoLookupLoading(false)
     }
   }
 
-  const runImageLookupForRow = async (row: ItemRecord, applyIfFound: boolean) => {
-    setLookupRow(row)
-    setImageLookupLoading(true)
-    setImageAttempts([])
-    try {
-      const best = await enrichRowWithImage(row, applyIfFound)
-      if (best && applyIfFound) {
-        setStatus({ kind: 'ok', text: `Found image via ${best.source} (${best.confidence} confidence).` })
-        setLookupRow(null)
-      } else if (!best) {
-        setStatus({ kind: 'info', text: `No product image found for ${row.part_number || row.item || 'this row'}.` })
-      }
-      return best
-    } catch (e) {
-      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Image lookup failed' })
-      return null
-    } finally {
-      setImageLookupLoading(false)
-    }
-  }
-
-  const runBulkLookup = async () => {
+  const runBulkFindInfo = async () => {
     if (!isItemsConfigured()) return
     bulkCancelRef.current = false
     setBulkRunning(true)
-    setStatus({ kind: 'info', text: 'Loading rows missing barcodes…' })
-    try {
-      const { rows: missing } = await fetchItemsList({
-        filter: 'missing',
-        limit: 500,
-        offset: 0,
-      })
-      if (missing.length === 0) {
-        setStatus({ kind: 'ok', text: 'No rows missing barcodes in the first 500 items.' })
-        return
-      }
-      setBulkProgress({ done: 0, total: missing.length, found: 0 })
-      let found = 0
-      for (let i = 0; i < missing.length; i++) {
-        if (bulkCancelRef.current) break
-        const row = missing[i]
-        const { best } = await findBarcodeForItem(itemLookupInput(row), { catalog })
-        if (best) {
-          await applyBarcodeLookupToItem(row.id, best.barcode, best.source)
-          found++
-        }
-        setBulkProgress({ done: i + 1, total: missing.length, found })
-        await sleep(350)
-      }
-      setStatus({
-        kind: 'ok',
-        text: `Bulk lookup finished: ${found} of ${missing.length} rows got a barcode.`,
-      })
-      await refresh()
-    } catch (e) {
-      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Bulk lookup failed' })
-    } finally {
-      setBulkRunning(false)
-    }
-  }
-
-  const runBulkImageLookup = async () => {
-    if (!isItemsConfigured()) return
-    bulkCancelRef.current = false
-    setBulkImageRunning(true)
-    setStatus({ kind: 'info', text: 'Loading rows missing pictures…' })
+    setStatus({ kind: 'info', text: 'Loading items missing barcodes or pictures…' })
     try {
       const { rows: all } = await fetchItemsList({ filter: 'all', limit: 500, offset: 0 })
-      const missing = all.filter(rowNeedsPicture)
-      if (missing.length === 0) {
-        setStatus({ kind: 'ok', text: 'No rows missing pictures in the first 500 items.' })
+      const needsInfo = all.filter((r) => !r.barcode?.trim() || rowNeedsPicture(r))
+      if (needsInfo.length === 0) {
+        setStatus({ kind: 'ok', text: 'No rows missing barcodes or pictures in the first 500 items.' })
         return
       }
-      setBulkImageProgress({ done: 0, total: missing.length, found: 0 })
+      setBulkProgress({ done: 0, total: needsInfo.length, found: 0 })
       let found = 0
-      for (let i = 0; i < missing.length; i++) {
+      for (let i = 0; i < needsInfo.length; i++) {
         if (bulkCancelRef.current) break
-        const row = missing[i]
-        const { best } = await findProductImageForItem(itemLookupInput(row))
+        const row = needsInfo[i]
+        const providerId = getLookupSource(row.id)
+        const { best } = await findBarcodeForItem(itemLookupInput(row), { catalog, providerId })
+        let updated = false
         if (best) {
-          await applyImageToRow(row, best.imageUrl, best.productUrl)
-          found++
+          try {
+            await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
+              purchaseUrl: best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
+              pictureUrl: best.imageUrl && rowNeedsPicture(row) ? best.imageUrl : undefined,
+            })
+            updated = true
+          } catch (e) {
+            if (e instanceof BarcodeAlreadyAssignedError) {
+              await applyLookupMetadata(row, best)
+              updated = true
+            }
+          }
         }
-        setBulkImageProgress({ done: i + 1, total: missing.length, found })
+        if (rowNeedsPicture(row)) {
+          const { hit } = await enrichRowWithImage(row, true, providerId, best?.productUrl ?? row.purchase_url)
+          if (hit) updated = true
+        }
+        if (updated) found++
+        setBulkProgress({ done: i + 1, total: needsInfo.length, found })
         await sleep(400)
       }
       setStatus({
         kind: 'ok',
-        text: `Picture search finished: ${found} of ${missing.length} rows got an image.`,
+        text: `Auto-fill finished: updated ${found} of ${needsInfo.length} rows.`,
       })
       await refresh()
     } catch (e) {
-      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Bulk picture search failed' })
+      setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Auto-fill failed' })
     } finally {
-      setBulkImageRunning(false)
+      setBulkRunning(false)
     }
   }
 
   const stopBulk = () => {
     bulkCancelRef.current = true
     setBulkRunning(false)
-    setBulkImageRunning(false)
   }
 
   const saveEdit = async () => {
@@ -571,18 +569,15 @@ export default function ItemsPage() {
         </div>
       </div>
 
-      <section className="inv-providers" aria-label="Barcode lookup sources">
-        <strong>Barcode lookup sources (best match wins)</strong>
+      <section className="inv-providers" aria-label="Lookup sources">
+        <strong>Lookup sources</strong>
+        <p className="inv-providers-hint">
+          Use the <strong>Lookup source</strong> dropdown on each row (or the default below) to choose
+          where <strong>Find Info</strong> searches. Default is AV distributors &amp; B&H so new lookups
+          skip matching other items in your database.
+        </p>
         <ul>
           {providers.map((p) => (
-            <li key={p.id} className={p.enabled ? '' : 'disabled'}>
-              <strong>{p.label}</strong> — {p.note}
-            </li>
-          ))}
-        </ul>
-        <strong style={{ display: 'block', marginTop: '0.75rem' }}>Picture search sources</strong>
-        <ul>
-          {imageProviders.map((p) => (
             <li key={p.id} className={p.enabled ? '' : 'disabled'}>
               <strong>{p.label}</strong> — {p.note}
             </li>
@@ -592,21 +587,10 @@ export default function ItemsPage() {
 
       {status && <div className={`inv-status ${status.kind}`}>{status.text}</div>}
 
-      {(bulkRunning || bulkImageRunning) && (
+      {bulkRunning && (
         <div className="inv-bulk-progress">
-          {bulkRunning && (
-            <>
-              Looking up barcodes… {bulkProgress.done} / {bulkProgress.total} ({bulkProgress.found} found)
-              <progress value={bulkProgress.done} max={bulkProgress.total || 1} />
-            </>
-          )}
-          {bulkImageRunning && (
-            <>
-              Searching for pictures… {bulkImageProgress.done} / {bulkImageProgress.total} (
-              {bulkImageProgress.found} found)
-              <progress value={bulkImageProgress.done} max={bulkImageProgress.total || 1} />
-            </>
-          )}
+          Auto-filling info… {bulkProgress.done} / {bulkProgress.total} ({bulkProgress.found} updated)
+          <progress value={bulkProgress.done} max={bulkProgress.total || 1} />
           <button type="button" className="inv-btn" onClick={stopBulk} style={{ marginTop: '0.35rem' }}>
             Stop
           </button>
@@ -649,24 +633,30 @@ export default function ItemsPage() {
         >
           Add item
         </button>
+        <label className="inv-lookup-default">
+          Default lookup source
+          <select
+            value={defaultLookupSource}
+            onChange={(e) => setDefaultLookupSourceAndStore(e.target.value as BarcodeLookupProviderId)}
+            title="Used for Find Info when a row has no per-row source selected"
+          >
+            {BARCODE_LOOKUP_PROVIDER_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="button" className="inv-btn" onClick={() => void refresh()} disabled={loading}>
           Refresh
         </button>
         <button
           type="button"
           className="inv-btn inv-btn-primary"
-          onClick={() => void runBulkLookup()}
-          disabled={bulkRunning || bulkImageRunning || stats.missingBarcode === 0}
+          onClick={() => void runBulkFindInfo()}
+          disabled={bulkRunning}
         >
-          Auto-fill missing barcodes
-        </button>
-        <button
-          type="button"
-          className="inv-btn inv-btn-primary"
-          onClick={() => void runBulkImageLookup()}
-          disabled={bulkRunning || bulkImageRunning}
-        >
-          Auto-fill missing pictures
+          Auto-fill missing info
         </button>
       </div>
 
@@ -735,7 +725,28 @@ export default function ItemsPage() {
                         '—'
                       )}
                     </td>
-                    <td>{row.barcode_lookup_source || '—'}</td>
+                    <td className="inv-lookup-source-cell">
+                      <select
+                        className="inv-lookup-source-select"
+                        value={getLookupSource(row.id)}
+                        onChange={(e) =>
+                          setLookupSourceForRow(row.id, e.target.value as BarcodeLookupProviderId)
+                        }
+                        title="Lookup source for Find Info on this row"
+                        aria-label={`Lookup source for ${row.item || row.part_number || row.id}`}
+                      >
+                        {BARCODE_LOOKUP_PROVIDER_OPTIONS.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {row.barcode_lookup_source ? (
+                        <span className="inv-lookup-source-last" title="Last saved lookup">
+                          {row.barcode_lookup_source.replace(/^ebay:/, '')}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>{row.stock_available ?? '—'}</td>
                     <td className="inv-actions">
                       <button type="button" className="inv-btn" onClick={() => openEdit(row)}>
@@ -743,19 +754,11 @@ export default function ItemsPage() {
                       </button>
                       <button
                         type="button"
-                        className="inv-btn"
-                        onClick={() => void runLookupForRow(row, true)}
-                        disabled={lookupLoading || imageLookupLoading}
+                        className="inv-btn inv-btn-primary"
+                        onClick={() => void runFindInfoForRow(row, true)}
+                        disabled={infoLookupLoading}
                       >
-                        Find barcode
-                      </button>
-                      <button
-                        type="button"
-                        className="inv-btn"
-                        onClick={() => void runImageLookupForRow(row, true)}
-                        disabled={lookupLoading || imageLookupLoading}
-                      >
-                        Find picture
+                        Find Info
                       </button>
                       <button
                         type="button"
@@ -786,11 +789,11 @@ export default function ItemsPage() {
         <div className="inv-lookup-panel">
           <h3>
             Lookup: {lookupRow.part_number || lookupRow.item || lookupRow.id}
-            {(lookupLoading || imageLookupLoading) && ' — searching…'}
+            {(infoLookupLoading) && ' — searching…'}
           </h3>
           {lookupAttempts.length > 0 && (
             <>
-              <strong>Barcode sources</strong>
+              <strong>Product info sources</strong>
               <ul className="inv-attempts">
                 {lookupAttempts.map((a) => (
                   <li key={a.providerId} className={a.hit ? 'hit' : 'miss'}>
@@ -1032,19 +1035,19 @@ export default function ItemsPage() {
               </button>
                 <button
                   type="button"
-                  className="inv-btn"
-                  disabled={imageBusy || !editRow}
-                  onClick={() => editRow && void runImageLookupForRow(editRow, true)}
+                  className="inv-btn inv-btn-primary"
+                  disabled={infoLookupLoading || !editRow}
+                  onClick={() => editRow && void runFindInfoForRow(editRow, true)}
                 >
-                  Search for picture
+                  Find Info
                 </button>
                 <button
                   type="button"
                   className="inv-btn"
-                  onClick={() => void runLookupForRow(editRow, false)}
-                  disabled={lookupLoading || imageLookupLoading}
+                  onClick={() => editRow && void runFindInfoForRow(editRow, false)}
+                  disabled={infoLookupLoading || !editRow}
                 >
-                  Preview barcode lookup
+                  Preview lookup
                 </button>
             </div>
           </div>

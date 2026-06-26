@@ -1,3 +1,18 @@
+export type BarcodeLookupProviderId = 'catalog' | 'av_distributor' | 'upcitemdb' | 'serper' | 'auto'
+
+export type ImageLookupProviderId = 'product_page' | 'upcitemdb' | 'serper_images' | 'auto'
+
+export const BARCODE_LOOKUP_PROVIDER_OPTIONS: Array<{
+  id: BarcodeLookupProviderId
+  label: string
+}> = [
+  { id: 'auto', label: 'Auto (best match)' },
+  { id: 'catalog', label: 'Your items' },
+  { id: 'av_distributor', label: 'AV distributors & B&H' },
+  { id: 'upcitemdb', label: 'UPCitemdb' },
+  { id: 'serper', label: 'Web search (Serper)' },
+]
+
 export type ProductLookupInput = {
   part_number?: string | null
   manufacturer?: string | null
