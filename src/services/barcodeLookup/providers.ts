@@ -30,7 +30,8 @@ function resultFromBarcode(
   title: string | null,
   matchedPartNumber: string | null,
   productUrl: string | null,
-  imageUrl: string | null = null
+  imageUrl: string | null = null,
+  manufacturer: string | null = null
 ): BarcodeFindResult | null {
   const digits = barcode.replace(/\D/g, '')
   if (!validBarcode(digits)) return null
@@ -40,8 +41,43 @@ function resultFromBarcode(
     confidence,
     title,
     matchedPartNumber,
+    manufacturer,
     productUrl,
     imageUrl,
+  }
+}
+
+function resultFromProductMeta(
+  source: string,
+  confidence: BarcodeFindResult['confidence'],
+  fields: {
+    barcode?: string | null
+    title?: string | null
+    matchedPartNumber?: string | null
+    manufacturer?: string | null
+    productUrl?: string | null
+    imageUrl?: string | null
+  }
+): BarcodeFindResult | null {
+  const digits = (fields.barcode ?? '').replace(/\D/g, '')
+  const barcode = validBarcode(digits) ? digits : ''
+  const hasData = Boolean(
+    barcode ||
+      fields.matchedPartNumber?.trim() ||
+      fields.title?.trim() ||
+      fields.imageUrl?.trim() ||
+      fields.manufacturer?.trim()
+  )
+  if (!hasData) return null
+  return {
+    barcode,
+    source,
+    confidence,
+    title: fields.title ?? null,
+    matchedPartNumber: fields.matchedPartNumber ?? null,
+    manufacturer: fields.manufacturer ?? null,
+    productUrl: fields.productUrl ?? null,
+    imageUrl: fields.imageUrl ?? null,
   }
 }
 
@@ -454,6 +490,133 @@ export async function lookupSerperProduct(
   return null
 }
 
+/** Scrape the purchase / product URL already on the item row. */
+export async function lookupFromProductUrl(input: ProductLookupInput): Promise<BarcodeFindResult | null> {
+  const pageUrl = (input.purchase_url ?? '').trim()
+  if (!pageUrl) return null
+  const enriched = enrichLookupInput(input)
+  const hint = enriched.part_number ?? extractModelFromUrl(pageUrl)
+  const localPart = extractModelFromUrl(pageUrl)
+  const localMfr = inferBrandFromUrl(pageUrl)
+
+  const details = await fetchProductPageDetails(pageUrl, hint)
+  if (details) {
+    return resultFromProductMeta('Product URL', 'high', {
+      barcode: enriched.barcode,
+      title: details.cleanTitle ?? details.title,
+      matchedPartNumber: details.partNumber ?? localPart ?? hint,
+      manufacturer: details.manufacturer ?? localMfr,
+      productUrl: pageUrl,
+      imageUrl:
+        details.imageUrl && isLikelyProductImageUrl(details.imageUrl) ? details.imageUrl : null,
+    })
+  }
+
+  if (localPart || localMfr) {
+    return resultFromProductMeta('Product URL (slug)', 'medium', {
+      barcode: enriched.barcode,
+      matchedPartNumber: localPart,
+      manufacturer: localMfr,
+      productUrl: pageUrl,
+    })
+  }
+  return null
+}
+
+function inferBrandFromUrl(pageUrl: string): string | null {
+  try {
+    const slug = decodeURIComponent(new URL(pageUrl).pathname).split('/').filter(Boolean).pop() ?? ''
+    const brand = slug.split(/[-_]/)[0]?.trim()
+    if (!brand || brand.length < 2 || !/^[a-z]+$/i.test(brand)) return null
+    const known: Record<string, string> = {
+      samsung: 'Samsung',
+      lg: 'LG',
+      sony: 'Sony',
+      vizio: 'Vizio',
+      tcl: 'TCL',
+      hisense: 'Hisense',
+    }
+    return known[brand.toLowerCase()] ?? brand.charAt(0).toUpperCase() + brand.slice(1).toLowerCase()
+  } catch {
+    return null
+  }
+}
+
+/** Reverse lookup when the row already has a barcode. */
+export async function lookupByBarcodeInput(
+  input: ProductLookupInput,
+  catalog?: BarcodeCatalogItem[]
+): Promise<BarcodeFindResult | null> {
+  const code = (input.barcode ?? '').replace(/\D/g, '')
+  if (!validBarcode(code)) return null
+  const hit = await lookupProductByBarcode(code, { catalog })
+  return hit ? productLookupToFindResult(hit) : null
+}
+
+/** Site-scoped retailer search (B&H, Best Buy, etc.). */
+export async function lookupRetailerSite(
+  input: ProductLookupInput,
+  apiKey: string,
+  siteHost: string,
+  sourceLabel: string
+): Promise<BarcodeFindResult | null> {
+  const enriched = enrichLookupInput(input)
+  const part = enriched.part_number?.trim()
+  const mfr = enriched.manufacturer?.trim()
+  const item = enriched.item?.trim()
+  const barcode = enriched.barcode?.replace(/\D/g, '')
+
+  const queries = [
+    barcode ? `${barcode} site:${siteHost}` : '',
+    part ? `${part} site:${siteHost}` : '',
+    mfr && part ? `${mfr} ${part} site:${siteHost}` : '',
+    item ? `${mfr ? `${mfr} ` : ''}${item} site:${siteHost}` : '',
+    barcode ? `${barcode} UPC site:${siteHost}` : '',
+  ].filter(Boolean)
+
+  for (const q of queries) {
+    const organic = await serperWebSearch(q, apiKey, 10)
+    const chosen =
+      organic.find((r) => r.link?.toLowerCase().includes(siteHost.toLowerCase())) ?? null
+    if (!chosen?.link) continue
+
+    const meta = await fetchProductPageDetails(chosen.link, part)
+    const blob = `${chosen.title ?? ''} ${organic.find((r) => r.link === chosen.link)?.snippet ?? ''}`
+    const codes = extractBarcodesFromText(blob)
+    const pageCodes = meta ? extractBarcodesFromText(`${meta.title ?? ''}`) : []
+    const allCodes = [...new Set([...codes, ...pageCodes])]
+    const code = allCodes[0] || (validBarcode(barcode ?? '') ? barcode : '')
+
+    const imageUrl =
+      meta?.imageUrl && isLikelyProductImageUrl(meta.imageUrl) ? meta.imageUrl : null
+    const title = meta?.cleanTitle ?? meta?.title ?? chosen.title ?? null
+
+    if (code) {
+      return resultFromBarcode(
+        code,
+        sourceLabel,
+        'high',
+        title,
+        meta?.partNumber ?? part ?? extractModelFromUrl(chosen.link),
+        chosen.link,
+        imageUrl,
+        meta?.manufacturer ?? mfr ?? null
+      )
+    }
+
+    const metaOnly = resultFromProductMeta(sourceLabel, 'medium', {
+      barcode,
+      title,
+      matchedPartNumber: meta?.partNumber ?? part ?? extractModelFromUrl(chosen.link),
+      manufacturer: meta?.manufacturer ?? mfr ?? null,
+      productUrl: chosen.link,
+      imageUrl,
+    })
+    if (metaOnly) return metaOnly
+  }
+  return null
+}
+
 /** Reverse lookup: barcode → product details (for scan modal). */
 export async function lookupProductByBarcode(
   barcode: string,
@@ -510,6 +673,7 @@ export function productLookupToFindResult(r: ProductLookupResult): BarcodeFindRe
     confidence: r.confidence,
     title: r.name,
     matchedPartNumber: r.partNumber,
+    manufacturer: r.manufacturer,
     productUrl: r.sourceUrl,
     imageUrl: r.imageUrl,
   }

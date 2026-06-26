@@ -13,24 +13,34 @@ import {
   lookupAvProductByPart,
   lookupMarketplaceSearch,
   lookupSerperProduct,
+  lookupFromProductUrl,
+  lookupByBarcodeInput,
+  lookupRetailerSite,
+  lookupUpcItemDbSearch,
 } from './providers'
 import {
   fetchProductPageDetails,
   isLikelyProductImageUrl,
+  scoreProductImageUrl,
 } from './htmlExtract'
 import { buildAvProductSearchQueries, linkMatchesAvSource } from './avSources'
-import { lookupUpcItemDbSearch } from './providers'
 import { serperImageSearch, serperWebSearch } from './serperClient'
 import { extractModelFromTitle } from './productPageExtract'
 import type { ProductImageResult } from './types'
 
 const SOURCE_RANK: Record<string, number> = {
-  'Your items': 100,
-  'Your items (item name)': 90,
-  'AV distributor': 80,
-  'AV manufacturer': 70,
-  UPCitemdb: 60,
-  'Web search (Serper)': 40,
+  'Product URL': 98,
+  'B&H Photo': 96,
+  'Best Buy': 94,
+  Crutchfield: 92,
+  'Samsung.com': 90,
+  'AV distributor': 85,
+  'AV manufacturer': 75,
+  UPCitemdb: 65,
+  'Barcode lookup': 88,
+  'Web search (Serper)': 45,
+  'Your items': 35,
+  'Your items (item name)': 30,
 }
 
 const CONFIDENCE_RANK: Record<BarcodeFindResult['confidence'], number> = {
@@ -44,6 +54,9 @@ function pickBestBarcode(hits: BarcodeFindResult[]): BarcodeFindResult | null {
   return hits.sort((a, b) => {
     const src = (SOURCE_RANK[b.source] ?? 0) - (SOURCE_RANK[a.source] ?? 0)
     if (src !== 0) return src
+    const partScore =
+      (b.matchedPartNumber?.length ?? 0) - (a.matchedPartNumber?.length ?? 0)
+    if (partScore !== 0) return partScore
     return CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence]
   })[0]
 }
@@ -126,6 +139,7 @@ async function lookupProductPageImage(
       }
     }
   }
+  if (!apiKey) return null
   for (const q of buildAvProductSearchQueries(input)) {
     const organic = await serperWebSearch(q, apiKey, 8)
     const row =
@@ -151,7 +165,8 @@ async function lookupUpcItemDbImage(input: ProductLookupInput): Promise<ProductI
   const part = (input.part_number || '').trim()
   const mfr = (input.manufacturer || '').trim()
   const item = (input.item || '').trim()
-  const queries = [part, mfr && part ? `${mfr} ${part}` : '', item].filter(Boolean)
+  const barcode = (input.barcode || '').replace(/\D/g, '')
+  const queries = [barcode, part, mfr && part ? `${mfr} ${part}` : '', item].filter(Boolean)
   for (const q of queries) {
     const hit = await lookupUpcItemDbSearch(q)
     if (hit?.imageUrl && isLikelyProductImageUrl(hit.imageUrl)) {
@@ -195,11 +210,88 @@ async function lookupSerperImages(
 function imageProvidersForBarcodeChoice(
   providerId: BarcodeLookupProviderId
 ): ImageLookupProviderId[] {
-  if (providerId === 'upcitemdb') return ['product_page', 'upcitemdb']
+  if (providerId === 'product_url' || providerId === 'bhphoto' || providerId === 'bestbuy') {
+    return ['product_page', 'upcitemdb']
+  }
+  if (providerId === 'upcitemdb' || providerId === 'barcode') return ['product_page', 'upcitemdb']
   if (providerId === 'serper') return ['product_page', 'serper_images']
-  if (providerId === 'av_distributor') return ['product_page', 'upcitemdb']
   if (providerId === 'catalog') return ['product_page', 'upcitemdb']
   return ['product_page', 'upcitemdb', 'serper_images']
+}
+
+function buildProviderList(
+  enriched: ProductLookupInput,
+  catalog: BarcodeCatalogItem[] | undefined,
+  serperKey: string | undefined,
+  skipSerper: boolean | undefined
+): Array<{ id: BarcodeLookupProviderId; label: string; run: () => Promise<BarcodeFindResult | null> }> {
+  const list: Array<{
+    id: BarcodeLookupProviderId
+    label: string
+    run: () => Promise<BarcodeFindResult | null>
+  }> = []
+
+  if (enriched.purchase_url?.trim()) {
+    list.push({
+      id: 'product_url',
+      label: 'Product URL on row',
+      run: () => lookupFromProductUrl(enriched),
+    })
+  }
+  if (enriched.barcode?.replace(/\D/g, '').length) {
+    list.push({
+      id: 'barcode',
+      label: 'Barcode / UPC lookup',
+      run: () => lookupByBarcodeInput(enriched, catalog),
+    })
+  }
+  if (serperKey && !skipSerper) {
+    list.push(
+      {
+        id: 'bhphoto',
+        label: 'B&H Photo',
+        run: () => lookupRetailerSite(enriched, serperKey, 'bhphotovideo.com', 'B&H Photo'),
+      },
+      {
+        id: 'bestbuy',
+        label: 'Best Buy',
+        run: () => lookupRetailerSite(enriched, serperKey, 'bestbuy.com', 'Best Buy'),
+      },
+      {
+        id: 'crutchfield',
+        label: 'Crutchfield',
+        run: () => lookupRetailerSite(enriched, serperKey, 'crutchfield.com', 'Crutchfield'),
+      },
+      {
+        id: 'samsung',
+        label: 'Samsung.com',
+        run: () => lookupRetailerSite(enriched, serperKey, 'samsung.com', 'Samsung.com'),
+      },
+      {
+        id: 'av_distributor',
+        label: 'AV distributors & manufacturers',
+        run: () => lookupAvProductByPart(enriched, serperKey),
+      }
+    )
+  }
+  list.push({
+    id: 'upcitemdb',
+    label: 'UPCitemdb',
+    run: () => lookupMarketplaceSearch(enriched),
+  })
+  if (serperKey && !skipSerper) {
+    list.push({
+      id: 'serper',
+      label: 'Web search (Serper)',
+      run: () => lookupSerperProduct(enriched, serperKey),
+    })
+  }
+  list.push({
+    id: 'catalog',
+    label: 'Your items',
+    run: () => lookupCatalogByProduct(enriched, catalog),
+  })
+  return list
 }
 
 export async function findBarcodeForItem(
@@ -214,28 +306,7 @@ export async function findBarcodeForItem(
   const serperKey = import.meta.env.VITE_SERPER_API_KEY as string | undefined
   const providerId = options?.providerId ?? 'auto'
 
-  const allProviders: Array<{ id: string; label: string; run: () => Promise<BarcodeFindResult | null> }> = [
-    { id: 'catalog', label: 'Your items', run: () => lookupCatalogByProduct(enriched, options?.catalog) },
-    ...(serperKey && !options?.skipSerper
-      ? [
-          {
-            id: 'av_distributor',
-            label: 'AV distributors & manufacturers',
-            run: () => lookupAvProductByPart(enriched, serperKey),
-          },
-        ]
-      : []),
-    { id: 'upcitemdb', label: 'UPCitemdb', run: () => lookupMarketplaceSearch(enriched) },
-    ...(serperKey && !options?.skipSerper
-      ? [
-          {
-            id: 'serper',
-            label: 'Web search (Serper)',
-            run: () => lookupSerperProduct(enriched, serperKey),
-          },
-        ]
-      : []),
-  ]
+  const allProviders = buildProviderList(enriched, options?.catalog, serperKey, options?.skipSerper)
 
   const selected =
     providerId === 'auto' ? allProviders : allProviders.filter((p) => p.id === providerId)
@@ -256,6 +327,8 @@ export async function findProductImageForItem(
     productUrl?: string | null
     providerId?: BarcodeLookupProviderId
     imageProviderId?: ImageLookupProviderId
+    forceReplace?: boolean
+    existingPictureUrl?: string | null
   }
 ): Promise<{ best: ProductImageResult | null; attempts: ImageProviderAttempt[] }> {
   const enriched = enrichLookupInput(input)
@@ -263,7 +336,8 @@ export async function findProductImageForItem(
   const hasQuery = Boolean(
     (enriched.part_number || '').trim() ||
       (enriched.item || '').trim() ||
-      (enriched.manufacturer || '').trim()
+      (enriched.manufacturer || '').trim() ||
+      (enriched.barcode || '').trim()
   )
   if (!hasQuery && !options?.productUrl) return { best: null, attempts: [] }
 
@@ -275,11 +349,12 @@ export async function findProductImageForItem(
       : [imageProviderId]
 
   const runners: Array<{ id: string; label: string; run: () => Promise<ProductImageResult | null> }> = []
-  if (providerIds.includes('product_page') && serperKey && !options?.skipSerper) {
+  const productUrl = options?.productUrl ?? enriched.purchase_url
+  if (providerIds.includes('product_page') && (serperKey || productUrl) && !options?.skipSerper) {
     runners.push({
       id: 'product_page',
       label: 'Product page scrape',
-      run: () => lookupProductPageImage(enriched, serperKey, options?.productUrl),
+      run: () => lookupProductPageImage(enriched, serperKey ?? '', productUrl),
     })
   }
   if (providerIds.includes('upcitemdb')) {
@@ -298,7 +373,16 @@ export async function findProductImageForItem(
   }
 
   const attempts = await Promise.all(runners.map((r) => runImageProvider(r.id, r.label, r.run)))
-  const hits = attempts.map((a) => a.hit).filter((h): h is ProductImageResult => h != null)
+  const hint = modelHintFromInput(enriched)
+  const existingScore = scoreProductImageUrl(options?.existingPictureUrl ?? '', hint)
+  const hits = attempts
+    .map((a) => a.hit)
+    .filter((h): h is ProductImageResult => {
+      if (!h) return false
+      if (!options?.forceReplace) return true
+      return scoreProductImageUrl(h.imageUrl, hint) >= existingScore
+    })
+
   if (hits.length === 0) return { best: null, attempts }
 
   const CONFIDENCE_RANK: Record<ProductImageResult['confidence'], number> = {
@@ -306,9 +390,12 @@ export async function findProductImageForItem(
     medium: 2,
     low: 1,
   }
-  const best = hits.sort(
-    (a, b) => CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence]
-  )[0]
+  const best = hits.sort((a, b) => {
+    const scoreDiff =
+      scoreProductImageUrl(b.imageUrl, hint) - scoreProductImageUrl(a.imageUrl, hint)
+    if (scoreDiff !== 0) return scoreDiff
+    return CONFIDENCE_RANK[b.confidence] - CONFIDENCE_RANK[a.confidence]
+  })[0]
   return { best, attempts }
 }
 

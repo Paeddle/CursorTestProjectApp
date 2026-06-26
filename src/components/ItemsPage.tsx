@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BarcodeCatalogItem } from '../types/poCheckin'
 import type { ItemBarcodeFilter, ItemRecord } from '../types/items'
 import {
-  applyBarcodeLookupToItem,
+  applyFindInfoToItem,
   BarcodeAlreadyAssignedError,
   createItemRow,
   deleteItemRow,
@@ -22,6 +22,7 @@ import {
 import { getBarcodeProviderStatus } from '../services/barcodeLookup/findBarcodeForItem'
 import type { BarcodeFindResult, BarcodeLookupProviderId, ImageProviderAttempt, ProviderAttempt } from '../services/barcodeLookup/types'
 import { BARCODE_LOOKUP_PROVIDER_OPTIONS } from '../services/barcodeLookup/types'
+import { isLikelyProductImageUrl } from '../services/barcodeLookup/htmlExtract'
 import {
   formatExternalUrl,
   getItemPicturePublicUrl,
@@ -42,7 +43,7 @@ function readDefaultLookupSource(): BarcodeLookupProviderId {
   } catch {
     /* ignore */
   }
-  return 'av_distributor'
+  return 'bhphoto'
 }
 
 const EMPTY_NEW_ITEM: NewItemInput = {
@@ -91,19 +92,32 @@ export default function ItemsPage() {
     manufacturer: row.manufacturer,
     item: row.item,
     description: row.description_customer,
+    barcode: row.barcode,
+    purchase_url: row.purchase_url,
   })
 
   const rowNeedsPicture = (row: ItemRecord) =>
     !row.picture_path?.trim() && !row.picture_url?.trim()
 
-  const applyImageToRow = async (row: ItemRecord, imageUrl: string, productUrl?: string | null) => {
-    const patch: Parameters<typeof updateItemRow>[1] = { picture_url: imageUrl }
-    if (productUrl?.trim() && !row.purchase_url?.trim()) patch.purchase_url = productUrl.trim()
-    let updated = await updateItemRow(row.id, patch)
-    try {
-      updated = await importItemPictureFromUrl(row.id, imageUrl)
-    } catch {
-      /* keep external URL if Edge Function unavailable */
+  const applyImageToRow = async (
+    row: ItemRecord,
+    imageUrl: string,
+    productUrl?: string | null,
+    forceReplace = false
+  ) => {
+    const patch: Parameters<typeof updateItemRow>[1] = {}
+    if (forceReplace || !row.picture_url?.trim()) patch.picture_url = imageUrl
+    if (productUrl?.trim() && (forceReplace || !row.purchase_url?.trim())) {
+      patch.purchase_url = productUrl.trim()
+    }
+    let updated =
+      Object.keys(patch).length > 0 ? await updateItemRow(row.id, patch) : row
+    if (forceReplace || !updated.picture_path?.trim()) {
+      try {
+        updated = await importItemPictureFromUrl(row.id, imageUrl)
+      } catch {
+        /* keep external URL if Edge Function unavailable */
+      }
     }
     return updated
   }
@@ -128,15 +142,19 @@ export default function ItemsPage() {
     row: ItemRecord,
     applyIfFound: boolean,
     providerId: BarcodeLookupProviderId,
-    productUrl?: string | null
+    productUrl?: string | null,
+    forceReplace = false
   ): Promise<{ hit: Awaited<ReturnType<typeof findProductImageForItem>>['best']; row: ItemRecord }> => {
+    const existingUrl = row.picture_url ?? getItemPicturePublicUrl(row) ?? ''
     const { best, attempts } = await findProductImageForItem(itemLookupInput(row), {
       providerId,
       productUrl: productUrl ?? row.purchase_url,
+      forceReplace,
+      existingPictureUrl: existingUrl,
     })
     setImageAttempts(attempts)
     if (best && applyIfFound) {
-      const updated = await applyImageToRow(row, best.imageUrl, best.productUrl)
+      const updated = await applyImageToRow(row, best.imageUrl, best.productUrl, forceReplace)
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       return { hit: best, row: updated }
     }
@@ -200,30 +218,30 @@ export default function ItemsPage() {
     void refresh()
   }, [refresh])
 
-  const applyLookupMetadata = async (row: ItemRecord, best: BarcodeFindResult) => {
-    const patch: Parameters<typeof updateItemRow>[1] = {}
-    if (best.matchedPartNumber?.trim() && !row.part_number?.trim()) {
-      patch.part_number = best.matchedPartNumber.trim()
-    }
-    if (best.title?.trim() && (!row.item?.trim() || row.item.trim().length < best.title.trim().length)) {
-      patch.item = best.title.trim()
-    }
-    if (best.productUrl?.trim() && !row.purchase_url?.trim()) patch.purchase_url = best.productUrl.trim()
-    if (best.imageUrl?.trim() && rowNeedsPicture(row)) patch.picture_url = best.imageUrl.trim()
-    if (Object.keys(patch).length === 0) return row
-    let updated = await updateItemRow(row.id, patch)
-    if (patch.picture_url && !updated.picture_path) {
-      try {
-        updated = await importItemPictureFromUrl(row.id, patch.picture_url)
-      } catch {
-        /* keep external URL */
-      }
-    }
-    return updated
+  const applyLookupMetadata = async (
+    row: ItemRecord,
+    best: BarcodeFindResult,
+    forceReplace: boolean
+  ) => {
+    return applyFindInfoToItem(
+      row.id,
+      row,
+      {
+        barcode: best.barcode || row.barcode,
+        part_number: best.matchedPartNumber,
+        manufacturer: best.manufacturer,
+        item: best.title,
+        purchase_url: best.productUrl,
+        picture_url: best.imageUrl,
+        source: best.source,
+      },
+      { forceReplace }
+    )
   }
 
   const runFindInfoForRow = async (row: ItemRecord, applyIfFound: boolean) => {
     const providerId = getLookupSource(row.id)
+    const forceReplace = applyIfFound
     setLookupRow(row)
     setInfoLookupLoading(true)
     setLookupAttempts([])
@@ -232,55 +250,57 @@ export default function ItemsPage() {
       const { best, attempts } = await findBarcodeForItem(itemLookupInput(row), { catalog, providerId })
       setLookupAttempts(attempts)
       let finalRow = row
-      let barcodeApplied = false
-      let imageApplied = false
+      let updated = false
 
       if (best && applyIfFound) {
-        const pictureUrl =
-          best.imageUrl && rowNeedsPicture(row) ? best.imageUrl : undefined
         try {
-          finalRow = await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
-            purchaseUrl:
-              best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
-            pictureUrl,
-          })
-          barcodeApplied = true
+          finalRow = await applyLookupMetadata(row, best, forceReplace)
+          updated = true
         } catch (e) {
           if (e instanceof BarcodeAlreadyAssignedError) {
-            finalRow = await applyLookupMetadata(row, best)
+            finalRow = await applyLookupMetadata(row, { ...best, barcode: '' }, forceReplace)
+            updated = true
             const existingLabel =
               e.existingItem.item || e.existingItem.part_number || e.existingItem.barcode
             setStatus({
               kind: 'info',
-              text: `Barcode ${e.barcode} is already on "${existingLabel}". Filled other fields — delete duplicate if same product.`,
+              text: `Barcode ${e.barcode} is already on "${existingLabel}". Updated other fields on this row.`,
             })
           } else {
             throw e
           }
         }
-        if (pictureUrl && !finalRow.picture_path) {
+        if (
+          best.imageUrl &&
+          isLikelyProductImageUrl(best.imageUrl) &&
+          (forceReplace || !finalRow.picture_path?.trim())
+        ) {
           try {
-            finalRow = await importItemPictureFromUrl(row.id, pictureUrl)
-            imageApplied = true
+            finalRow = await importItemPictureFromUrl(finalRow.id, best.imageUrl)
+            updated = true
           } catch {
-            /* external URL saved */
+            /* external URL saved on row */
           }
         }
-      } else if (best && !applyIfFound) {
-        /* preview only — attempts shown in panel */
       }
 
       const productUrl =
         best?.productUrl?.trim() || finalRow.purchase_url?.trim() || row.purchase_url?.trim() || null
-      if (applyIfFound && rowNeedsPicture(finalRow)) {
-        const imgResult = await enrichRowWithImage(finalRow, true, providerId, productUrl)
+      const imgResult = await enrichRowWithImage(
+        finalRow,
+        applyIfFound,
+        providerId,
+        productUrl,
+        forceReplace
+      )
+      if (applyIfFound && imgResult.hit) {
         finalRow = imgResult.row
-        imageApplied = imageApplied || Boolean(imgResult.hit)
+        updated = true
       }
 
       if (applyIfFound) {
         setRows((prev) => prev.map((r) => (r.id === finalRow.id ? finalRow : r)))
-        if (barcodeApplied) {
+        if (best?.barcode && !row.barcode?.trim()) {
           setStats((s) => ({
             ...s,
             missingBarcode: Math.max(0, s.missingBarcode - 1),
@@ -289,14 +309,19 @@ export default function ItemsPage() {
         }
         const sourceLabel =
           BARCODE_LOOKUP_PROVIDER_OPTIONS.find((o) => o.id === providerId)?.label ?? providerId
-        if (best) {
-          const imageNote = finalRow.picture_path || finalRow.picture_url ? ' Picture saved.' : ''
+        if (!updated && forceReplace) {
+          setStatus({
+            kind: 'info',
+            text: `Lookup via ${sourceLabel} finished but no fields changed.`,
+          })
+        } else if (best || imgResult.hit) {
+          const parts: string[] = []
+          if (finalRow.part_number?.trim()) parts.push(`part # ${finalRow.part_number}`)
+          if (finalRow.picture_path || finalRow.picture_url) parts.push('picture saved')
           setStatus({
             kind: 'ok',
-            text: `Found ${best.barcode} via ${best.source} (${sourceLabel}).${imageNote}`,
+            text: `Updated via ${sourceLabel}${parts.length ? `: ${parts.join(', ')}` : ''}.`,
           })
-        } else if (imageApplied) {
-          setStatus({ kind: 'ok', text: `No barcode from ${sourceLabel}, but found a product image.` })
         } else {
           setStatus({
             kind: 'info',
@@ -306,7 +331,7 @@ export default function ItemsPage() {
         setLookupRow(null)
       }
 
-      return { barcode: best, image: imageApplied ? finalRow : null }
+      return { barcode: best, image: imgResult.hit }
     } catch (e) {
       setStatus({ kind: 'err', text: e instanceof Error ? e.message : 'Lookup failed' })
       return null
@@ -334,26 +359,46 @@ export default function ItemsPage() {
         const row = needsInfo[i]
         const providerId = getLookupSource(row.id)
         const { best } = await findBarcodeForItem(itemLookupInput(row), { catalog, providerId })
-        let updated = false
+        let rowUpdated = false
         if (best) {
           try {
-            await applyBarcodeLookupToItem(row.id, best.barcode, best.source, {
-              purchaseUrl: best.productUrl && !row.purchase_url?.trim() ? best.productUrl : undefined,
-              pictureUrl: best.imageUrl && rowNeedsPicture(row) ? best.imageUrl : undefined,
-            })
-            updated = true
+            await applyFindInfoToItem(
+              row.id,
+              row,
+              {
+                barcode: best.barcode,
+                part_number: best.matchedPartNumber,
+                manufacturer: best.manufacturer,
+                item: best.title,
+                purchase_url: best.productUrl,
+                picture_url: best.imageUrl,
+                source: best.source,
+              },
+              { forceReplace: true }
+            )
+            rowUpdated = true
           } catch (e) {
             if (e instanceof BarcodeAlreadyAssignedError) {
-              await applyLookupMetadata(row, best)
-              updated = true
+              await applyFindInfoToItem(
+                row.id,
+                row,
+                {
+                  part_number: best.matchedPartNumber,
+                  manufacturer: best.manufacturer,
+                  item: best.title,
+                  purchase_url: best.productUrl,
+                  picture_url: best.imageUrl,
+                  source: best.source,
+                },
+                { forceReplace: true }
+              )
+              rowUpdated = true
             }
           }
         }
-        if (rowNeedsPicture(row)) {
-          const { hit } = await enrichRowWithImage(row, true, providerId, best?.productUrl ?? row.purchase_url)
-          if (hit) updated = true
-        }
-        if (updated) found++
+        const { hit } = await enrichRowWithImage(row, true, providerId, best?.productUrl ?? row.purchase_url, true)
+        if (hit) rowUpdated = true
+        if (rowUpdated) found++
         setBulkProgress({ done: i + 1, total: needsInfo.length, found })
         await sleep(400)
       }
@@ -572,9 +617,10 @@ export default function ItemsPage() {
       <section className="inv-providers" aria-label="Lookup sources">
         <strong>Lookup sources</strong>
         <p className="inv-providers-hint">
-          Use the <strong>Lookup source</strong> dropdown on each row (or the default below) to choose
-          where <strong>Find Info</strong> searches. Default is AV distributors &amp; B&H so new lookups
-          skip matching other items in your database.
+          Use the <strong>Lookup source</strong> dropdown on each row (or the default below).{' '}
+          <strong>Find Info</strong> replaces existing part #, title, URL, and picture when the
+          lookup finds better data. For TVs, try <strong>B&H Photo</strong> or{' '}
+          <strong>Barcode / UPC lookup</strong>.
         </p>
         <ul>
           {providers.map((p) => (

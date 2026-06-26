@@ -33,6 +33,8 @@ export function enrichLookupInput(input: ProductLookupInput): ProductLookupInput
     ...input,
     part_number: derivedPart || input.part_number,
     manufacturer: derivedMfr || input.manufacturer,
+    barcode: input.barcode?.trim() || input.barcode,
+    purchase_url: input.purchase_url?.trim() || input.purchase_url,
   }
 }
 

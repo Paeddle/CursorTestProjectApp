@@ -1,4 +1,15 @@
-export type BarcodeLookupProviderId = 'catalog' | 'av_distributor' | 'upcitemdb' | 'serper' | 'auto'
+export type BarcodeLookupProviderId =
+  | 'auto'
+  | 'catalog'
+  | 'av_distributor'
+  | 'bhphoto'
+  | 'bestbuy'
+  | 'crutchfield'
+  | 'samsung'
+  | 'barcode'
+  | 'product_url'
+  | 'upcitemdb'
+  | 'serper'
 
 export type ImageLookupProviderId = 'product_page' | 'upcitemdb' | 'serper_images' | 'auto'
 
@@ -7,10 +18,16 @@ export const BARCODE_LOOKUP_PROVIDER_OPTIONS: Array<{
   label: string
 }> = [
   { id: 'auto', label: 'Auto (best match)' },
-  { id: 'catalog', label: 'Your items' },
-  { id: 'av_distributor', label: 'AV distributors & B&H' },
+  { id: 'product_url', label: 'Product URL on row' },
+  { id: 'barcode', label: 'Barcode / UPC lookup' },
+  { id: 'bhphoto', label: 'B&H Photo' },
+  { id: 'bestbuy', label: 'Best Buy' },
+  { id: 'crutchfield', label: 'Crutchfield' },
+  { id: 'samsung', label: 'Samsung.com' },
+  { id: 'av_distributor', label: 'AV distributors (ADI, Snap One…)' },
   { id: 'upcitemdb', label: 'UPCitemdb' },
   { id: 'serper', label: 'Web search (Serper)' },
+  { id: 'catalog', label: 'Your items (local)' },
 ]
 
 export type ProductLookupInput = {
@@ -18,6 +35,8 @@ export type ProductLookupInput = {
   manufacturer?: string | null
   item?: string | null
   description?: string | null
+  barcode?: string | null
+  purchase_url?: string | null
 }
 
 export type BarcodeFindResult = {
@@ -26,6 +45,7 @@ export type BarcodeFindResult = {
   confidence: 'high' | 'medium' | 'low'
   title: string | null
   matchedPartNumber: string | null
+  manufacturer: string | null
   productUrl: string | null
   imageUrl: string | null
 }

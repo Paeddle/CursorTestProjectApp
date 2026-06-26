@@ -213,6 +213,63 @@ export async function updateItemRow(
   return data as ItemRecord
 }
 
+export async function applyFindInfoToItem(
+  id: string,
+  existing: ItemRecord,
+  hit: {
+    barcode?: string | null
+    part_number?: string | null
+    manufacturer?: string | null
+    item?: string | null
+    purchase_url?: string | null
+    picture_url?: string | null
+    source: string
+  },
+  options?: { forceReplace?: boolean }
+): Promise<ItemRecord> {
+  const force = Boolean(options?.forceReplace)
+
+  const shouldSet = (prev: string | null | undefined, next: string | null | undefined) => {
+    const n = (next ?? '').trim()
+    if (!n) return false
+    const p = (prev ?? '').trim()
+    if (!p) return true
+    if (!force) return false
+    return n !== p
+  }
+
+  const patch: Parameters<typeof updateItemRow>[1] = {
+    barcode_lookup_source: hit.source,
+    barcode_lookup_at: new Date().toISOString(),
+  }
+
+  const barcodeDigits = (hit.barcode ?? '').replace(/\D/g, '')
+  if (barcodeDigits.length >= 8 && shouldSet(existing.barcode, barcodeDigits)) {
+    await assertBarcodeAvailable(barcodeDigits, id)
+    patch.barcode = barcodeDigits
+  }
+  if (shouldSet(existing.part_number, hit.part_number)) patch.part_number = hit.part_number!.trim()
+  if (shouldSet(existing.manufacturer, hit.manufacturer)) patch.manufacturer = hit.manufacturer!.trim()
+  if (shouldSet(existing.item, hit.item)) patch.item = hit.item!.trim()
+  if (shouldSet(existing.purchase_url, hit.purchase_url)) patch.purchase_url = hit.purchase_url!.trim()
+  if (shouldSet(existing.picture_url, hit.picture_url)) patch.picture_url = hit.picture_url!.trim()
+
+  const hasFieldChange = Object.keys(patch).some(
+    (k) => k !== 'barcode_lookup_source' && k !== 'barcode_lookup_at'
+  )
+  if (!hasFieldChange) {
+    if (force && (existing.barcode_lookup_source ?? '') !== hit.source) {
+      return updateItemRow(id, {
+        barcode_lookup_source: hit.source,
+        barcode_lookup_at: new Date().toISOString(),
+      })
+    }
+    return existing
+  }
+
+  return updateItemRow(id, patch)
+}
+
 export async function applyBarcodeLookupToItem(
   id: string,
   barcode: string,
