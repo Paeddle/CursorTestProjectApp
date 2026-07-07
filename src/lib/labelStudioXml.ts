@@ -1,6 +1,9 @@
 import {
   DYMO_PAPER_TEMPLATES,
   dymoTemplateForStudioPrint,
+  durableLw450Print30330Template,
+  durableLw450PrintGpdTemplate,
+  durableLw450PrintHybridTemplate,
   escapeXmlText,
   type DymoPaperTemplate,
 } from './dymoLabelXml'
@@ -14,7 +17,8 @@ import { barcodeCaptionFontPt, splitBarcodeElementBounds } from './labelStudioBa
 import { fetchUrlAsPngBase64 } from './labelStudioImage'
 import { STUDIO_ELEMENT_IMAGE_OBJECT_OPTIONS } from './labelStudioRaster'
 import { buildDesktopLabelXmlFromStudioForPrint } from './labelStudioDesktopXml'
-import { durableLw450Print30330Template } from './dymoLabelXml'
+import { composeDurableStudioLabelRasterBase64 } from './labelStudioRasterPrint'
+import { studioPrintDrawBounds } from './labelStudioGeometry'
 import { mergedBarcodePayloadForElement, mergedImageUrlForElement, mergedLinesForElement } from './labelStudioMerge'
 import { qrPngBase64ForPrint, STUDIO_QR_PRINT_IMAGE_OPTIONS } from './labelStudioQr'
 import type {
@@ -449,6 +453,41 @@ export async function buildLabelXmlFromStudioForPrint(
   return studioDieCutXml(envelope.printTemplate, objects.join(''), options)
 }
 
+async function buildStudioRasterDieCutXml(
+  template: LabelStudioTemplate,
+  item: LabelStudioItem,
+  designPaper: DymoPaperTemplate,
+  printPaper: DymoPaperTemplate,
+  buildOptions?: LabelStudioPrintBuildOptions
+): Promise<string | null> {
+  const png = await composeDurableStudioLabelRasterBase64(
+    template,
+    item,
+    designPaper,
+    printPaper,
+    { thermalImage: buildOptions?.thermalImage }
+  )
+  if (!png) return null
+  const draw = studioPrintDrawBounds(printPaper)
+  const objectXml = buildRasterImageObjectXml('LABEL', png, draw, {
+    scaleMode: 'Fill',
+    horizontalAlignment: 'Left',
+    verticalAlignment: 'Top',
+  })
+  return studioDieCutXml(printPaper, objectXml)
+}
+
+function uniqueLabelXml(candidates: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const xml of candidates) {
+    if (!xml || seen.has(xml)) continue
+    seen.add(xml)
+    out.push(xml)
+  }
+  return out
+}
+
 export async function buildLabelXmlCandidatesFromStudioForPrint(
   template: LabelStudioTemplate,
   item: LabelStudioItem,
@@ -456,25 +495,64 @@ export async function buildLabelXmlCandidatesFromStudioForPrint(
 ): Promise<string[]> {
   const preferred = paperTemplateById(template.paperTemplateId, DYMO_PAPER_TEMPLATES)
   if (preferred.id === 'Durable1933085') {
-    const desktop = await buildDesktopLabelXmlFromStudioForPrint(template, item, {
-      thermalImage: buildOptions?.thermalImage,
-    })
-    const diecutFallback = await buildLabelXmlFromStudioForPrint(
-      template,
-      item,
-      preferred,
-      buildOptions,
-      durableLw450Print30330Template()
-    )
-    return [desktop, diecutFallback]
+    const shipping = DYMO_PAPER_TEMPLATES.find((t) => t.id === 'Shipping')
+    const [
+      desktop,
+      diecutNative,
+      diecut30330,
+      diecutGpd,
+      raster30330,
+      diecutShipping,
+    ] = await Promise.all([
+      buildDesktopLabelXmlFromStudioForPrint(template, item, {
+        thermalImage: buildOptions?.thermalImage,
+      }),
+      buildLabelXmlFromStudioForPrint(
+        template,
+        item,
+        preferred,
+        buildOptions,
+        durableLw450PrintHybridTemplate()
+      ),
+      buildLabelXmlFromStudioForPrint(
+        template,
+        item,
+        preferred,
+        buildOptions,
+        durableLw450Print30330Template()
+      ),
+      buildLabelXmlFromStudioForPrint(
+        template,
+        item,
+        preferred,
+        buildOptions,
+        durableLw450PrintGpdTemplate()
+      ),
+      buildStudioRasterDieCutXml(
+        template,
+        item,
+        preferred,
+        durableLw450Print30330Template(),
+        buildOptions
+      ),
+      shipping
+        ? buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions, shipping)
+        : Promise.resolve(''),
+    ])
+    return uniqueLabelXml([
+      desktop,
+      diecutNative,
+      diecut30330,
+      diecutGpd,
+      raster30330 ?? '',
+      diecutShipping,
+    ])
   }
-  const hybrid = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
-  if (preferred.id === 'Shipping' || preferred.id === 'Address30251') {
-    return [hybrid]
-  }
+
+  const primary = await buildLabelXmlFromStudioForPrint(template, item, preferred, buildOptions)
   const rest = DYMO_PAPER_TEMPLATES.filter((p) => p.id !== preferred.id)
   const more = await Promise.all(
     rest.map((paper) => buildLabelXmlFromStudioForPrint(template, item, paper, buildOptions))
   )
-  return [hybrid, ...more]
+  return uniqueLabelXml([primary, ...more])
 }

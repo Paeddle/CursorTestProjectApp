@@ -195,8 +195,24 @@ async function printOneLabelXml(
   assertDymoPrintSucceeded(result, 'PrintLabel2')
 }
 
-function formatDymoLabelXmlPrintFailure(errors: string[]): string {
+export function dymoDllNotFoundGuidance(paperTemplateId?: string): string {
+  const rollHint =
+    paperTemplateId === 'Durable1933085'
+      ? 'In DYMO Connect, open your LabelWriter → add/configure “LW Durable” (1933085) on the correct Twin Turbo roll (usually right).'
+      : 'In DYMO Connect, open your LabelWriter → add the roll size that matches “Label roll in printer” in Label Studio (30323 Shipping, 30256, etc.).'
+  return (
+    `${rollHint} Confirm the physical roll matches that setting. ` +
+    'If the roll is already listed, fully quit DYMO Connect and reopen it. ' +
+    'If the error persists, reinstall DYMO Connect.'
+  )
+}
+
+function formatDymoLabelXmlPrintFailure(errors: string[], paperTemplateId?: string): string {
+  const joined = errors.join('\n• ')
   const last = errors[errors.length - 1] ?? 'PrintLabel2 failed'
+  if (/dll was not found/i.test(joined)) {
+    return `${last}\n\n${dymoDllNotFoundGuidance(paperTemplateId)}`
+  }
   if (/diecutlabel|not declared/i.test(last)) {
     return (
       `${last}\n\n` +
@@ -212,7 +228,8 @@ export async function printLabelXmlViaWebService(
   candidates: string[],
   printerName?: string,
   twinTurboRoll?: DymoTwinTurboRoll,
-  printQuality?: DymoPrintQuality
+  printQuality?: DymoPrintQuality,
+  paperTemplateId?: string
 ): Promise<{ printer: string; service: DymoServiceEndpoint }> {
   if (candidates.length === 0) throw new Error('No label XML to print.')
 
@@ -239,7 +256,7 @@ export async function printLabelXmlViaWebService(
     }
   }
 
-  throw new Error(formatDymoLabelXmlPrintFailure(errors))
+  throw new Error(formatDymoLabelXmlPrintFailure(errors, paperTemplateId))
 }
 
 /** Direct HTTP print (print agent). Works in browser when local network access is allowed. */

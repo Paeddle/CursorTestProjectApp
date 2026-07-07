@@ -11,7 +11,7 @@ import {
   type DymoTwinTurboRoll,
 } from './dymoPrintParams'
 import type { ThermalImageProcessOptions } from './labelStudioThermalImage'
-import { printLabelXmlViaWebService } from './dymoWebService'
+import { dymoDllNotFoundGuidance, printLabelXmlViaWebService } from './dymoWebService'
 import { LABEL_STUDIO_PRINT_GEOMETRY_REV } from './labelStudioGeometry'
 import { buildLabelXmlCandidatesFromStudioForPrint } from './labelStudioXml'
 import type { LabelStudioItem, LabelStudioTemplate } from '../types/labelStudio'
@@ -88,7 +88,8 @@ async function printOneStudioItem(
       candidateXml,
       options?.printerName,
       twinTurboRoll,
-      options?.printQuality
+      options?.printQuality,
+      template.paperTemplateId
     )
     return 'dymo-web'
   } catch (e) {
@@ -108,14 +109,17 @@ async function printOneStudioItem(
   }
 
   const detail = errors.join('\n• ')
+  const dllHint = /dll was not found/i.test(detail)
+    ? `\n\n${dymoDllNotFoundGuidance(template.paperTemplateId)}`
+    : ''
   if (isRemoteAppOrigin()) {
     throw new Error(
-      `Print failed.\n• ${detail}\n\n` +
+      `Print failed.\n• ${detail}${dllHint}\n\n` +
         'Use this app in a browser on the PC where DYMO Connect is running (localhost is fine). ' +
         'In DYMO Connect, confirm the roll size matches “Label roll in printer” in Label Studio.'
     )
   }
-  throw new Error(detail)
+  throw new Error(detail + dllHint)
 }
 
 export async function printStudioLabels(
