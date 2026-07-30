@@ -29,6 +29,18 @@ Example: `https://your-app.ondigitalocean.app/r/TP13BK`
 
 Looks up `inventree_parts.ipn` in Supabase. Also supported: `?ipn=TP13BK` (and legacy `?sku=`).
 
+## Request portal
+
+Staff portal for tracking requests:
+
+```
+https://your-app.ondigitalocean.app/portal
+```
+
+Open requests tab: mark **Part ordered** and **Part received**. Received requests move to **Order history**.
+
+After schema changes, run `supabase/alter-reorder-requests-inventree-columns.sql` in Supabase SQL Editor.
+
 ## Deploy
 
 This app is the **only** static site on DigitalOcean App Platform. The main web app and scanner apps remain in the repo but are not deployed until you re-enable them in `deployments/digitalocean/digitalocean-app-spec.template.yaml`.

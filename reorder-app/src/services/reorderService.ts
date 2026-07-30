@@ -10,13 +10,12 @@ export async function submitReorderRequest(input: ReorderRequestInput): Promise<
     .from(TABLE)
     .insert({
       item_id: input.item_id,
-      part_number: input.part_number,
-      item_name: input.item_name,
-      manufacturer: input.manufacturer,
+      ipn: input.ipn,
+      name: input.name,
+      category_name: input.category_name,
       vendor_name: input.vendor_name,
-      barcode: input.barcode,
-      description: input.description,
-      stock_available: input.stock_available,
+      barcode_hash: input.barcode_hash,
+      link: input.link,
       quantity: input.quantity,
       job: input.job,
       requested_by: input.requested_by,
