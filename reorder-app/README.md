@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5176/r/YOUR-SKU` or `http://localhost:5176/?sku=YOUR-SKU`.
+Open `http://localhost:5176/r/YOUR-IPN` or `http://localhost:5176/?ipn=YOUR-IPN`.
 
 ## Supabase setup
 
@@ -22,12 +22,12 @@ Run `supabase/add-reorder-requests.sql` in the SQL Editor (creates `reorder_requ
 When hosted at `https://your-app.ondigitalocean.app`:
 
 ```
-https://your-app.ondigitalocean.app/r/{SKU}
+https://your-app.ondigitalocean.app/r/{IPN}
 ```
 
-Example: `https://your-app.ondigitalocean.app/r/ABC-12345`
+Example: `https://your-app.ondigitalocean.app/r/TP13BK`
 
-Also supported: `?sku=ABC-12345`
+Looks up `inventree_parts.ipn` in Supabase. Also supported: `?ipn=TP13BK` (and legacy `?sku=`).
 
 ## Deploy
 

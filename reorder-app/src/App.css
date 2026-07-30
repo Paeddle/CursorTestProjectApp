@@ -122,6 +122,10 @@
   color: #64748b;
 }
 
+.item-meta a {
+  color: #db2777;
+}
+
 .sku-row {
   display: flex;
   gap: 0.5rem;

@@ -1,13 +1,14 @@
-export type ItemRecord = {
+export type InventreePartRecord = {
   id: string
-  manufacturer: string | null
-  item: string | null
-  part_number: string | null
-  description_customer: string | null
-  vendor_name: string | null
-  barcode: string | null
-  stock_available: number | null
-  picture_url: string | null
+  inventree_id: number
+  name: string
+  ipn: string | null
+  category_name: string | null
+  link: string | null
+  maximum_stock: number | null
+  active: boolean
+  barcode_hash: string | null
+  creation_date: string | null
 }
 
 export type ReorderRequestInput = {
