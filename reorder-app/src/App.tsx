@@ -186,6 +186,69 @@ function App() {
 
         <form className="app-form" onSubmit={(e) => void handleSubmit(e)}>
           <section className="section">
+            <h2 className="section-title">IPN</h2>
+            <div className="sku-row">
+              <input
+                type="text"
+                className="input"
+                placeholder="Scan tag or type IPN"
+                value={ipnInput}
+                onChange={(e) => {
+                  setIpnInput(e.target.value)
+                  setLookupDone(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleLookup()
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleLookup}
+                disabled={!ipnInput.trim() || loadingPart}
+              >
+                {loadingPart ? '…' : 'Look up'}
+              </button>
+            </div>
+            <p className="hint">Tag QR codes open this form with the IPN pre-filled from InvenTree.</p>
+          </section>
+
+          {part ? (
+            <section className="section">
+              <h2 className="section-title">Part details</h2>
+              <div className="item-preview-body">
+                <p className="item-name">{part.name}</p>
+                <p className="item-meta">IPN: {part.ipn ?? '—'}</p>
+                {part.category_name ? (
+                  <p className="item-meta">Category: {part.category_name}</p>
+                ) : null}
+                {part.maximum_stock != null ? (
+                  <p className="item-meta">Maximum stock: {part.maximum_stock}</p>
+                ) : null}
+                {part.link ? (
+                  <p className="item-meta">
+                    <a href={part.link} target="_blank" rel="noreferrer">
+                      Product link
+                    </a>
+                  </p>
+                ) : null}
+                {!part.active ? (
+                  <p className="not-found">This part is marked inactive in InvenTree.</p>
+                ) : null}
+              </div>
+            </section>
+          ) : lookupDone && ipnInput.trim() ? (
+            <section className="section">
+              <p className="not-found">
+                Part not in InvenTree catalog — you can still submit this request for manual review.
+              </p>
+            </section>
+          ) : null}
+
+          <section className="section">
             <h2 className="section-title">Request details</h2>
 
             <div className="field">
@@ -249,69 +312,6 @@ function App() {
               />
             </div>
           </section>
-
-          <section className="section">
-            <h2 className="section-title">IPN</h2>
-            <div className="sku-row">
-              <input
-                type="text"
-                className="input"
-                placeholder="Scan tag or type IPN"
-                value={ipnInput}
-                onChange={(e) => {
-                  setIpnInput(e.target.value)
-                  setLookupDone(false)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleLookup()
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleLookup}
-                disabled={!ipnInput.trim() || loadingPart}
-              >
-                {loadingPart ? '…' : 'Look up'}
-              </button>
-            </div>
-            <p className="hint">Tag QR codes open this form with the IPN pre-filled from InvenTree.</p>
-          </section>
-
-          {part ? (
-            <section className="section">
-              <h2 className="section-title">Part details</h2>
-              <div className="item-preview-body">
-                <p className="item-name">{part.name}</p>
-                <p className="item-meta">IPN: {part.ipn ?? '—'}</p>
-                {part.category_name ? (
-                  <p className="item-meta">Category: {part.category_name}</p>
-                ) : null}
-                {part.maximum_stock != null ? (
-                  <p className="item-meta">Maximum stock: {part.maximum_stock}</p>
-                ) : null}
-                {part.link ? (
-                  <p className="item-meta">
-                    <a href={part.link} target="_blank" rel="noreferrer">
-                      Product link
-                    </a>
-                  </p>
-                ) : null}
-                {!part.active ? (
-                  <p className="not-found">This part is marked inactive in InvenTree.</p>
-                ) : null}
-              </div>
-            </section>
-          ) : lookupDone && ipnInput.trim() ? (
-            <section className="section">
-              <p className="not-found">
-                Part not in InvenTree catalog — you can still submit this request for manual review.
-              </p>
-            </section>
-          ) : null}
 
           <button type="submit" className="btn btn-primary" disabled={submitting}>
             {submitting ? 'Submitting…' : 'Submit re-order request'}
