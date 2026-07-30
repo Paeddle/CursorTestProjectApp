@@ -7,6 +7,13 @@ import './App.css'
 
 type Status = { type: 'success' | 'error' | 'info'; message: string } | null
 
+function quantityFromPart(part: InventreePartRecord | null): string {
+  if (part?.maximum_stock != null && part.maximum_stock > 0) {
+    return String(Math.max(1, Math.round(part.maximum_stock)))
+  }
+  return '1'
+}
+
 function App() {
   const [ipnInput, setIpnInput] = useState('')
   const [part, setPart] = useState<InventreePartRecord | null>(null)
@@ -26,6 +33,7 @@ function App() {
     if (!trimmed) {
       setPart(null)
       setLookupDone(false)
+      setQuantity('1')
       return
     }
     if (!supabase) {
@@ -42,6 +50,7 @@ function App() {
     try {
       const found = await fetchPartByIpn(trimmed)
       setPart(found)
+      setQuantity(quantityFromPart(found))
       setLookupDone(true)
       if (!found) {
         setStatus({
@@ -51,6 +60,7 @@ function App() {
       }
     } catch (err) {
       setPart(null)
+      setQuantity('1')
       setLookupDone(true)
       setStatus({
         type: 'error',
@@ -88,7 +98,7 @@ function App() {
 
     const ipn = ipnInput.trim()
     if (!ipn && !part) {
-      setStatus({ type: 'error', message: 'Enter an IPN or scan a pink tag QR code.' })
+      setStatus({ type: 'error', message: 'Enter an IPN or scan a tag QR code.' })
       return
     }
 
@@ -151,7 +161,7 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Re-order Request</h1>
-        <p className="app-subtitle">Scan a pink tag or enter an IPN to re-order stock</p>
+        <p className="app-subtitle">Scan a tag or enter an IPN to re-order stock</p>
       </header>
 
       <main className="app-main">
@@ -191,9 +201,7 @@ function App() {
               {loadingPart ? '…' : 'Look up'}
             </button>
           </div>
-          <p className="hint">
-            Pink tag QR codes open this form with the IPN already filled in from InvenTree.
-          </p>
+          <p className="hint">Tag QR codes open this form with the IPN pre-filled from InvenTree.</p>
         </section>
 
         {part ? (

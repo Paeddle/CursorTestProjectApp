@@ -14,7 +14,7 @@
   font-size: 1.45rem;
   font-weight: 700;
   margin: 0 0 0.25rem 0;
-  color: #9d174d;
+  color: #0f766e;
 }
 
 .app-subtitle {
@@ -31,17 +31,17 @@
 
 .section {
   background: #fff;
-  border: 1px solid #fbcfe8;
+  border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 1.15rem;
-  box-shadow: 0 1px 3px rgb(157 23 77 / 8%);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
 }
 
 .section-title {
   font-size: 0.95rem;
   font-weight: 600;
   margin: 0 0 0.75rem 0;
-  color: #831843;
+  color: #334155;
 }
 
 .label {
@@ -67,9 +67,9 @@
   width: 100%;
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e1;
   background: #f8fafc;
-  color: #1e293b;
+  color: #0f172a;
   font-size: 1rem;
 }
 
@@ -81,8 +81,9 @@
 .input:focus,
 .textarea:focus {
   outline: none;
-  border-color: #ec4899;
+  border-color: #14b8a6;
   background: #fff;
+  box-shadow: 0 0 0 3px rgb(20 184 166 / 15%);
 }
 
 .input-readonly {
@@ -123,7 +124,11 @@
 }
 
 .item-meta a {
-  color: #db2777;
+  color: #0d9488;
+}
+
+.item-meta a:hover {
+  color: #0f766e;
 }
 
 .sku-row {
@@ -155,23 +160,23 @@
 }
 
 .btn-primary {
-  background: #db2777;
+  background: #0d9488;
   color: #fff;
   width: 100%;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #be185d;
+  background: #0f766e;
 }
 
 .btn-secondary {
-  background: #fce7f3;
-  color: #9d174d;
+  background: #e2e8f0;
+  color: #334155;
   white-space: nowrap;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #fbcfe8;
+  background: #cbd5e1;
 }
 
 .status {
@@ -193,9 +198,9 @@
 }
 
 .status-info {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
+  background: #f0fdfa;
+  color: #0f766e;
+  border: 1px solid #99f6e4;
 }
 
 .hint {
