@@ -55,7 +55,7 @@ function App() {
       if (!found) {
         setStatus({
           type: 'info',
-          message: `No part found for IPN "${trimmed}". You can still submit a manual re-order below.`,
+          message: `No part found for IPN "${trimmed}". You can still submit this request for manual review.`,
         })
       }
     } catch (err) {
@@ -90,6 +90,12 @@ function App() {
       return
     }
 
+    const name = requestedBy.trim()
+    if (!name) {
+      setStatus({ type: 'error', message: 'Enter your name.' })
+      return
+    }
+
     const qty = parseInt(quantity, 10)
     if (!Number.isFinite(qty) || qty < 1) {
       setStatus({ type: 'error', message: 'Enter a quantity of at least 1.' })
@@ -116,7 +122,7 @@ function App() {
         stock_available: part?.maximum_stock ?? null,
         quantity: qty,
         job: job.trim() || null,
-        requested_by: requestedBy.trim() || null,
+        requested_by: name,
         notes: notes.trim() || null,
       })
       setSubmittedId(result.id)
@@ -178,122 +184,134 @@ function App() {
 
         {status && <div className={`status status-${status.type}`}>{status.message}</div>}
 
-        <section className="section">
-          <h2 className="section-title">IPN</h2>
-          <div className="sku-row">
-            <input
-              type="text"
-              className="input"
-              placeholder="Scan tag or type IPN"
-              value={ipnInput}
-              onChange={(e) => {
-                setIpnInput(e.target.value)
-                setLookupDone(false)
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && handleLookup()}
-            />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleLookup}
-              disabled={!ipnInput.trim() || loadingPart}
-            >
-              {loadingPart ? '…' : 'Look up'}
-            </button>
-          </div>
-          <p className="hint">Tag QR codes open this form with the IPN pre-filled from InvenTree.</p>
-        </section>
-
-        {part ? (
+        <form className="app-form" onSubmit={(e) => void handleSubmit(e)}>
           <section className="section">
-            <h2 className="section-title">Part details</h2>
-            <div className="item-preview-body">
-              <p className="item-name">{part.name}</p>
-              <p className="item-meta">IPN: {part.ipn ?? '—'}</p>
-              {part.category_name ? (
-                <p className="item-meta">Category: {part.category_name}</p>
-              ) : null}
-              {part.maximum_stock != null ? (
-                <p className="item-meta">Maximum stock: {part.maximum_stock}</p>
-              ) : null}
-              {part.link ? (
-                <p className="item-meta">
-                  <a href={part.link} target="_blank" rel="noreferrer">
-                    Product link
-                  </a>
-                </p>
-              ) : null}
-              {!part.active ? <p className="not-found">This part is marked inactive in InvenTree.</p> : null}
+            <h2 className="section-title">Request details</h2>
+
+            <div className="field">
+              <label className="label" htmlFor="requestedBy">
+                Your name *
+              </label>
+              <input
+                id="requestedBy"
+                type="text"
+                className="input"
+                placeholder="Required"
+                value={requestedBy}
+                onChange={(e) => setRequestedBy(e.target.value)}
+                required
+                autoComplete="name"
+              />
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="quantity">
+                Quantity needed *
+              </label>
+              <input
+                id="quantity"
+                type="number"
+                min={1}
+                step={1}
+                className="input"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                required
+              />
             </div>
           </section>
-        ) : lookupDone && ipnInput.trim() ? (
+
           <section className="section">
-            <p className="not-found">
-              Part not in InvenTree catalog — fill in the request anyway and it will be reviewed
-              manually.
-            </p>
+            <div className="field">
+              <label className="label" htmlFor="job">
+                Job / project
+              </label>
+              <input
+                id="job"
+                type="text"
+                className="input"
+                placeholder="Optional"
+                value={job}
+                onChange={(e) => setJob(e.target.value)}
+              />
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="notes">
+                Notes
+              </label>
+              <textarea
+                id="notes"
+                className="textarea"
+                placeholder="Urgency, alternate part, etc."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
           </section>
-        ) : null}
 
-        <form className="section" onSubmit={(e) => void handleSubmit(e)}>
-          <h2 className="section-title">Request details</h2>
+          <section className="section">
+            <h2 className="section-title">IPN</h2>
+            <div className="sku-row">
+              <input
+                type="text"
+                className="input"
+                placeholder="Scan tag or type IPN"
+                value={ipnInput}
+                onChange={(e) => {
+                  setIpnInput(e.target.value)
+                  setLookupDone(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleLookup()
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleLookup}
+                disabled={!ipnInput.trim() || loadingPart}
+              >
+                {loadingPart ? '…' : 'Look up'}
+              </button>
+            </div>
+            <p className="hint">Tag QR codes open this form with the IPN pre-filled from InvenTree.</p>
+          </section>
 
-          <div className="field">
-            <label className="label" htmlFor="quantity">
-              Quantity needed *
-            </label>
-            <input
-              id="quantity"
-              type="number"
-              min={1}
-              step={1}
-              className="input"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="field">
-            <label className="label" htmlFor="job">
-              Job / project
-            </label>
-            <input
-              id="job"
-              type="text"
-              className="input"
-              placeholder="Optional"
-              value={job}
-              onChange={(e) => setJob(e.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label className="label" htmlFor="requestedBy">
-              Your name
-            </label>
-            <input
-              id="requestedBy"
-              type="text"
-              className="input"
-              placeholder="Optional"
-              value={requestedBy}
-              onChange={(e) => setRequestedBy(e.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label className="label" htmlFor="notes">
-              Notes
-            </label>
-            <textarea
-              id="notes"
-              className="textarea"
-              placeholder="Urgency, alternate part, etc."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
+          {part ? (
+            <section className="section">
+              <h2 className="section-title">Part details</h2>
+              <div className="item-preview-body">
+                <p className="item-name">{part.name}</p>
+                <p className="item-meta">IPN: {part.ipn ?? '—'}</p>
+                {part.category_name ? (
+                  <p className="item-meta">Category: {part.category_name}</p>
+                ) : null}
+                {part.maximum_stock != null ? (
+                  <p className="item-meta">Maximum stock: {part.maximum_stock}</p>
+                ) : null}
+                {part.link ? (
+                  <p className="item-meta">
+                    <a href={part.link} target="_blank" rel="noreferrer">
+                      Product link
+                    </a>
+                  </p>
+                ) : null}
+                {!part.active ? (
+                  <p className="not-found">This part is marked inactive in InvenTree.</p>
+                ) : null}
+              </div>
+            </section>
+          ) : lookupDone && ipnInput.trim() ? (
+            <section className="section">
+              <p className="not-found">
+                Part not in InvenTree catalog — you can still submit this request for manual review.
+              </p>
+            </section>
+          ) : null}
 
           <button type="submit" className="btn btn-primary" disabled={submitting}>
             {submitting ? 'Submitting…' : 'Submit re-order request'}
