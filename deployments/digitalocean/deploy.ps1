@@ -129,13 +129,15 @@ $env:DIGITALOCEAN_ACCESS_TOKEN = $doAccessToken
 
 $doctlPath = Ensure-Doctl
 
-$reorderAppDir = Join-Path $repoRoot 'reorder-app'
-Write-Info "Installing reorder-app dependencies"
-Push-Location $reorderAppDir
-npm install | Out-Null
-Write-Info "Running reorder-app build"
-npm run build | Out-Null
-Pop-Location
+foreach ($appDirName in @('warehouse-catalog-app', 'reorder-app')) {
+  $appDir = Join-Path $repoRoot $appDirName
+  Write-Info "Installing $appDirName dependencies"
+  Push-Location $appDir
+  npm install | Out-Null
+  Write-Info "Running $appDirName build"
+  npm run build | Out-Null
+  Pop-Location
+}
 
 $specTemplate = Join-Path $PSScriptRoot 'digitalocean-app-spec.template.yaml'
 $specGenerated = Join-Path $PSScriptRoot 'digitalocean-app-spec.generated.yaml'

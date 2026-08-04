@@ -1,0 +1,218 @@
+.barcode-scanner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.barcode-scanner-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  flex-shrink: 0;
+}
+
+.barcode-scanner-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.barcode-scanner-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #e2e8f0;
+}
+
+.barcode-scanner-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #94a3b8;
+  max-width: 36rem;
+}
+
+.barcode-scanner-close {
+  padding: 0.5rem 1rem;
+  background: #475569;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.barcode-scanner-close:hover {
+  background: #64748b;
+}
+
+/* Fills space under header; library measures video vs. this region. */
+.barcode-scanner-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: #000;
+}
+
+.barcode-scanner-reader {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#barcode-reader {
+  width: 100%;
+  height: 100%;
+}
+
+#barcode-reader__scan_region {
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+/*
+ * Do not set object-fit or force letterboxing on `video`.
+ * html5-qrcode maps the scan region using videoWidth vs displayed size; letterboxing misaligns crops.
+ */
+
+/* Aiming guide only — decoding uses the full frame. Wide slot suits Code 128 / ITF on labels. */
+.barcode-scanner-reticle {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.barcode-scanner-reticle-slot {
+  box-sizing: border-box;
+  width: min(92vw, 100% - 1.5rem);
+  height: min(22vmin, 120px);
+  max-height: 38%;
+  border-radius: 12px;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+}
+
+/* Bottom overlay: zoom + torch — stay back, enlarge digitally instead of chasing macro focus */
+.barcode-scanner-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.35));
+  pointer-events: auto;
+}
+
+.barcode-scanner-zoom {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.barcode-scanner-zoom-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #cbd5e1;
+}
+
+.barcode-scanner-zoom-slider {
+  width: 100%;
+  accent-color: #3b82f6;
+  height: 1.75rem;
+}
+
+.barcode-scanner-zoom-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.barcode-scanner-chip {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #64748b;
+  background: rgba(30, 41, 59, 0.95);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.barcode-scanner-chip:hover {
+  background: #334155;
+}
+
+.barcode-scanner-torch {
+  flex-shrink: 0;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid #64748b;
+  background: rgba(30, 41, 59, 0.95);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.barcode-scanner-torch-on {
+  border-color: #fbbf24;
+  background: rgba(120, 53, 15, 0.9);
+  color: #fef3c7;
+}
+
+.barcode-scanner-footnote {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 0.5rem 1rem calc(0.65rem + env(safe-area-inset-bottom, 0));
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #94a3b8;
+  text-align: center;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  pointer-events: none;
+}
+
+.barcode-scanner-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: #fecaca;
+  background: #1e293b;
+}
+
+.barcode-scanner-error p {
+  margin: 0 0 0.5rem 0;
+}
+
+.barcode-scanner-error-hint {
+  font-size: 0.9rem;
+  color: #94a3b8 !important;
+}
