@@ -37,6 +37,42 @@ export const emptyForm = (): WarehouseCatalogForm => ({
   notes: '',
 })
 
+export const FORM_FIELD_KEYS = [
+  'part_number',
+  'name',
+  'upc_code',
+  'alt_upc_code',
+  'vendor',
+  'manufacturer',
+  'category',
+  'maximum_stock',
+  'notes',
+] as const satisfies readonly (keyof WarehouseCatalogForm)[]
+
+export type FormFieldKey = (typeof FORM_FIELD_KEYS)[number]
+
+export type FieldSuggestions = Record<FormFieldKey, string[]>
+
+export const emptySuggestions = (): FieldSuggestions => ({
+  part_number: [],
+  name: [],
+  upc_code: [],
+  alt_upc_code: [],
+  vendor: [],
+  manufacturer: [],
+  category: [],
+  maximum_stock: [],
+  notes: [],
+})
+
+/** Fields kept when starting a new item after save (if sticky mode on). */
+export const STICKY_FIELD_KEYS = [
+  'vendor',
+  'manufacturer',
+  'category',
+  'maximum_stock',
+] as const satisfies readonly FormFieldKey[]
+
 export function formFromItem(item: WarehouseCatalogItem): WarehouseCatalogForm {
   return {
     part_number: item.part_number ?? '',

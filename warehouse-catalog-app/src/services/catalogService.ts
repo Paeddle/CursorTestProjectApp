@@ -1,5 +1,11 @@
 import { supabase } from '../lib/supabase'
-import type { WarehouseCatalogForm, WarehouseCatalogItem } from '../types'
+import type {
+  FieldSuggestions,
+  FormFieldKey,
+  WarehouseCatalogForm,
+  WarehouseCatalogItem,
+} from '../types'
+import { FORM_FIELD_KEYS, emptySuggestions } from '../types'
 
 function normalizeBarcode(value: string): string {
   const trimmed = value.trim()
@@ -79,7 +85,7 @@ export async function updateCatalogItem(
   return data as WarehouseCatalogItem
 }
 
-export async function fetchRecentItems(limit = 15): Promise<WarehouseCatalogItem[]> {
+export async function fetchRecentItems(limit = 50): Promise<WarehouseCatalogItem[]> {
   if (!supabase) return []
 
   const { data, error } = await supabase
@@ -120,4 +126,73 @@ export async function findItemByPartNumber(partNumber: string): Promise<Warehous
 
   if (error) throw new Error(error.message)
   return (data as WarehouseCatalogItem | null) ?? null
+}
+
+function uniqueSorted(values: (string | null | undefined)[]): string[] {
+  const seen = new Set<string>()
+  for (const v of values) {
+    const trimmed = (v ?? '').trim()
+    if (trimmed) seen.add(trimmed)
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+}
+
+export async function fetchFieldSuggestions(): Promise<FieldSuggestions> {
+  if (!supabase) return emptySuggestions()
+
+  const { data, error } = await supabase
+    .from('warehouse_catalog_items')
+    .select(
+      'part_number, name, upc_code, alt_upc_code, vendor, manufacturer, category, maximum_stock, notes'
+    )
+    .order('updated_at', { ascending: false })
+    .limit(5000)
+
+  if (error) throw new Error(error.message)
+  const rows = (data ?? []) as Pick<WarehouseCatalogItem, FormFieldKey>[]
+
+  const out = emptySuggestions()
+  for (const key of FORM_FIELD_KEYS) {
+    if (key === 'maximum_stock') {
+      out.maximum_stock = uniqueSorted(
+        rows.map((r) =>
+          r.maximum_stock != null && !Number.isNaN(r.maximum_stock) ? String(r.maximum_stock) : null
+        )
+      )
+    } else {
+      out[key] = uniqueSorted(rows.map((r) => r[key]))
+    }
+  }
+  return out
+}
+
+function sanitizeSearchTerm(query: string): string {
+  return query.trim().replace(/[,()]/g, ' ')
+}
+
+export async function searchItems(query: string, limit = 40): Promise<WarehouseCatalogItem[]> {
+  if (!supabase) return []
+  const q = sanitizeSearchTerm(query)
+  if (!q) return fetchRecentItems(limit)
+
+  const pattern = `%${q}%`
+  const { data, error } = await supabase
+    .from('warehouse_catalog_items')
+    .select('*')
+    .or(
+      [
+        `part_number.ilike.${pattern}`,
+        `name.ilike.${pattern}`,
+        `upc_code.ilike.${pattern}`,
+        `alt_upc_code.ilike.${pattern}`,
+        `vendor.ilike.${pattern}`,
+        `manufacturer.ilike.${pattern}`,
+        `category.ilike.${pattern}`,
+      ].join(',')
+    )
+    .order('updated_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as WarehouseCatalogItem[]
 }
