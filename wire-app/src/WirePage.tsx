@@ -859,6 +859,11 @@ export function WirePage() {
         </div>
       </section>
 
+      <section className="wire-boxes-section" aria-labelledby="wire-boxes-heading">
+        <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
+          Boxes
+        </h2>
+
       <div className="wire-controls">
         <input
           type="text"
@@ -954,6 +959,9 @@ export function WirePage() {
                       >
                       <span className="wire-card-title-block">
                         <span className="wire-card-title">{summary.box_id}</span>
+                        <span className="wire-card-meta-sep" aria-hidden>
+                          ·
+                        </span>
                         <span className="wire-card-meta">
                           <span
                             className="wire-card-wire-type wire-card-wire-type-editable"
@@ -975,17 +983,20 @@ export function WirePage() {
                             {headerWire}
                           </span>
                           <span className="wire-card-meta-sep" aria-hidden>
-                            {' · '}
+                            ·
                           </span>
                           <span className="wire-card-default-cap">Default {headerDefault}</span>
                           <span className="wire-card-meta-sep" aria-hidden>
-                            {' · '}
+                            ·
                           </span>
                           <span className="wire-card-default-cap">Remaining {headerRemaining}</span>
+                          <span className="wire-card-meta-sep" aria-hidden>
+                            ·
+                          </span>
+                          <span className="wire-card-badge">
+                            {nScans} scan{nScans !== 1 ? 's' : ''}
+                          </span>
                         </span>
-                      </span>
-                      <span className="wire-card-badge">
-                        {nScans} scan{nScans !== 1 ? 's' : ''}
                       </span>
                       <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                     </button>
@@ -1081,6 +1092,7 @@ export function WirePage() {
           </div>
         </div>
       )}
+      </section>
     </div>
   )
 }
