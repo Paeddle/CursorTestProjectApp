@@ -11,13 +11,22 @@ const SCANNERS = [
     features: ['Barcode scanning', 'Document upload', 'PO number required'],
   },
   {
-    id: 'wire',
+    id: 'wire-scanner',
     title: 'Wire Box Scanner',
     description:
       'Scan wire box QR codes to check boxes in or out of jobs. Tracks footage and job assignments.',
-    path: '/wire-scanner',
+    path: '/wire-scanner/',
     icon: '🔌',
     features: ['QR / barcode scan', 'Check-in & check-out', 'Job + footage entry'],
+  },
+  {
+    id: 'wire-tracker',
+    title: 'Wire Tracker',
+    description:
+      'Desktop view of wire box history, job management, and materials-used reports. Pairs with the box scanner.',
+    path: '/wire/',
+    icon: '📊',
+    features: ['Scan history', 'Job list', 'Materials report export'],
   },
   {
     id: 'ebay',
@@ -42,7 +51,8 @@ export default function ScannersPage() {
         <h1>Scanners</h1>
         <p>
           Mobile-friendly scanner apps for warehouse and field use. Open on a phone over HTTPS for
-          camera access. Each scanner saves to Supabase and syncs with the main app.
+          camera access. Wire apps are standalone at <code>/wire-scanner/</code> and{' '}
+          <code>/wire/</code>.
         </p>
       </header>
 
@@ -63,7 +73,7 @@ export default function ScannersPage() {
               </ul>
               <div className="scanner-card-actions">
                 <a className="scanner-btn scanner-btn-primary" href={href} target="_blank" rel="noopener noreferrer">
-                  Open scanner
+                  Open app
                 </a>
                 <button
                   type="button"

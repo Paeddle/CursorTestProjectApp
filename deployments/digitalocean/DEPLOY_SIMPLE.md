@@ -59,7 +59,10 @@ After both secrets exist, every push to **`main`** runs `.github/workflows/deplo
 - **`Could not find App`** — Wrong `DIGITALOCEAN_APP_ID` for this token’s account.
 
 - **Main app:** `https://your-app-xxxxx.ondigitalocean.app/`
-- **Scanner app:** `https://your-app-xxxxx.ondigitalocean.app/scanner`
+- **Warehouse catalog:** `https://your-app-xxxxx.ondigitalocean.app/warehouse-catalog`
+- **Wire Tracker:** `https://your-app-xxxxx.ondigitalocean.app/wire/`
+- **Wire Box Scanner:** `https://your-app-xxxxx.ondigitalocean.app/wire-scanner/`
+- **PO scanner (if deployed):** `https://your-app-xxxxx.ondigitalocean.app/scanner`
 
 ## If something fails
 

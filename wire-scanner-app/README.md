@@ -1,17 +1,17 @@
 # Wire Box Scanner
 
-Scans QR codes on wire boxes (e.g. `bx-1234`), then records **job name** and **current footage** into Supabase.
+Mobile-friendly app for scanning QR codes on wire boxes (e.g. `bx-1234`), recording check-in/check-out, job name, and footage. Data syncs to the same Supabase project as **Wire Tracker**.
 
-**URL auto-fill:** Put a QR code on each box that links to the app with the box ID in the URL. When someone scans it, the app opens with the box ID pre-filled. Use this URL shape (replace with your app URL and box ID):
+## URLs (DigitalOcean)
+
+- **Scanner (this app):** `https://your-app.ondigitalocean.app/wire-scanner/`
+- **Wire Tracker (desktop):** `https://your-app.ondigitalocean.app/wire/`
+
+**QR code URL shape** (replace host and box ID):
 
 `https://your-app.ondigitalocean.app/wire-scanner/?box=bx-1234`
 
-Example for this project: `https://cursor-test-project-app-4w9pp.ondigitalocean.app/wire-scanner/?box=bx-1234`
-
-- **Same Supabase project** as the main Order Tracker and PO scanner.
-- Run `supabase/add-wire-box-scans.sql` in the Supabase SQL Editor to create the `wire_box_scans` table.
-
-## Local
+## Local development
 
 ```bash
 cp .env.example .env
@@ -20,6 +20,16 @@ npm install
 npm run dev
 ```
 
-## Deploy (DigitalOcean)
+Runs at **http://localhost:5175**. Use `npm run dev:phone` to expose on your LAN for phone testing.
 
-The scanner is built into the main web app at **/wire-scanner** (source lives in `src/modules/wire/scanner/`). The `wire-scanner-app/` folder is kept for reference only. Open it from **Wire Tracker** in the sidebar, or use a direct link with `?box=bx-1234`.
+## Database
+
+Run `supabase/add-wire-box-scans.sql` in the Supabase SQL Editor. Also run `add-wire-box-check-type.sql` and `add-wire-box-type-label-default.sql` as needed.
+
+## Build
+
+```bash
+npm run build
+```
+
+Output is in `dist/`. Production base path is `/wire-scanner/`.

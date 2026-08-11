@@ -5,7 +5,6 @@ import { csvService, TrackingInfo, POItem } from './services/csvService'
 import Sidebar from './components/Sidebar'
 import Analytics from './components/Analytics'
 import POInfo from './components/POInfo'
-import { WirePage, WireScannerPage, WIRE_ROUTE_PATH, WIRE_SCANNER_ROUTE_PATH } from './modules/wire'
 import LabelPrintStation, { PRINT_STATION_ROUTE_PATH } from './components/LabelPrintStation'
 import PurchaseList from './components/PurchaseList'
 import NonInventoryOrders from './components/NonInventoryOrders'
@@ -22,9 +21,6 @@ type OrderSortColumn = 'po_number' | 'job_or_customer' | 'quantity'
 
 function App() {
   const location = useLocation()
-  const isWireScannerRoute =
-    location.pathname === WIRE_SCANNER_ROUTE_PATH ||
-    location.pathname.startsWith(`${WIRE_SCANNER_ROUTE_PATH}/`)
   const isPrintStationRoute = location.pathname === PRINT_STATION_ROUTE_PATH
   const [activePage, setActivePage] = useState('tracking')
   const [trackings, setTrackings] = useState<TrackingInfo[]>([])
@@ -54,10 +50,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (location.pathname === WIRE_ROUTE_PATH) {
-      setActivePage('wire')
-      window.history.replaceState(null, '', '/')
-    }
     const page = (location.state as { page?: string } | null)?.page
     if (page) setActivePage(page)
   }, [location.pathname, location.state])
@@ -587,7 +579,7 @@ function App() {
   const groupedOrders = Array.from(groupedOrdersMap.values())
   const sortedOrders = sortOrders(groupedOrders, orderSortColumn, orderSortDirection)
 
-  const showMainNav = !isWireScannerRoute && !isPrintStationRoute
+  const showMainNav = !isPrintStationRoute
 
   return (
     <div className={`app${navOpen && showMainNav ? ' nav-open' : ''}`}>
@@ -602,10 +594,6 @@ function App() {
       <div className={`main-content${showMainNav ? '' : ' main-content--full'}`}>
         {isPrintStationRoute ? (
           <LabelPrintStation />
-        ) : isWireScannerRoute ? (
-          <WireScannerPage />
-        ) : activePage === 'wire' ? (
-          <WirePage />
         ) : activePage === 'analytics' ? (
           <Analytics poItemsMap={poItemsMap} trackings={trackings} />
         ) : activePage === 'po-info' ? (
