@@ -35,8 +35,38 @@ create policy "Allow anonymous delete on items"
 create policy "Allow anonymous update on items"
   on public.items for update using (true) with check (true);
 
+-- Multiple XLSX uploads can assign the same barcode to different rows; keep one, clear the rest.
+with ranked as (
+  select
+    id,
+    trim(barcode) as barcode_key,
+    row_number() over (
+      partition by trim(barcode)
+      order by
+        (picture_path is not null and trim(picture_path) <> '') desc,
+        (picture_url is not null and trim(picture_url) <> '') desc,
+        (purchase_url is not null and trim(purchase_url) <> '') desc,
+        updated_at desc nulls last,
+        created_at asc
+    ) as rn
+  from public.items
+  where barcode is not null and trim(barcode) <> ''
+)
+update public.items i
+set
+  barcode = null,
+  notes = trim(
+    coalesce(nullif(trim(i.notes), ''), '') ||
+    case when nullif(trim(i.notes), '') is not null then E'\n' else '' end ||
+    'Duplicate barcode ' || r.barcode_key || ' cleared (another row kept this barcode).'
+  )
+from ranked r
+where i.id = r.id
+  and r.rn > 1;
+
 -- Upsert by barcode (PO Info / catalog saves)
-create unique index if not exists idx_items_barcode_unique
+drop index if exists idx_items_barcode_unique;
+create unique index idx_items_barcode_unique
   on public.items (barcode)
   where barcode is not null and trim(barcode) <> '';
 
