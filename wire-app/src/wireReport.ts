@@ -677,15 +677,26 @@ export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
 }
 
 /**
- * Default scanner / stock staging job — not a real customer job.
- * Keep it off report, bulk check-out, and “existing jobs” pickers.
+ * Warehouse stock job name stored on every check-in.
+ * Same concept as “checked in”: the box is housed in the warehouse, not out on a job.
+ * Keep it off report / bulk check-out / existing-jobs pickers.
  */
-export const INTERNAL_WIRE_JOB_NAMES = new Set(['inventory'])
+export const WAREHOUSE_JOB_NAME = 'Inventory'
+
+export const INTERNAL_WIRE_JOB_NAMES = new Set([WAREHOUSE_JOB_NAME.toLowerCase()])
 
 export function isSelectableWireJobName(name: string): boolean {
   const j = String(name ?? '').trim()
   if (!j) return false
   return !INTERNAL_WIRE_JOB_NAMES.has(j.toLowerCase())
+}
+
+/** Display label for job_name in Tracker UI (Inventory → Warehouse). */
+export function formatWireJobNameDisplay(jobName: string | null | undefined): string {
+  const j = String(jobName ?? '').trim()
+  if (!j) return '—'
+  if (INTERNAL_WIRE_JOB_NAMES.has(j.toLowerCase())) return 'Warehouse'
+  return j
 }
 
 export function uniqueJobNamesForMaterialsReport(scans: WireBoxScan[]): string[] {
@@ -701,7 +712,7 @@ function newestScanInBox(scans: WireBoxScan[]): WireBoxScan | null {
   return scans.reduce((a, b) => (scanTimeWireReport(a) >= scanTimeWireReport(b) ? a : b))
 }
 
-/** True when the latest scan for the box is not a check-out (wire is in stock, not out on a job). */
+/** True when the box is currently in the warehouse (latest scan is a check-in, not out on a job). */
 export function isBoxInInventory(scans: WireBoxScan[]): boolean {
   const latest = newestScanInBox(scans)
   if (!latest) return false

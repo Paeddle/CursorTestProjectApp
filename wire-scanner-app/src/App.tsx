@@ -11,12 +11,19 @@ import {
 import { fetchActiveWireTypes } from './services/wireTypesService'
 import './App.css'
 
+/** Same as Tracker warehouse stock: every check-in is stored under this job name. */
+const WAREHOUSE_JOB_NAME = 'Inventory'
+
 function normalizeBoxId(raw: string): string {
   return raw.trim()
 }
 
 function normalizeJobNameKey(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function isWarehouseJobName(name: string): boolean {
+  return normalizeJobNameKey(name) === normalizeJobNameKey(WAREHOUSE_JOB_NAME)
 }
 
 function isValidBoxIdFormat(id: string): boolean {
@@ -232,8 +239,20 @@ function App() {
 
   useEffect(() => {
     if (boxMetaLoading || hasExistingScans !== false) return
-    setJobName('Inventory')
+    // New boxes always start as warehouse stock (check-in + Inventory).
+    setCheckType('check_in')
+    setJobName(WAREHOUSE_JOB_NAME)
   }, [boxMetaLoading, hasExistingScans, boxId])
+
+  useEffect(() => {
+    if (checkType === 'check_in') {
+      setJobName(WAREHOUSE_JOB_NAME)
+      return
+    }
+    if (isWarehouseJobName(jobName)) {
+      setJobName('')
+    }
+  }, [checkType]) // eslint-disable-line react-hooks/exhaustive-deps -- only react to mode changes
 
   useEffect(() => {
     if (hasExistingScans !== false || !selectedPresetId) return
@@ -259,8 +278,8 @@ function App() {
     if (!supabase) return
     const name = rawName.trim().replace(/\s+/g, ' ')
     if (!name) return
-    // Staging default for new boxes — do not add to the selectable jobs list.
-    if (normalizeJobNameKey(name) === 'inventory') return
+    // Warehouse stock job is not a selectable job entry.
+    if (isWarehouseJobName(name)) return
     const jobKey = normalizeJobNameKey(name)
     const { error } = await supabase
       .from('wire_jobs')
@@ -336,7 +355,11 @@ function App() {
       return
     }
     const id = normalizeBoxId(boxId)
-    const job = (jobName || '').trim()
+    // Check-in = warehouse stock (Inventory). Check-out = out on a real job.
+    const job =
+      checkType === 'check_in'
+        ? WAREHOUSE_JOB_NAME
+        : (jobName || '').trim()
     const footage = (currentFootage || '').trim()
     if (!id) {
       showError('Scan a QR code first.')
@@ -352,9 +375,15 @@ function App() {
         return
       }
     }
-    if (!job) {
-      showError('Enter a job name.')
-      return
+    if (checkType === 'check_out') {
+      if (!job) {
+        showError('Choose a job for check-out.')
+        return
+      }
+      if (isWarehouseJobName(job)) {
+        showError('Check-out needs a real job name, not Warehouse / Inventory.')
+        return
+      }
     }
     if (!footage) {
       showError('Enter current footage.')
@@ -390,14 +419,16 @@ function App() {
         }
         return
       }
-      await persistJobOption(job)
-      const modeLabel = checkType === 'check_out' ? 'Check out' : 'Check in'
+      if (checkType === 'check_out') {
+        await persistJobOption(job)
+      }
+      const modeLabel = checkType === 'check_out' ? 'Checked out' : 'Checked in to warehouse'
       const remainingLabel = `Remaining ${footage} ft`
       const capHint =
         profile.spool_capacity_ft && parseFootageNumber(footage) !== null
           ? ` of ${profile.spool_capacity_ft} ft`
           : ''
-      showSuccess(`Saved: ${modeLabel} — ${id} — ${job} — ${remainingLabel}${capHint}`)
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}`)
       setBoxId('')
       setJobName('')
       setCurrentFootage('')
@@ -470,7 +501,7 @@ function App() {
           <section className="section">
             <div className="form-field">
               <span className="label" id="check-type-label-idle">
-                Check in / Check out
+                Warehouse or job
               </span>
               <div
                 className="check-type-toggle"
@@ -492,6 +523,9 @@ function App() {
                   Check out
                 </button>
               </div>
+              <p className="field-hint">
+                Check in = warehouse stock. Check out = send to a job.
+              </p>
             </div>
             <button
               type="button"
@@ -556,7 +590,7 @@ function App() {
 
             <div className="form-field">
               <span className="label" id="check-type-label-form">
-                Check in / Check out
+                Warehouse or job
               </span>
               <div
                 className="check-type-toggle"
@@ -578,6 +612,9 @@ function App() {
                   Check out
                 </button>
               </div>
+              <p className="field-hint">
+                Check in puts the box in warehouse stock. Check out assigns it to a job.
+              </p>
             </div>
             <div className="form-field">
               <label className="label">Box ID</label>
@@ -586,27 +623,38 @@ function App() {
                 <p className="field-hint">Expected format like bx-1234</p>
               )}
             </div>
-            <div className="form-field">
-              <label className="label" htmlFor="job-name">Job name</label>
-              <input
-                id="job-name"
-                type="text"
-                className="input"
-                list="job-name-options"
-                value={jobName}
-                onChange={(e) => setJobName(e.target.value)}
-                onBlur={() => {
-                  void persistJobOption(jobName)
-                }}
-                placeholder="e.g. Smith Residence"
-                autoComplete="off"
-              />
-              <datalist id="job-name-options">
-                {jobOptions.map((j) => (
-                  <option key={j} value={j} />
-                ))}
-              </datalist>
-            </div>
+            {checkType === 'check_in' ? (
+              <div className="form-field">
+                <span className="label">Location</span>
+                <div className="box-id-display warehouse-location-display">Warehouse</div>
+                <p className="field-hint">Checked-in boxes are warehouse stock (same as Inventory).</p>
+              </div>
+            ) : (
+              <div className="form-field">
+                <label className="label" htmlFor="job-name">
+                  Job name
+                </label>
+                <input
+                  id="job-name"
+                  type="text"
+                  className="input"
+                  list="job-name-options"
+                  value={jobName}
+                  onChange={(e) => setJobName(e.target.value)}
+                  onBlur={() => {
+                    void persistJobOption(jobName)
+                  }}
+                  placeholder="e.g. Smith Residence"
+                  autoComplete="off"
+                  required
+                />
+                <datalist id="job-name-options">
+                  {jobOptions.map((j) => (
+                    <option key={j} value={j} />
+                  ))}
+                </datalist>
+              </div>
+            )}
             <div className="form-field">
               <label className="label" htmlFor="current-footage">
                 Current footage (feet remaining on spool)

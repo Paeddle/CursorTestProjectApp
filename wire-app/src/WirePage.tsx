@@ -17,13 +17,14 @@ import {
   downloadTextFile,
   downloadWireMaterialsReportPdf,
   formatInventoryFtDisplay,
+  formatWireJobNameDisplay,
   isBoxInInventory,
+  isSelectableWireJobName,
   parseFootage,
   reportRowsToCsv,
   reportRowsToHtmlDocument,
   uniqueJobNamesForMaterialsReport,
   uniqueJobNamesFromScans,
-  isSelectableWireJobName,
   wireTypeIdToLabel,
   wireTypeIdToDefaultFt,
   type WireBulkCheckoutInsertRow,
@@ -57,7 +58,7 @@ function formatDateTime(iso: string) {
 
 function formatCheckType(raw: string | undefined): string {
   if (raw === 'check_out') return 'Check out'
-  return 'Check in'
+  return 'In warehouse'
 }
 
 function normalizeJobNameKey(raw: string): string {
@@ -354,7 +355,11 @@ export function WirePage() {
     if (!q) return summaries
     return summaries.filter((s) => {
       if (s.box_id.toLowerCase().includes(q)) return true
-      if (s.scans.some((scan) => (scan.job_name || '').toLowerCase().includes(q))) return true
+      if (s.scans.some((scan) => {
+        const job = (scan.job_name || '').toLowerCase()
+        if (job.includes(q)) return true
+        return formatWireJobNameDisplay(scan.job_name).toLowerCase().includes(q)
+      })) return true
       if (summaryMatchesWireTypeQuery(s, q)) return true
       return false
     })
@@ -412,7 +417,7 @@ export function WirePage() {
   const deleteScan = async (scan: WireBoxScan) => {
     if (
       !window.confirm(
-        `Delete this scan for ${scan.box_id} (${formatCheckType(scan.check_type)}, ${scan.job_name})?`
+        `Delete this scan for ${scan.box_id} (${formatCheckType(scan.check_type)}, ${formatWireJobNameDisplay(scan.job_name)})?`
       )
     ) {
       return
@@ -565,7 +570,7 @@ export function WirePage() {
     }
     if (skips.length > 0) {
       setError(
-        `Cannot check out: ${skips.join(', ')} — each box must be checked in (in stock) and have footage on its latest scan.`
+        `Cannot check out: ${skips.join(', ')} — each box must be in the warehouse (checked in) and have footage on its latest scan.`
       )
       return
     }
@@ -602,7 +607,7 @@ export function WirePage() {
     const name = newManagedJob.trim().replace(/\s+/g, ' ')
     if (!name) return
     if (!isSelectableWireJobName(name)) {
-      setError('“Inventory” is reserved for staging new boxes and cannot be added as a job.')
+      setError('“Inventory / Warehouse” is reserved for stock and cannot be added as a job.')
       return
     }
     setJobsWorking(true)
@@ -913,13 +918,14 @@ export function WirePage() {
           Wire inventory
         </h2>
         <p className="wire-inventory-hint">
-          Bars show total remaining footage by wire type for boxes currently checked in. The table
-          below lists box counts and footage totals.
+          All boxes currently in the warehouse (checked in). Bars are remaining footage by type; the
+          table lists box counts and totals. Check-out removes a box from this stock until it is
+          checked back in.
         </p>
         {loading ? (
           <div className="wire-inventory-loading">Loading inventory…</div>
         ) : inventoryRows.length === 0 ? (
-          <div className="wire-inventory-empty">No boxes are checked in right now.</div>
+          <div className="wire-inventory-empty">No boxes in the warehouse right now.</div>
         ) : (
           <>
             <div
@@ -1109,7 +1115,7 @@ export function WirePage() {
                         title={
                           inInventory
                             ? 'Select for bulk check-out. Shift+click another row to select a range.'
-                            : 'Only boxes checked in (in stock) can be selected.'
+                            : 'Only boxes in the warehouse (checked in) can be selected.'
                         }
                         disabled={!inInventory || deleting}
                         onClick={(e) =>
@@ -1216,7 +1222,7 @@ export function WirePage() {
                         <thead>
                           <tr>
                             <th>Type</th>
-                            <th>Job name</th>
+                            <th>Job / location</th>
                             <th>Footage left</th>
                             <th>Scanned at</th>
                             <th className="wire-actions-col"> </th>
@@ -1240,7 +1246,7 @@ export function WirePage() {
                                   </span>
                                 )}
                               </td>
-                              <td>{scan.job_name}</td>
+                              <td>{formatWireJobNameDisplay(scan.job_name)}</td>
                               <td>{formatFootageCell(scan)}</td>
                               <td>{formatDateTime(scan.scanned_at)}</td>
                               <td className="wire-actions-col">

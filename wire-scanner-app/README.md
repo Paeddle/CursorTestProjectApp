@@ -1,6 +1,8 @@
 # Wire Box Scanner
 
-Mobile-friendly app for scanning QR codes on wire boxes (e.g. `bx-1234`), recording check-in/check-out, job name, and footage. Data syncs to the same Supabase project as **Wire Tracker**.
+Mobile-friendly app for scanning QR codes on wire boxes (e.g. `bx-1234`), recording check-in/check-out and footage. Data syncs to the same Supabase project as **Wire Tracker**.
+
+**Check in** always means warehouse stock (stored as job `Inventory`). **Check out** requires a real job name. New boxes start as check-in to the warehouse.
 
 ## URLs (DigitalOcean)
 
