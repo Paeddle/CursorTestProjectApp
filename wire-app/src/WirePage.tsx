@@ -745,64 +745,6 @@ export function WirePage() {
             </div>
           )}
         </div>
-        <div className="wire-types-manager" role="region" aria-label="Wire types">
-          <div className="wire-jobs-header">Wire types</div>
-          <p className="wire-types-hint">
-            Add or hide types shown in the scanner dropdown and the box editor below. Hide keeps
-            history on boxes already scanned.
-          </p>
-          <div className="wire-types-toolbar">
-            <input
-              type="text"
-              className="wire-jobs-input"
-              value={newTypeLabel}
-              onChange={(e) => setNewTypeLabel(e.target.value)}
-              placeholder="New wire type name…"
-              disabled={loading || wireTypesWorking}
-            />
-            <input
-              type="text"
-              className="wire-types-capacity-input"
-              value={newTypeCapacity}
-              onChange={(e) => setNewTypeCapacity(e.target.value)}
-              placeholder="Default ft"
-              inputMode="numeric"
-              disabled={loading || wireTypesWorking}
-              aria-label="Default spool feet"
-            />
-            <button
-              type="button"
-              className="wire-report-secondary"
-              disabled={loading || wireTypesWorking || !newTypeLabel.trim()}
-              onClick={() => void handleAddWireType()}
-            >
-              Add type
-            </button>
-          </div>
-          {wireTypesMessage && <div className="wire-types-msg">{wireTypesMessage}</div>}
-          {wireTypes.length === 0 ? (
-            <div className="wire-jobs-empty">No active wire types.</div>
-          ) : (
-            <div className="wire-jobs-list">
-              {wireTypes.map((preset) => (
-                <div key={preset.id} className="wire-jobs-item">
-                  <span>
-                    {preset.label}
-                    <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
-                  </span>
-                  <button
-                    type="button"
-                    className="wire-delete-scan"
-                    disabled={loading || wireTypesWorking}
-                    onClick={() => void handleHideWireType(preset)}
-                  >
-                    Hide
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
         <div className="wire-report-toolbar">
           <div className="wire-report-toolbar-main">
             <label className="wire-report-job-label">
@@ -895,79 +837,177 @@ export function WirePage() {
         )}
       </section>
 
+      <section className="wire-types-section" aria-labelledby="wire-types-heading">
+        <h2 id="wire-types-heading" className="wire-types-section-title">
+          Wire types
+        </h2>
+        <p className="wire-types-hint">
+          Add or hide types shown in the scanner dropdown and the box editor. Hide keeps history on
+          boxes already scanned.
+        </p>
+        <div className="wire-types-toolbar">
+          <input
+            type="text"
+            className="wire-jobs-input"
+            value={newTypeLabel}
+            onChange={(e) => setNewTypeLabel(e.target.value)}
+            placeholder="New wire type name…"
+            disabled={loading || wireTypesWorking}
+          />
+          <input
+            type="text"
+            className="wire-types-capacity-input"
+            value={newTypeCapacity}
+            onChange={(e) => setNewTypeCapacity(e.target.value)}
+            placeholder="Default ft"
+            inputMode="numeric"
+            disabled={loading || wireTypesWorking}
+            aria-label="Default spool feet"
+          />
+          <button
+            type="button"
+            className="wire-report-secondary"
+            disabled={loading || wireTypesWorking || !newTypeLabel.trim()}
+            onClick={() => void handleAddWireType()}
+          >
+            Add type
+          </button>
+        </div>
+        {wireTypesMessage && <div className="wire-types-msg">{wireTypesMessage}</div>}
+        {wireTypes.length === 0 ? (
+          <div className="wire-jobs-empty">No active wire types.</div>
+        ) : (
+          <div className="wire-jobs-list">
+            {wireTypes.map((preset) => (
+              <div key={preset.id} className="wire-jobs-item">
+                <span>
+                  {preset.label}
+                  <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
+                </span>
+                <button
+                  type="button"
+                  className="wire-delete-scan"
+                  disabled={loading || wireTypesWorking}
+                  onClick={() => void handleHideWireType(preset)}
+                >
+                  Hide
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="wire-inventory-section" aria-labelledby="wire-inventory-heading">
         <h2 id="wire-inventory-heading" className="wire-inventory-title">
           Wire inventory
         </h2>
         <p className="wire-inventory-hint">
-          For each wire type, <strong>Boxes</strong> are spools whose latest scan is a check-in.{' '}
-          <strong>Total footage</strong> is the sum of remaining feet on the reel from each spool’s newest
-          scan.
+          Bars show total remaining footage by wire type for boxes currently checked in. The table
+          below lists box counts and footage totals.
         </p>
         {loading ? (
           <div className="wire-inventory-loading">Loading inventory…</div>
         ) : inventoryRows.length === 0 ? (
           <div className="wire-inventory-empty">No boxes are checked in right now.</div>
         ) : (
-          <div className="wire-inventory-table-wrap">
-            <table className="wire-inventory-table">
-              <thead>
-                <tr>
-                  <th>Wire type</th>
-                  <th className="wire-inventory-num">Boxes</th>
-                  <th className="wire-inventory-num">Total footage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventoryRows.map((row) => (
-                  <tr key={row.wireType}>
-                    <td>{row.wireType}</td>
-                    <td className="wire-inventory-num">{row.boxCount}</td>
-                    <td className="wire-inventory-num wire-inventory-ft-cell">
-                      {row.boxesWithUnknownFootage === row.boxCount ? (
-                        '—'
-                      ) : (
-                        <>
-                          {formatInventoryFtDisplay(row.totalRemainingFt)} ft
-                          {row.boxesWithUnknownFootage > 0 ? (
-                            <span className="wire-inventory-ft-gap" title="Footage missing on latest scan">
-                              {' '}
-                              (+{row.boxesWithUnknownFootage} no ft)
-                            </span>
-                          ) : null}
-                        </>
-                      )}
-                    </td>
+          <>
+            <div
+              className="wire-inventory-chart"
+              role="img"
+              aria-label="Bar chart of remaining footage by wire type"
+            >
+              {(() => {
+                const maxFt = Math.max(...inventoryRows.map((r) => r.totalRemainingFt), 1)
+                return inventoryRows.map((row) => {
+                  const pct =
+                    row.boxesWithUnknownFootage === row.boxCount && row.totalRemainingFt <= 0
+                      ? 0
+                      : Math.max(2, Math.round((row.totalRemainingFt / maxFt) * 100))
+                  return (
+                    <div className="wire-inventory-bar-row" key={row.wireType}>
+                      <div className="wire-inventory-bar-label" title={row.wireType}>
+                        {row.wireType}
+                      </div>
+                      <div className="wire-inventory-bar-track">
+                        <div
+                          className="wire-inventory-bar-fill"
+                          style={{ width: `${pct}%` }}
+                          title={`${formatInventoryFtDisplay(row.totalRemainingFt)} ft`}
+                        />
+                      </div>
+                      <div className="wire-inventory-bar-value">
+                        {row.boxesWithUnknownFootage === row.boxCount && row.totalRemainingFt <= 0
+                          ? '—'
+                          : `${formatInventoryFtDisplay(row.totalRemainingFt)} ft`}
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+            <div className="wire-inventory-table-wrap wire-inventory-table-wrap--compact">
+              <table className="wire-inventory-table wire-inventory-table--compact">
+                <thead>
+                  <tr>
+                    <th>Wire type</th>
+                    <th className="wire-inventory-num">Boxes</th>
+                    <th className="wire-inventory-num">Total footage</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {inventoryRows.map((row) => (
+                    <tr key={row.wireType}>
+                      <td>{row.wireType}</td>
+                      <td className="wire-inventory-num">{row.boxCount}</td>
+                      <td className="wire-inventory-num wire-inventory-ft-cell">
+                        {row.boxesWithUnknownFootage === row.boxCount ? (
+                          '—'
+                        ) : (
+                          <>
+                            {formatInventoryFtDisplay(row.totalRemainingFt)} ft
+                            {row.boxesWithUnknownFootage > 0 ? (
+                              <span
+                                className="wire-inventory-ft-gap"
+                                title="Footage missing on latest scan"
+                              >
+                                {' '}
+                                (+{row.boxesWithUnknownFootage} no ft)
+                              </span>
+                            ) : null}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
 
-      <section className="wire-bulk-checkout-section" aria-labelledby="wire-bulk-checkout-heading">
-        <h2 id="wire-bulk-checkout-heading" className="wire-bulk-checkout-title">
-          Bulk check-out
+      <section className="wire-boxes-section" aria-labelledby="wire-boxes-heading">
+        <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
+          Boxes
         </h2>
-        <div className="wire-bulk-checkout-toolbar">
+
+        <div className="wire-boxes-bulk-bar" role="region" aria-label="Bulk check-out">
           <label className="wire-bulk-checkout-job-label">
-            <span>Job name</span>
-            <input
-              type="text"
-              className="wire-bulk-checkout-job-input"
-              list="wire-bulk-checkout-job-datalist"
+            <span>Check out to job</span>
+            <select
+              className="wire-bulk-checkout-job-select"
               value={bulkCheckoutJob}
               onChange={(e) => setBulkCheckoutJob(e.target.value)}
-              placeholder="e.g. Smith residence"
-              disabled={loading || bulkCheckoutWorking}
-              autoComplete="off"
-            />
-            <datalist id="wire-bulk-checkout-job-datalist">
+              disabled={loading || bulkCheckoutWorking || allJobNameSuggestions.length === 0}
+            >
+              <option value="">Select a job…</option>
               {allJobNameSuggestions.map((j) => (
-                <option key={j} value={j} />
+                <option key={j} value={j}>
+                  {j}
+                </option>
               ))}
-            </datalist>
+            </select>
           </label>
           <button
             type="button"
@@ -985,12 +1025,6 @@ export function WirePage() {
               : `Check out selected (${selectedBoxKeys.size})`}
           </button>
         </div>
-      </section>
-
-      <section className="wire-boxes-section" aria-labelledby="wire-boxes-heading">
-        <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
-          Boxes
-        </h2>
 
       <div className="wire-controls">
         <input

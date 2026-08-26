@@ -479,8 +479,8 @@
 }
 
 .wire-report-section,
+.wire-types-section,
 .wire-inventory-section,
-.wire-bulk-checkout-section,
 .wire-boxes-section {
   margin-bottom: 1.5rem;
   padding: 1.25rem 1.5rem;
@@ -496,18 +496,16 @@
   margin: 0 0 0.75rem 0;
 }
 
-.wire-bulk-checkout-title {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #f1f5f9;
-  margin: 0 0 0.75rem 0;
-}
-
-.wire-bulk-checkout-toolbar {
+.wire-boxes-bulk-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.75rem;
+  margin: 0 0 1rem 0;
+  padding: 0.85rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
 }
 
 .wire-bulk-checkout-job-label {
@@ -520,16 +518,16 @@
   min-width: 200px;
 }
 
-.wire-bulk-checkout-job-input {
+.wire-bulk-checkout-job-select {
   padding: 0.5rem 0.65rem;
   border-radius: 6px;
   border: 1px solid #475569;
-  background: #0f172a;
+  background: #1e293b;
   color: #e2e8f0;
   font-size: 0.95rem;
 }
 
-.wire-bulk-checkout-job-input:focus {
+.wire-bulk-checkout-job-select:focus {
   outline: none;
   border-color: #3b82f6;
 }
@@ -570,42 +568,100 @@
 
 .wire-inventory-loading,
 .wire-inventory-empty {
-  padding: 1rem 1.25rem;
   color: #94a3b8;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.wire-inventory-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0 0 1rem 0;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.wire-inventory-bar-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) 1fr minmax(4.5rem, 5.5rem);
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.wire-inventory-bar-label {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wire-inventory-bar-track {
+  height: 0.7rem;
   background: #0f172a;
-  border-radius: 8px;
-  border: 1px dashed #475569;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.wire-inventory-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0ea5e9, #38bdf8);
+  border-radius: 999px;
+  min-width: 0;
+}
+
+.wire-inventory-bar-value {
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .wire-inventory-table-wrap {
   overflow-x: auto;
-  border-radius: 8px;
-  border: 1px solid #334155;
+}
+
+.wire-inventory-table-wrap--compact {
+  max-width: 36rem;
 }
 
 .wire-inventory-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
-  color: #e2e8f0;
+  font-size: 0.92rem;
+}
+
+.wire-inventory-table--compact {
+  font-size: 0.8rem;
+}
+
+.wire-inventory-table--compact th,
+.wire-inventory-table--compact td {
+  padding: 0.3rem 0.45rem;
 }
 
 .wire-inventory-table th,
 .wire-inventory-table td {
-  padding: 0.6rem 0.85rem;
-  text-align: left;
+  padding: 0.55rem 0.65rem;
   border-bottom: 1px solid #334155;
-  vertical-align: top;
+  text-align: left;
+  color: #e2e8f0;
 }
 
 .wire-inventory-table th {
-  background: #0f172a;
-  color: #cbd5e1;
+  color: #94a3b8;
+  font-size: 0.78rem;
   font-weight: 600;
-  font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.wire-inventory-table--compact th {
+  font-size: 0.7rem;
 }
 
 .wire-inventory-table tbody tr:last-child td {
@@ -613,14 +669,12 @@
 }
 
 .wire-inventory-table tbody tr:hover {
-  background: rgba(51, 65, 85, 0.35);
+  background: rgba(15, 23, 42, 0.45);
 }
 
 .wire-inventory-num {
   text-align: right;
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  width: 4.5rem;
 }
 
 .wire-inventory-ft-cell {
@@ -628,9 +682,15 @@
 }
 
 .wire-inventory-ft-gap {
-  font-size: 0.78rem;
-  font-weight: 500;
   color: #94a3b8;
+  font-size: 0.85em;
+}
+
+.wire-types-section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.5rem 0;
 }
 
 .wire-report-title {
@@ -697,14 +757,6 @@
   align-items: center;
   gap: 0.65rem;
   color: #e2e8f0;
-}
-
-.wire-types-manager {
-  margin: 0 0 1rem 0;
-  padding: 0.8rem;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  background: #0f172a;
 }
 
 .wire-types-hint {
@@ -913,14 +965,19 @@
   }
 
   .wire-report-section,
+  .wire-types-section,
   .wire-inventory-section,
-  .wire-bulk-checkout-section,
   .wire-boxes-section {
     padding: 1rem 0.85rem;
     margin-bottom: 1.25rem;
   }
 
-  .wire-bulk-checkout-job-input {
+  .wire-boxes-bulk-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wire-bulk-checkout-job-select {
     min-height: 44px;
     font-size: 16px;
     width: 100%;
@@ -931,13 +988,13 @@
     width: 100%;
   }
 
-  .wire-bulk-checkout-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .wire-bulk-checkout-job-label {
     min-width: 0;
+  }
+
+  .wire-inventory-bar-row {
+    grid-template-columns: minmax(5.5rem, 7.5rem) 1fr minmax(3.75rem, 4.5rem);
+    gap: 0.4rem;
   }
 
   .wire-card-select {
