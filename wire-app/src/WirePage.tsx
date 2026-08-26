@@ -516,7 +516,7 @@ export function WirePage() {
   }
 
   const handleBoxCheckboxClick = (
-    e: MouseEvent<HTMLInputElement>,
+    e: MouseEvent<HTMLButtonElement>,
     indexInFiltered: number,
     boxKey: string,
     inInventory: boolean
@@ -1094,7 +1094,11 @@ export function WirePage() {
                 <div key={key} className="wire-card">
                   <div className="wire-card-header-row">
                     <div className="wire-card-header-main">
-                      <label
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={selectedBoxKeys.has(key)}
+                        aria-label={`Select ${summary.box_id} for bulk check-out`}
                         className={[
                           'wire-card-select',
                           selectedBoxKeys.has(key) ? 'wire-card-select--on' : '',
@@ -1107,21 +1111,13 @@ export function WirePage() {
                             ? 'Select for bulk check-out. Shift+click another row to select a range.'
                             : 'Only boxes checked in (in stock) can be selected.'
                         }
-                        onClick={(e) => e.stopPropagation()}
+                        disabled={!inInventory || deleting}
+                        onClick={(e) =>
+                          handleBoxCheckboxClick(e, indexInFiltered, key, inInventory && !deleting)
+                        }
                       >
-                        <input
-                          type="checkbox"
-                          className="wire-card-select-input"
-                          checked={selectedBoxKeys.has(key)}
-                          disabled={!inInventory || deleting}
-                          onClick={(e) =>
-                            handleBoxCheckboxClick(e, indexInFiltered, key, inInventory && !deleting)
-                          }
-                          onChange={() => {}}
-                          aria-label={`Select ${summary.box_id} for bulk check-out`}
-                        />
                         <span className="wire-card-select-face" aria-hidden="true" />
-                      </label>
+                      </button>
                       <button
                         type="button"
                         className="wire-card-header"

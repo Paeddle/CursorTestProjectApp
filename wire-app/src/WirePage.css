@@ -166,40 +166,39 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 1.75rem;
-  min-width: 1.75rem;
-  min-height: 2rem;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: 0;
   padding: 0;
+  border: none;
+  background: transparent;
   cursor: pointer;
   box-sizing: border-box;
 }
 
-.wire-card-select-input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-  z-index: 1;
+.wire-card-select:focus-visible {
+  outline: none;
+}
+
+.wire-card-select:focus-visible .wire-card-select-face {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
 }
 
 .wire-card-select-face {
   position: relative;
-  width: 0.6rem;
-  height: 0.6rem;
+  width: 1.35rem;
+  height: 1.35rem;
   flex-shrink: 0;
   box-sizing: border-box;
-  border: 1.5px solid #cbd5e1;
-  border-radius: 2px;
+  border: 2px solid #cbd5e1;
+  border-radius: 4px;
   background: #0f172a;
-  pointer-events: none;
-  z-index: 2;
   transition: background 0.12s ease, border-color 0.12s ease;
 }
 
-/* Visual state follows React (class on label), not :checked — avoids invisible ticks with overlay input. */
+/* Visual state follows React (class on button). */
 .wire-card-select--on .wire-card-select-face {
   background: #2563eb;
   border-color: #93c5fd;
@@ -210,17 +209,12 @@
   position: absolute;
   left: 50%;
   top: 45%;
-  width: 2px;
-  height: 6px;
+  width: 0.35rem;
+  height: 0.7rem;
   border: solid #ffffff;
-  border-width: 0 2px 2px 0;
-  transform: translate(-50%, -50%) rotate(45deg);
+  border-width: 0 2.5px 2.5px 0;
+  transform: translate(-50%, -55%) rotate(45deg);
   box-sizing: border-box;
-}
-
-.wire-card-select-input:focus-visible + .wire-card-select-face {
-  outline: 2px solid #60a5fa;
-  outline-offset: 2px;
 }
 
 .wire-card-select-disabled {
@@ -228,7 +222,7 @@
   opacity: 0.55;
 }
 
-.wire-card-select-disabled .wire-card-select-input {
+.wire-card-select:disabled {
   cursor: not-allowed;
 }
 
@@ -998,10 +992,15 @@
   }
 
   .wire-card-select {
-    width: 2.25rem;
-    min-width: 2.25rem;
-    min-height: 44px;
-    padding: 0 0.1rem 0 0.35rem;
+    width: 3rem;
+    min-width: 3rem;
+    min-height: 3rem;
+    padding: 0;
+  }
+
+  .wire-card-select-face {
+    width: 1.5rem;
+    height: 1.5rem;
   }
 
   .wire-card-header-row {
