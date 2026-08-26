@@ -5,6 +5,7 @@ export interface WireTypePreset {
   defaultCapacityFt: number
 }
 
+/** Seed / offline fallback if Supabase wire_types is empty or unreachable. */
 export const WIRE_TYPE_PRESETS: WireTypePreset[] = [
   { id: 'rg6-quad-shield', label: 'RG-6 Quad Shield', defaultCapacityFt: 500 },
   { id: 'cat6-550mhz-blue', label: 'Cat6 550MHz Blue', defaultCapacityFt: 1000 },
@@ -29,27 +30,43 @@ export const WIRE_TYPE_PRESETS: WireTypePreset[] = [
   { id: '12-4fx-db-speaker-wire', label: '12-4FX DB Speaker Wire', defaultCapacityFt: 500 },
 ]
 
-export function getWireTypePreset(id: string): WireTypePreset | undefined {
-  return WIRE_TYPE_PRESETS.find((p) => p.id === id)
+export function getWireTypePreset(
+  id: string,
+  list: WireTypePreset[] = WIRE_TYPE_PRESETS,
+): WireTypePreset | undefined {
+  return list.find((p) => p.id === id)
 }
 
 /**
  * Match a value from the DB or UI to a preset (trim, case-insensitive id, label).
  * Use this when resolving `wire_box_scans.wire_type`; stored values may not exactly match `id`.
  */
-export function resolveWireTypePreset(raw: string | null | undefined): WireTypePreset | undefined {
+export function resolveWireTypePreset(
+  raw: string | null | undefined,
+  list: WireTypePreset[] = WIRE_TYPE_PRESETS,
+): WireTypePreset | undefined {
   const t = String(raw ?? '').trim()
   if (!t) return undefined
-  const byExactId = WIRE_TYPE_PRESETS.find((p) => p.id === t)
+  const byExactId = list.find((p) => p.id === t)
   if (byExactId) return byExactId
   const lower = t.toLowerCase()
-  const byIdCi = WIRE_TYPE_PRESETS.find((p) => p.id.toLowerCase() === lower)
+  const byIdCi = list.find((p) => p.id.toLowerCase() === lower)
   if (byIdCi) return byIdCi
   const normLabel = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
   const nl = normLabel(t)
-  const byLabel = WIRE_TYPE_PRESETS.find((p) => normLabel(p.label) === nl)
+  const byLabel = list.find((p) => normLabel(p.label) === nl)
   if (byLabel) return byLabel
   return undefined
+}
+
+/** Slug for new catalog rows (e.g. "Cat6 Purple" → "cat6-purple"). */
+export function slugifyWireTypeId(label: string): string {
+  const s = String(label ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return s.slice(0, 80)
 }
 
 export function parseFootageNumber(raw: string): number | null {

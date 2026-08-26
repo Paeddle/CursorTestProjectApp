@@ -28,7 +28,8 @@ import {
   type WireBulkCheckoutInsertRow,
   type WireReportRow,
 } from './wireReport'
-import { WIRE_TYPE_PRESETS, getWireTypePreset } from './wireTypePresets'
+import { WIRE_TYPE_PRESETS, getWireTypePreset, type WireTypePreset } from './wireTypePresets'
+import { fetchActiveWireTypes } from './services/wireTypesService'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -195,6 +196,7 @@ export function WirePage() {
   const [jobsWorking, setJobsWorking] = useState(false)
   const [editingTypeBoxKey, setEditingTypeBoxKey] = useState<string | null>(null)
   const [updatingTypeBoxKey, setUpdatingTypeBoxKey] = useState<string | null>(null)
+  const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(WIRE_TYPE_PRESETS)
   const selectionAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
@@ -254,6 +256,18 @@ export function WirePage() {
     if (!isConfigured()) return
     void loadManagedJobs()
   }, [loadManagedJobs])
+
+  useEffect(() => {
+    if (!isConfigured()) return
+    let cancelled = false
+    ;(async () => {
+      const list = await fetchActiveWireTypes()
+      if (!cancelled) setWireTypes(list)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (reportJob && !jobOptions.includes(reportJob)) {
@@ -569,7 +583,7 @@ export function WirePage() {
     const trimmedId = presetId.trim()
     if (!trimmedId) return
 
-    const preset = getWireTypePreset(trimmedId)
+    const preset = getWireTypePreset(trimmedId, wireTypes)
     if (!preset) {
       setError('Unknown wire type selected.')
       return
@@ -1028,7 +1042,13 @@ export function WirePage() {
                         onChange={(e) => void handleUpdateBoxWireType(summary, e.target.value)}
                       >
                         <option value="">Select wire type…</option>
-                        {WIRE_TYPE_PRESETS.map((preset) => (
+                        {currentWireTypeId &&
+                          !wireTypes.some((p) => p.id === currentWireTypeId) && (
+                            <option value={currentWireTypeId}>
+                              {headerWire || currentWireTypeId} (hidden from catalog)
+                            </option>
+                          )}
+                        {wireTypes.map((preset) => (
                           <option key={preset.id} value={preset.id}>
                             {preset.label}
                           </option>

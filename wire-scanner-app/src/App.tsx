@@ -6,7 +6,13 @@ import {
   getWireTypePreset,
   parseFootageNumber,
   resolveWireTypePreset,
+  type WireTypePreset,
 } from './wireTypePresets'
+import {
+  addWireType,
+  deactivateWireType,
+  fetchActiveWireTypes,
+} from './services/wireTypesService'
 import './App.css'
 
 function normalizeBoxId(raw: string): string {
@@ -97,10 +103,32 @@ function App() {
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [spoolCapacityStr, setSpoolCapacityStr] = useState('')
 
+  const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(WIRE_TYPE_PRESETS)
+  const [wireTypesLoading, setWireTypesLoading] = useState(false)
+  const [showManageTypes, setShowManageTypes] = useState(false)
+  const [newTypeLabel, setNewTypeLabel] = useState('')
+  const [newTypeCapacity, setNewTypeCapacity] = useState('1000')
+  const [manageWorking, setManageWorking] = useState(false)
+  const [manageMessage, setManageMessage] = useState<string | null>(null)
+
+  const reloadWireTypes = useCallback(async () => {
+    setWireTypesLoading(true)
+    try {
+      const list = await fetchActiveWireTypes()
+      setWireTypes(list)
+    } finally {
+      setWireTypesLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     const fromUrl = getInitialBoxIdFromWindow()
     if (fromUrl) setBoxId(fromUrl)
   }, [])
+
+  useEffect(() => {
+    void reloadWireTypes()
+  }, [reloadWireTypes])
 
   useEffect(() => {
     if (!supabase) return
@@ -175,7 +203,8 @@ function App() {
           const wireRaw = String(row.wire_type).trim()
           const labelRaw = row.wire_type_label ? String(row.wire_type_label).trim() : ''
           const preset =
-            resolveWireTypePreset(wireRaw) ?? (labelRaw ? resolveWireTypePreset(labelRaw) : undefined)
+            resolveWireTypePreset(wireRaw, wireTypes) ??
+            (labelRaw ? resolveWireTypePreset(labelRaw, wireTypes) : undefined)
           const storedCap = String(row.spool_capacity_ft).trim()
           const label =
             (row.wire_type_label && String(row.wire_type_label).trim()) ||
@@ -206,7 +235,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [boxId])
+  }, [boxId, wireTypes])
 
   useEffect(() => {
     if (boxMetaLoading || hasExistingScans !== false) return
@@ -215,12 +244,12 @@ function App() {
 
   useEffect(() => {
     if (hasExistingScans !== false || !selectedPresetId) return
-    const p = getWireTypePreset(selectedPresetId)
+    const p = getWireTypePreset(selectedPresetId, wireTypes)
     if (!p) return
     const cap = String(p.defaultCapacityFt)
     setSpoolCapacityStr(cap)
     setCurrentFootage(cap)
-  }, [selectedPresetId, hasExistingScans])
+  }, [selectedPresetId, hasExistingScans, wireTypes])
 
   const clearStatus = useCallback(() => setStatus(null), [])
 
@@ -286,7 +315,7 @@ function App() {
   } => {
     if (hasExistingScans === false) {
       if (!selectedPresetId) return {}
-      const p = getWireTypePreset(selectedPresetId)
+      const p = getWireTypePreset(selectedPresetId, wireTypes)
       if (!p) return {}
       const cap = String(p.defaultCapacityFt)
       return {
@@ -323,7 +352,7 @@ function App() {
         showError('This box has no scans yet. Choose a wire type to initialize the box.')
         return
       }
-      if (!getWireTypePreset(selectedPresetId)) {
+      if (!getWireTypePreset(selectedPresetId, wireTypes)) {
         showError('Unknown wire type. Choose a wire type from the list.')
         return
       }
@@ -402,11 +431,53 @@ function App() {
   const typeLabelForHint =
     hasExistingScans === false
       ? selectedPresetId
-        ? getWireTypePreset(selectedPresetId)?.label ?? selectedPresetId
+        ? getWireTypePreset(selectedPresetId, wireTypes)?.label ?? selectedPresetId
         : null
       : boxProfile
         ? boxProfile.label
         : null
+
+  const handleAddWireType = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setManageWorking(true)
+    setManageMessage(null)
+    try {
+      const capacity = Number(String(newTypeCapacity).replace(/,/g, '').trim())
+      const created = await addWireType({
+        label: newTypeLabel,
+        defaultCapacityFt: capacity,
+      })
+      setNewTypeLabel('')
+      setNewTypeCapacity('1000')
+      setManageMessage(`Added “${created.label}”.`)
+      await reloadWireTypes()
+    } catch (err: unknown) {
+      setManageMessage(err instanceof Error ? err.message : 'Could not add wire type')
+    } finally {
+      setManageWorking(false)
+    }
+  }
+
+  const handleDeactivateWireType = async (preset: WireTypePreset) => {
+    if (!window.confirm(`Hide “${preset.label}” from the dropdown? Existing boxes keep their history.`)) {
+      return
+    }
+    setManageWorking(true)
+    setManageMessage(null)
+    try {
+      await deactivateWireType(preset.id)
+      if (selectedPresetId === preset.id) {
+        setSelectedPresetId('')
+        setSpoolCapacityStr('')
+      }
+      setManageMessage(`Hidden “${preset.label}”.`)
+      await reloadWireTypes()
+    } catch (err: unknown) {
+      setManageMessage(err instanceof Error ? err.message : 'Could not hide wire type')
+    } finally {
+      setManageWorking(false)
+    }
+  }
 
   if (!isSupabaseConfigured) {
     return (
@@ -421,8 +492,8 @@ function App() {
           </p>
           <p className="hint">
             Run <code>supabase/add-wire-box-scans.sql</code> in the Supabase SQL Editor. Also run{' '}
-            <code>add-wire-box-check-type.sql</code> and <code>add-wire-box-type-label-default.sql</code> (profile columns
-            including <code>spool_capacity_ft</code>) as needed.
+            <code>add-wire-box-check-type.sql</code>, <code>add-wire-box-type-label-default.sql</code>, and{' '}
+            <code>add-wire-types.sql</code> (wire type catalog) as needed.
           </p>
         </div>
       </div>
@@ -498,12 +569,13 @@ function App() {
                     required
                   >
                     <option value="">Select wire type…</option>
-                    {WIRE_TYPE_PRESETS.map((p) => (
+                    {wireTypes.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.label} — default {p.defaultCapacityFt} ft
                       </option>
                     ))}
                   </select>
+                  {wireTypesLoading && <p className="field-hint">Loading wire types…</p>}
                 </div>
               </div>
             )}
@@ -623,6 +695,89 @@ function App() {
             </div>
           </form>
         )}
+
+        <section className="section wire-types-manage" aria-label="Manage wire types">
+          <button
+            type="button"
+            className="wire-types-manage-toggle"
+            aria-expanded={showManageTypes}
+            onClick={() => {
+              setShowManageTypes((v) => !v)
+              setManageMessage(null)
+            }}
+          >
+            {showManageTypes ? 'Hide wire type manager' : 'Manage wire types'}
+          </button>
+
+          {showManageTypes && (
+            <div className="wire-types-manage-body">
+              <p className="wire-types-manage-hint">
+                Add or hide types used in the dropdown. Hiding keeps history on boxes already scanned.
+              </p>
+
+              <form className="wire-types-add-form" onSubmit={handleAddWireType}>
+                <div className="form-field">
+                  <label className="label" htmlFor="new-wire-type-label">
+                    New wire type name
+                  </label>
+                  <input
+                    id="new-wire-type-label"
+                    className="input"
+                    value={newTypeLabel}
+                    onChange={(e) => setNewTypeLabel(e.target.value)}
+                    placeholder="e.g. Cat6 Purple"
+                    autoComplete="off"
+                    disabled={manageWorking}
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="label" htmlFor="new-wire-type-capacity">
+                    Default spool (ft)
+                  </label>
+                  <input
+                    id="new-wire-type-capacity"
+                    className="input"
+                    value={newTypeCapacity}
+                    onChange={(e) => setNewTypeCapacity(e.target.value)}
+                    placeholder="1000"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    disabled={manageWorking}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-full"
+                  disabled={manageWorking || !newTypeLabel.trim()}
+                >
+                  {manageWorking ? 'Saving…' : 'Add wire type'}
+                </button>
+              </form>
+
+              {manageMessage && <p className="wire-types-manage-msg">{manageMessage}</p>}
+
+              <ul className="wire-types-list">
+                {wireTypes.map((p) => (
+                  <li key={p.id} className="wire-types-list-item">
+                    <div className="wire-types-list-meta">
+                      <span className="wire-types-list-label">{p.label}</span>
+                      <span className="wire-types-list-cap">{p.defaultCapacityFt} ft</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary wire-types-hide-btn"
+                      disabled={manageWorking}
+                      onClick={() => void handleDeactivateWireType(p)}
+                    >
+                      Hide
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {wireTypesLoading && <p className="field-hint">Refreshing list…</p>}
+            </div>
+          )}
+        </section>
       </main>
 
       {showScanner && (

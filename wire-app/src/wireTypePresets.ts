@@ -1,9 +1,11 @@
 export interface WireTypePreset {
   id: string
   label: string
+  /** Typical full-spool length (ft) when the box is new */
   defaultCapacityFt: number
 }
 
+/** Seed / offline fallback if Supabase wire_types is empty or unreachable. */
 export const WIRE_TYPE_PRESETS: WireTypePreset[] = [
   { id: 'rg6-quad-shield', label: 'RG-6 Quad Shield', defaultCapacityFt: 500 },
   { id: 'cat6-550mhz-blue', label: 'Cat6 550MHz Blue', defaultCapacityFt: 1000 },
@@ -28,31 +30,28 @@ export const WIRE_TYPE_PRESETS: WireTypePreset[] = [
   { id: '12-4fx-db-speaker-wire', label: '12-4FX DB Speaker Wire', defaultCapacityFt: 500 },
 ]
 
-export function getWireTypePreset(id: string): WireTypePreset | undefined {
-  return WIRE_TYPE_PRESETS.find((p) => p.id === id)
+export function getWireTypePreset(
+  id: string,
+  list: WireTypePreset[] = WIRE_TYPE_PRESETS,
+): WireTypePreset | undefined {
+  return list.find((p) => p.id === id)
 }
 
-export function resolveWireTypePreset(raw: string | null | undefined): WireTypePreset | undefined {
+/**
+ * Match a value from the DB or UI to a preset (trim, case-insensitive id, label).
+ */
+export function resolveWireTypePreset(
+  raw: string | null | undefined,
+  list: WireTypePreset[] = WIRE_TYPE_PRESETS,
+): WireTypePreset | undefined {
   const t = String(raw ?? '').trim()
   if (!t) return undefined
-  const byExactId = WIRE_TYPE_PRESETS.find((p) => p.id === t)
+  const byExactId = list.find((p) => p.id === t)
   if (byExactId) return byExactId
   const lower = t.toLowerCase()
-  const byIdCi = WIRE_TYPE_PRESETS.find((p) => p.id.toLowerCase() === lower)
+  const byIdCi = list.find((p) => p.id.toLowerCase() === lower)
   if (byIdCi) return byIdCi
   const normLabel = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
   const nl = normLabel(t)
-  return WIRE_TYPE_PRESETS.find((p) => normLabel(p.label) === nl)
+  return list.find((p) => normLabel(p.label) === nl)
 }
-
-export function parseFootageNumber(raw: string): number | null {
-  const s = String(raw ?? '')
-    .replace(/,/g, '')
-    .replace(/ft\.?/gi, '')
-    .trim()
-  const m = s.match(/-?[\d.]+/)
-  if (!m) return null
-  const n = Number(m[0])
-  return Number.isFinite(n) ? n : null
-}
-
