@@ -55,3 +55,13 @@ export function resolveWireTypePreset(
   const nl = normLabel(t)
   return list.find((p) => normLabel(p.label) === nl)
 }
+
+/** Slug for new catalog rows (e.g. "Cat6 Purple" → "cat6-purple"). */
+export function slugifyWireTypeId(label: string): string {
+  const s = String(label ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return s.slice(0, 80)
+}

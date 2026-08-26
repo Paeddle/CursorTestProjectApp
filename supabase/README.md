@@ -9,7 +9,7 @@ This folder contains the database schema used by the **PO Info** tab to show bar
    - To allow the PO Info tab to delete barcodes/documents/entire POs, also run `add-delete-policies.sql`.
    - To support internal item lookups (Lutron/ADI/etc) in the Barcode Lookup tab, also run `add-barcode-catalog.sql`.
    - For the wire box scanner app (QR codes on wire boxes → job name + footage), run `add-wire-box-scans.sql`.
-   - For the editable wire-type dropdown catalog, run `add-wire-types.sql` (seeds current presets; manage from the Wire Box Scanner UI).
+   - For the editable wire-type dropdown catalog, run `add-wire-types.sql` (seeds current presets; manage from Wire Tracker).
 
 If you already ran an older version without the insert policies, run only the two “Allow anonymous insert” policy blocks at the end of `schema.sql`.
 

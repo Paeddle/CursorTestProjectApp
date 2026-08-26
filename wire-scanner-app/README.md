@@ -26,7 +26,7 @@ Runs at **http://localhost:5175**. Use `npm run dev:phone` to expose on your LAN
 
 Run `supabase/add-wire-box-scans.sql` in the Supabase SQL Editor. Also run `add-wire-box-check-type.sql`, `add-wire-box-type-label-default.sql`, and **`add-wire-types.sql`** (wire type catalog for the dropdown) as needed.
 
-On the scanner home screen, open **Manage wire types** to add a type or hide one from the dropdown (soft-delete; old scans keep their labels).
+Wire types are managed on **Wire Tracker** (desktop), not on this scanner, so the mobile UI stays simple for technicians.
 
 ## Build
 

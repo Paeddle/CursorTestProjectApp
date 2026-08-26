@@ -29,7 +29,11 @@ import {
   type WireReportRow,
 } from './wireReport'
 import { WIRE_TYPE_PRESETS, getWireTypePreset, type WireTypePreset } from './wireTypePresets'
-import { fetchActiveWireTypes } from './services/wireTypesService'
+import {
+  addWireType,
+  deactivateWireType,
+  fetchActiveWireTypes,
+} from './services/wireTypesService'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -197,6 +201,10 @@ export function WirePage() {
   const [editingTypeBoxKey, setEditingTypeBoxKey] = useState<string | null>(null)
   const [updatingTypeBoxKey, setUpdatingTypeBoxKey] = useState<string | null>(null)
   const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(WIRE_TYPE_PRESETS)
+  const [wireTypesWorking, setWireTypesWorking] = useState(false)
+  const [newTypeLabel, setNewTypeLabel] = useState('')
+  const [newTypeCapacity, setNewTypeCapacity] = useState('1000')
+  const [wireTypesMessage, setWireTypesMessage] = useState<string | null>(null)
   const selectionAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
@@ -268,6 +276,54 @@ export function WirePage() {
       cancelled = true
     }
   }, [])
+
+  const reloadWireTypes = useCallback(async () => {
+    const list = await fetchActiveWireTypes()
+    setWireTypes(list)
+  }, [])
+
+  const handleAddWireType = async () => {
+    setWireTypesWorking(true)
+    setWireTypesMessage(null)
+    setError(null)
+    try {
+      const capacity = Number(String(newTypeCapacity).replace(/,/g, '').trim())
+      const created = await addWireType({
+        label: newTypeLabel,
+        defaultCapacityFt: capacity,
+      })
+      setNewTypeLabel('')
+      setNewTypeCapacity('1000')
+      setWireTypesMessage(`Added “${created.label}”.`)
+      await reloadWireTypes()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not add wire type')
+    } finally {
+      setWireTypesWorking(false)
+    }
+  }
+
+  const handleHideWireType = async (preset: WireTypePreset) => {
+    if (
+      !window.confirm(
+        `Hide “${preset.label}” from the dropdown? Existing boxes keep their history.`,
+      )
+    ) {
+      return
+    }
+    setWireTypesWorking(true)
+    setWireTypesMessage(null)
+    setError(null)
+    try {
+      await deactivateWireType(preset.id)
+      setWireTypesMessage(`Hidden “${preset.label}”.`)
+      await reloadWireTypes()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not hide wire type')
+    } finally {
+      setWireTypesWorking(false)
+    }
+  }
 
   useEffect(() => {
     if (reportJob && !jobOptions.includes(reportJob)) {
@@ -683,6 +739,64 @@ export function WirePage() {
                     onClick={() => void handleDeleteManagedJob(job)}
                   >
                     Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="wire-types-manager" role="region" aria-label="Wire types">
+          <div className="wire-jobs-header">Wire types</div>
+          <p className="wire-types-hint">
+            Add or hide types shown in the scanner dropdown and the box editor below. Hide keeps
+            history on boxes already scanned.
+          </p>
+          <div className="wire-types-toolbar">
+            <input
+              type="text"
+              className="wire-jobs-input"
+              value={newTypeLabel}
+              onChange={(e) => setNewTypeLabel(e.target.value)}
+              placeholder="New wire type name…"
+              disabled={loading || wireTypesWorking}
+            />
+            <input
+              type="text"
+              className="wire-types-capacity-input"
+              value={newTypeCapacity}
+              onChange={(e) => setNewTypeCapacity(e.target.value)}
+              placeholder="Default ft"
+              inputMode="numeric"
+              disabled={loading || wireTypesWorking}
+              aria-label="Default spool feet"
+            />
+            <button
+              type="button"
+              className="wire-report-secondary"
+              disabled={loading || wireTypesWorking || !newTypeLabel.trim()}
+              onClick={() => void handleAddWireType()}
+            >
+              Add type
+            </button>
+          </div>
+          {wireTypesMessage && <div className="wire-types-msg">{wireTypesMessage}</div>}
+          {wireTypes.length === 0 ? (
+            <div className="wire-jobs-empty">No active wire types.</div>
+          ) : (
+            <div className="wire-jobs-list">
+              {wireTypes.map((preset) => (
+                <div key={preset.id} className="wire-jobs-item">
+                  <span>
+                    {preset.label}
+                    <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="wire-delete-scan"
+                    disabled={loading || wireTypesWorking}
+                    onClick={() => void handleHideWireType(preset)}
+                  >
+                    Hide
                   </button>
                 </div>
               ))}

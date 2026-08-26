@@ -699,6 +699,50 @@
   color: #e2e8f0;
 }
 
+.wire-types-manager {
+  margin: 0 0 1rem 0;
+  padding: 0.8rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.wire-types-hint {
+  margin: 0 0 0.65rem 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.wire-types-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.wire-types-capacity-input {
+  width: 7rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 0.92rem;
+}
+
+.wire-types-msg {
+  margin: 0 0 0.45rem 0;
+  color: #a7f3d0;
+  font-size: 0.88rem;
+}
+
+.wire-types-cap {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
 .wire-report-toolbar {
   display: flex;
   flex-direction: column;
