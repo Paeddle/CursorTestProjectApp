@@ -137,7 +137,7 @@ function App() {
         if (cancelled) return
         const names = (data ?? [])
           .map((r) => (typeof r.name === 'string' ? r.name.trim() : ''))
-          .filter(Boolean)
+          .filter((n) => n && normalizeJobNameKey(n) !== 'inventory')
         setJobOptions(names)
       } catch {
         if (!cancelled) setJobOptions([])
@@ -259,6 +259,8 @@ function App() {
     if (!supabase) return
     const name = rawName.trim().replace(/\s+/g, ' ')
     if (!name) return
+    // Staging default for new boxes — do not add to the selectable jobs list.
+    if (normalizeJobNameKey(name) === 'inventory') return
     const jobKey = normalizeJobNameKey(name)
     const { error } = await supabase
       .from('wire_jobs')

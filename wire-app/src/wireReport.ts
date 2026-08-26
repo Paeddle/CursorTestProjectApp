@@ -676,13 +676,20 @@ export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
 }
 
-/** Internal / scanner job name — excluded from “materials used” job picker. */
-const MATERIALS_REPORT_EXCLUDED_JOBS = new Set(['inventory'])
+/**
+ * Default scanner / stock staging job — not a real customer job.
+ * Keep it off report, bulk check-out, and “existing jobs” pickers.
+ */
+export const INTERNAL_WIRE_JOB_NAMES = new Set(['inventory'])
+
+export function isSelectableWireJobName(name: string): boolean {
+  const j = String(name ?? '').trim()
+  if (!j) return false
+  return !INTERNAL_WIRE_JOB_NAMES.has(j.toLowerCase())
+}
 
 export function uniqueJobNamesForMaterialsReport(scans: WireBoxScan[]): string[] {
-  return uniqueJobNamesFromScans(scans).filter(
-    (j) => !MATERIALS_REPORT_EXCLUDED_JOBS.has(j.trim().toLowerCase())
-  )
+  return uniqueJobNamesFromScans(scans).filter(isSelectableWireJobName)
 }
 
 function scanTimeWireReport(scan: WireBoxScan): number {

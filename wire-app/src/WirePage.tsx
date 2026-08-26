@@ -23,6 +23,7 @@ import {
   reportRowsToHtmlDocument,
   uniqueJobNamesForMaterialsReport,
   uniqueJobNamesFromScans,
+  isSelectableWireJobName,
   wireTypeIdToLabel,
   wireTypeIdToDefaultFt,
   type WireBulkCheckoutInsertRow,
@@ -209,8 +210,13 @@ export function WirePage() {
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
   const allJobNameSuggestions = useMemo(() => {
-    const merged = new Set<string>(managedJobs)
-    for (const j of uniqueJobNamesFromScans(allScans)) merged.add(j)
+    const merged = new Set<string>()
+    for (const j of managedJobs) {
+      if (isSelectableWireJobName(j)) merged.add(j)
+    }
+    for (const j of uniqueJobNamesFromScans(allScans)) {
+      if (isSelectableWireJobName(j)) merged.add(j)
+    }
     return Array.from(merged).sort((a, b) => a.localeCompare(b))
   }, [allScans, managedJobs])
 
@@ -244,7 +250,7 @@ export function WirePage() {
       if (qErr) throw qErr
       const names = (data ?? [])
         .map((r) => (typeof r.name === 'string' ? r.name.trim() : ''))
-        .filter(Boolean)
+        .filter(isSelectableWireJobName)
       setManagedJobs(names)
     } catch {
       setManagedJobs([])
@@ -595,6 +601,10 @@ export function WirePage() {
   const handleAddManagedJob = async () => {
     const name = newManagedJob.trim().replace(/\s+/g, ' ')
     if (!name) return
+    if (!isSelectableWireJobName(name)) {
+      setError('“Inventory” is reserved for staging new boxes and cannot be added as a job.')
+      return
+    }
     setJobsWorking(true)
     setError(null)
     try {
