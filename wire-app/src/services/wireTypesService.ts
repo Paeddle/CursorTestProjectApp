@@ -21,14 +21,13 @@ function rowToPreset(row: WireTypeRow): WireTypePreset {
   }
 }
 
-/** Active types from Supabase, or seed fallback if empty/unreachable. */
+/** Active types from Supabase, sorted by name; seed fallback if empty/unreachable. */
 export async function fetchActiveWireTypes(): Promise<WireTypePreset[]> {
   try {
     const { data, error } = await supabase
       .from('wire_types')
       .select('id, label, default_capacity_ft, is_active, sort_order')
       .eq('is_active', true)
-      .order('sort_order', { ascending: true })
       .order('label', { ascending: true })
 
     if (error) throw error
@@ -36,9 +35,18 @@ export async function fetchActiveWireTypes(): Promise<WireTypePreset[]> {
       .map((r) => rowToPreset(r as WireTypeRow))
       .filter((p) => p.id && p.label && p.defaultCapacityFt > 0)
 
-    return list.length > 0 ? list : [...WIRE_TYPE_PRESETS]
+    if (list.length === 0) {
+      return [...WIRE_TYPE_PRESETS].sort((a, b) =>
+        a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+      )
+    }
+    return list.sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+    )
   } catch {
-    return [...WIRE_TYPE_PRESETS]
+    return [...WIRE_TYPE_PRESETS].sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+    )
   }
 }
 

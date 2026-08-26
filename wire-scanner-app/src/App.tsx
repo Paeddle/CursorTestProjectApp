@@ -106,7 +106,11 @@ function App() {
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [spoolCapacityStr, setSpoolCapacityStr] = useState('')
 
-  const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(WIRE_TYPE_PRESETS)
+  const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(() =>
+    [...WIRE_TYPE_PRESETS].sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+    ),
+  )
   const [wireTypesLoading, setWireTypesLoading] = useState(false)
 
   useEffect(() => {

@@ -202,7 +202,11 @@ export function WirePage() {
   const [jobsWorking, setJobsWorking] = useState(false)
   const [editingTypeBoxKey, setEditingTypeBoxKey] = useState<string | null>(null)
   const [updatingTypeBoxKey, setUpdatingTypeBoxKey] = useState<string | null>(null)
-  const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(WIRE_TYPE_PRESETS)
+  const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(() =>
+    [...WIRE_TYPE_PRESETS].sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+    ),
+  )
   const [wireTypesWorking, setWireTypesWorking] = useState(false)
   const [newTypeLabel, setNewTypeLabel] = useState('')
   const [newTypeCapacity, setNewTypeCapacity] = useState('1000')
