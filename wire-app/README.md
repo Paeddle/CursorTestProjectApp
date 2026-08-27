@@ -31,6 +31,7 @@ Run in Supabase SQL Editor (if not already done):
 - `supabase/add-wire-box-check-type.sql`
 - `supabase/add-wire-box-type-label-default.sql`
 - `supabase/add-wire-types.sql` (dropdown catalog; required for live add/hide of wire types)
+- `supabase/add-wire-materials-reports.sql` (saved materials-used report history)
 
 Wire types for the scanner dropdown and Tracker editor come from the `wire_types` table after that migration. Manage add/hide on this **Wire Tracker** page (Wire types section).
 

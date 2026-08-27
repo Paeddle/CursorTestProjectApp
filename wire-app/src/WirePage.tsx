@@ -11,9 +11,11 @@ function wireScannerHref(): string {
   return '/wire-scanner/'
 }
 import {
+  activeBoxSummariesForJob,
   buildWireBulkCheckoutInsert,
   buildWireInventoryRows,
   buildWireMaterialsReport,
+  buildWireStatusChangeInsert,
   downloadTextFile,
   downloadWireMaterialsReportPdf,
   formatInventoryFtDisplay,
@@ -29,6 +31,7 @@ import {
   wireTypeIdToDefaultFt,
   type WireBulkCheckoutInsertRow,
   type WireReportRow,
+  type WireStatusChangeInsertRow,
 } from './wireReport'
 import { WIRE_TYPE_PRESETS, getWireTypePreset, type WireTypePreset } from './wireTypePresets'
 import {
@@ -36,6 +39,12 @@ import {
   deactivateWireType,
   fetchActiveWireTypes,
 } from './services/wireTypesService'
+import {
+  deleteMaterialsReport,
+  fetchSavedMaterialsReports,
+  saveMaterialsReport,
+  type SavedMaterialsReport,
+} from './services/materialsReportsService'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -150,7 +159,7 @@ async function fetchAllScans(): Promise<WireBoxScan[]> {
 }
 
 function toSupabaseWireInsert(
-  row: WireBulkCheckoutInsertRow & { scanned_at: string }
+  row: (WireBulkCheckoutInsertRow | WireStatusChangeInsertRow) & { scanned_at: string }
 ): Record<string, string> {
   const o: Record<string, string> = {
     box_id: row.box_id,
@@ -196,7 +205,13 @@ export function WirePage() {
   const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
   const [pdfWorking, setPdfWorking] = useState(false)
   const [countEmptyBoxes, setCountEmptyBoxes] = useState(false)
+  const [savedReports, setSavedReports] = useState<SavedMaterialsReport[]>([])
+  const [savedReportsLoading, setSavedReportsLoading] = useState(false)
+  const [reportWorking, setReportWorking] = useState(false)
+  const [boxesMenuOpen, setBoxesMenuOpen] = useState(false)
+  const [statusWorking, setStatusWorking] = useState(false)
   const [selectedBoxKeys, setSelectedBoxKeys] = useState<Set<string>>(() => new Set())
+  const boxesMenuRef = useRef<HTMLDivElement | null>(null)
   const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
   const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
   const [managedJobs, setManagedJobs] = useState<string[]>([])
@@ -264,6 +279,19 @@ export function WirePage() {
     }
   }, [])
 
+  const loadSavedReports = useCallback(async () => {
+    setSavedReportsLoading(true)
+    try {
+      const list = await fetchSavedMaterialsReports()
+      setSavedReports(list)
+    } catch (e: unknown) {
+      console.warn(e)
+      setSavedReports([])
+    } finally {
+      setSavedReportsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!isConfigured()) {
       setError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env')
@@ -277,6 +305,23 @@ export function WirePage() {
     if (!isConfigured()) return
     void loadManagedJobs()
   }, [loadManagedJobs])
+
+  useEffect(() => {
+    if (!isConfigured()) return
+    void loadSavedReports()
+  }, [loadSavedReports])
+
+  useEffect(() => {
+    if (!boxesMenuOpen) return
+    const onDoc = (e: Event) => {
+      const el = boxesMenuRef.current
+      if (el && e.target instanceof Node && !el.contains(e.target)) {
+        setBoxesMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [boxesMenuOpen])
 
   useEffect(() => {
     if (!isConfigured()) return
@@ -467,13 +512,164 @@ export function WirePage() {
     }
   }
 
-  const handleCreateReport = () => {
-    if (!reportJob.trim()) return
-    setReportRows(
-      buildWireMaterialsReport(reportJob.trim(), allScans, {
+  const handleCreateReport = async () => {
+    const job = reportJob.trim()
+    if (!job) return
+    setReportWorking(true)
+    setError(null)
+    try {
+      const rows = buildWireMaterialsReport(job, allScans, {
         countEmptyTossedBoxes: countEmptyBoxes,
       })
-    )
+      setReportRows(rows)
+
+      try {
+        const saved = await saveMaterialsReport({
+          jobName: job,
+          countEmptyBoxes,
+          rows,
+        })
+        setSavedReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)])
+      } catch (saveErr: unknown) {
+        setError(
+          saveErr instanceof Error
+            ? saveErr.message
+            : 'Report created but could not save to history.',
+        )
+      }
+
+      if (countEmptyBoxes) {
+        const toDeactivate = activeBoxSummariesForJob(summaries, job)
+        if (toDeactivate.length > 0) {
+          const payloads = toDeactivate
+            .map((s) =>
+              buildWireStatusChangeInsert(s, 'inactive', {
+                jobName: job,
+                footageOverride: '0',
+              }),
+            )
+            .filter((r): r is WireStatusChangeInsertRow => r != null)
+            .map((r) => toSupabaseWireInsert({ ...r, scanned_at: new Date().toISOString() }))
+
+          if (payloads.length > 0) {
+            const ok = window.confirm(
+              `Count empty boxes is on. Mark ${payloads.length} active box${payloads.length !== 1 ? 'es' : ''} used on “${job}” as inactive (checked out at 0 ft)?`,
+            )
+            if (ok) {
+              const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
+              if (insErr) throw new Error(insErr.message)
+              setSelectedBoxKeys(new Set())
+              await load({ silent: true })
+            }
+          }
+        }
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not create report')
+    } finally {
+      setReportWorking(false)
+    }
+  }
+
+  const handleOpenSavedReport = (report: SavedMaterialsReport) => {
+    setReportJob(report.job_name)
+    setCountEmptyBoxes(report.count_empty_boxes)
+    setReportRows(report.rows)
+  }
+
+  const handleDeleteSavedReport = async (id: string) => {
+    if (!window.confirm('Delete this saved report?')) return
+    setError(null)
+    try {
+      await deleteMaterialsReport(id)
+      setSavedReports((prev) => prev.filter((r) => r.id !== id))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not delete saved report')
+    }
+  }
+
+  const applyBoxStatus = async (
+    target: 'active' | 'inactive',
+    boxSummaries: WireBoxSummary[],
+    options?: { jobName?: string; footageOverride?: string; confirmMessage?: string }
+  ) => {
+    const payloads: Record<string, string>[] = []
+    const skips: string[] = []
+    for (const s of boxSummaries) {
+      const built = buildWireStatusChangeInsert(s, target, {
+        jobName: options?.jobName,
+        footageOverride: options?.footageOverride,
+      })
+      if (!built) {
+        skips.push(s.box_id)
+        continue
+      }
+      payloads.push(toSupabaseWireInsert({ ...built, scanned_at: new Date().toISOString() }))
+    }
+    if (payloads.length === 0) {
+      setError(
+        skips.length
+          ? `No boxes to update (already ${target}${skips.length ? `: ${skips.slice(0, 5).join(', ')}` : ''}).`
+          : `No boxes to mark ${target}.`,
+      )
+      return
+    }
+    if (
+      options?.confirmMessage &&
+      !window.confirm(options.confirmMessage.replace('{n}', String(payloads.length)))
+    ) {
+      return
+    }
+    setStatusWorking(true)
+    setError(null)
+    setBoxesMenuOpen(false)
+    try {
+      const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
+      if (insErr) throw new Error(insErr.message)
+      setSelectedBoxKeys(new Set())
+      selectionAnchorIndexRef.current = null
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : `Failed to set boxes ${target}`)
+    } finally {
+      setStatusWorking(false)
+    }
+  }
+
+  const handleToggleBoxStatus = async (summary: WireBoxSummary) => {
+    const active = isBoxInInventory(summary.scans)
+    const target = active ? 'inactive' : 'active'
+    await applyBoxStatus(target, [summary], {
+      jobName: active ? reportJob.trim() || undefined : undefined,
+      confirmMessage: active
+        ? `Mark ${summary.box_id} inactive (check out)?`
+        : `Mark ${summary.box_id} active (check in to warehouse)?`,
+    })
+  }
+
+  const handleMenuSetActive = async () => {
+    const selected = summaries.filter((s) => selectedBoxKeys.has(s.box_id.toLowerCase()))
+    if (selected.length === 0) {
+      setError('Select one or more boxes first.')
+      setBoxesMenuOpen(false)
+      return
+    }
+    await applyBoxStatus('active', selected, {
+      confirmMessage: 'Set {n} selected box(es) to active (check in to warehouse)?',
+    })
+  }
+
+  const handleMenuSetInactive = async () => {
+    const selected = summaries.filter((s) => selectedBoxKeys.has(s.box_id.toLowerCase()))
+    if (selected.length === 0) {
+      setError('Select one or more boxes first.')
+      setBoxesMenuOpen(false)
+      return
+    }
+    await applyBoxStatus('inactive', selected, {
+      jobName: bulkCheckoutJob.trim() || reportJob.trim() || undefined,
+      confirmMessage: 'Set {n} selected box(es) to inactive (check out)?',
+    })
   }
 
   const safeReportFileStem = () =>
@@ -543,9 +739,9 @@ export function WirePage() {
     e: MouseEvent<HTMLButtonElement>,
     indexInFiltered: number,
     boxKey: string,
-    inInventory: boolean
+    canSelect: boolean
   ) => {
-    if (!inInventory) return
+    if (!canSelect) return
     e.preventDefault()
     e.stopPropagation()
     if (e.shiftKey && selectionAnchorIndexRef.current !== null) {
@@ -556,7 +752,7 @@ export function WirePage() {
         const next = new Set(prev)
         for (let i = lo; i <= hi; i++) {
           const s = filtered[i]
-          if (s && isBoxInInventory(s.scans)) next.add(s.box_id.toLowerCase())
+          if (s) next.add(s.box_id.toLowerCase())
         }
         return next
       })
@@ -567,14 +763,20 @@ export function WirePage() {
         else next.add(boxKey)
         return next
       })
-      selectionAnchorIndexRef.current = indexInFiltered
     }
+    selectionAnchorIndexRef.current = indexInFiltered
   }
 
   const handleBulkCheckout = async () => {
     const job = bulkCheckoutJob.trim()
     if (!job || selectedBoxKeys.size === 0) return
-    const selectedSummaries = summaries.filter((s) => selectedBoxKeys.has(s.box_id.toLowerCase()))
+    const selectedSummaries = summaries.filter(
+      (s) => selectedBoxKeys.has(s.box_id.toLowerCase()) && isBoxInInventory(s.scans),
+    )
+    if (selectedSummaries.length === 0) {
+      setError('Select at least one active (in warehouse) box to check out.')
+      return
+    }
     const skips: string[] = []
     const payloads: Record<string, string>[] = []
     for (const s of selectedSummaries) {
@@ -803,10 +1005,10 @@ export function WirePage() {
             <button
               type="button"
               className="wire-report-primary"
-              disabled={!reportJob.trim() || loading}
-              onClick={handleCreateReport}
+              disabled={!reportJob.trim() || loading || reportWorking}
+              onClick={() => void handleCreateReport()}
             >
-              Create report
+              {reportWorking ? 'Saving…' : 'Create report'}
             </button>
             <button
               type="button"
@@ -869,6 +1071,47 @@ export function WirePage() {
             </table>
           </div>
         )}
+
+        <div className="wire-saved-reports" aria-label="Saved materials reports">
+          <h3 className="wire-saved-reports-title">Saved reports</h3>
+          {savedReportsLoading ? (
+            <p className="wire-saved-reports-empty">Loading saved reports…</p>
+          ) : savedReports.length === 0 ? (
+            <p className="wire-saved-reports-empty">
+              No saved reports yet. Create a report to store it here.
+            </p>
+          ) : (
+            <ul className="wire-saved-reports-list">
+              {savedReports.map((report) => (
+                <li key={report.id} className="wire-saved-reports-item">
+                  <div className="wire-saved-reports-meta">
+                    <strong>{report.job_name}</strong>
+                    <span className="wire-saved-reports-date">
+                      {formatDateTime(report.created_at)}
+                      {report.count_empty_boxes ? ' · Count empty boxes' : ''}
+                    </span>
+                  </div>
+                  <div className="wire-saved-reports-actions">
+                    <button
+                      type="button"
+                      className="wire-report-secondary"
+                      onClick={() => handleOpenSavedReport(report)}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      className="wire-delete-scan"
+                      onClick={() => void handleDeleteSavedReport(report.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <section className="wire-types-section" aria-labelledby="wire-types-heading">
@@ -1113,6 +1356,41 @@ export function WirePage() {
             {areAllFilteredExpanded ? 'Collapse all boxes' : 'Expand all boxes'}
           </button>
         )}
+        <div className="wire-boxes-menu" ref={boxesMenuRef}>
+          <button
+            type="button"
+            className="wire-boxes-menu-trigger"
+            aria-haspopup="menu"
+            aria-expanded={boxesMenuOpen}
+            aria-label="Box actions menu"
+            disabled={statusWorking || deleting}
+            onClick={() => setBoxesMenuOpen((v) => !v)}
+          >
+            ⋯
+          </button>
+          {boxesMenuOpen && (
+            <div className="wire-boxes-menu-dropdown" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className="wire-boxes-menu-item"
+                disabled={statusWorking || selectedBoxKeys.size === 0}
+                onClick={() => void handleMenuSetActive()}
+              >
+                Set active
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="wire-boxes-menu-item"
+                disabled={statusWorking || selectedBoxKeys.size === 0}
+                onClick={() => void handleMenuSetInactive()}
+              >
+                Set inactive
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <div className="wire-error">{error}</div>}
@@ -1155,22 +1433,17 @@ export function WirePage() {
                         type="button"
                         role="checkbox"
                         aria-checked={selectedBoxKeys.has(key)}
-                        aria-label={`Select ${summary.box_id} for bulk check-out`}
+                        aria-label={`Select ${summary.box_id}`}
                         className={[
                           'wire-card-select',
                           selectedBoxKeys.has(key) ? 'wire-card-select--on' : '',
-                          inInventory ? '' : 'wire-card-select-disabled',
                         ]
                           .filter(Boolean)
                           .join(' ')}
-                        title={
-                          inInventory
-                            ? 'Select for bulk check-out. Shift+click another row to select a range.'
-                            : 'Only boxes in the warehouse (checked in) can be selected.'
-                        }
-                        disabled={!inInventory || deleting}
+                        title="Select for bulk actions. Shift+click another row to select a range."
+                        disabled={deleting || statusWorking}
                         onClick={(e) =>
-                          handleBoxCheckboxClick(e, indexInFiltered, key, inInventory && !deleting)
+                          handleBoxCheckboxClick(e, indexInFiltered, key, !(deleting || statusWorking))
                         }
                       >
                         <span className="wire-card-select-face" aria-hidden="true" />
@@ -1233,9 +1506,25 @@ export function WirePage() {
                     </div>
                     <button
                       type="button"
+                      className={`wire-box-status-toggle ${inInventory ? 'is-active' : 'is-inactive'}`}
+                      title={
+                        inInventory
+                          ? 'Mark inactive (check out)'
+                          : 'Mark active (check in to warehouse)'
+                      }
+                      disabled={deleting || statusWorking}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleToggleBoxStatus(summary)
+                      }}
+                    >
+                      {inInventory ? 'Active' : 'Inactive'}
+                    </button>
+                    <button
+                      type="button"
                       className="wire-delete-box"
                       title="Delete this box and all its scans"
-                      disabled={deleting}
+                      disabled={deleting || statusWorking}
                       onClick={(e) => {
                         e.stopPropagation()
                         deleteBox(summary.box_id, summary.scans.length)

@@ -741,6 +741,96 @@ export type WireBulkCheckoutInsertRow = {
   spool_capacity_ft: string | null
 }
 
+export type WireStatusChangeInsertRow = {
+  box_id: string
+  job_name: string
+  current_footage: string
+  check_type: 'check_in' | 'check_out'
+  wire_type: string | null
+  wire_type_label: string | null
+  spool_capacity_ft: string | null
+}
+
+function attachProfileFields(
+  summary: WireBoxSummary,
+  row: WireStatusChangeInsertRow | WireBulkCheckoutInsertRow
+): void {
+  const profile = newestProfileScanForBox(summary.scans)
+  if (!profile) return
+  const wt = String(profile.wire_type ?? '').trim()
+  const lbl = (profile.wire_type_label || '').trim()
+  if (wt) row.wire_type = wt
+  if (lbl || wt) row.wire_type_label = lbl || wt
+  const cap = (profile.spool_capacity_ft || '').trim()
+  if (cap) row.spool_capacity_ft = cap
+}
+
+/**
+ * Active (in-warehouse) boxes that have at least one scan for the given job.
+ * Used when finishing a materials report with “Count empty boxes”.
+ */
+export function activeBoxSummariesForJob(
+  summaries: WireBoxSummary[],
+  jobName: string
+): WireBoxSummary[] {
+  const want = jobName.trim().toLowerCase()
+  if (!want) return []
+  return summaries.filter((summary) => {
+    if (!isBoxInInventory(summary.scans)) return false
+    return summary.scans.some(
+      (scan) => (scan.job_name || '').trim().toLowerCase() === want
+    )
+  })
+}
+
+/**
+ * Build a check-in (active) or check-out (inactive) insert. Returns null if already in that state
+ * or footage is missing.
+ */
+export function buildWireStatusChangeInsert(
+  summary: WireBoxSummary,
+  target: 'active' | 'inactive',
+  options?: { jobName?: string; footageOverride?: string }
+): WireStatusChangeInsertRow | null {
+  const currentlyActive = isBoxInInventory(summary.scans)
+  if (target === 'active' && currentlyActive) return null
+  if (target === 'inactive' && !currentlyActive) return null
+
+  const latest = newestScanInBox(summary.scans)
+  const footage =
+    (options?.footageOverride ?? latest?.current_footage ?? '').trim() || '0'
+  const boxId = summary.box_id.trim()
+  if (!boxId) return null
+
+  if (target === 'active') {
+    const row: WireStatusChangeInsertRow = {
+      box_id: boxId,
+      job_name: WAREHOUSE_JOB_NAME,
+      current_footage: footage,
+      check_type: 'check_in',
+      wire_type: null,
+      wire_type_label: null,
+      spool_capacity_ft: null,
+    }
+    attachProfileFields(summary, row)
+    return row
+  }
+
+  const job =
+    (options?.jobName || latest?.job_name || 'Closed').trim() || 'Closed'
+  const row: WireStatusChangeInsertRow = {
+    box_id: boxId,
+    job_name: job,
+    current_footage: footage,
+    check_type: 'check_out',
+    wire_type: null,
+    wire_type_label: null,
+    spool_capacity_ft: null,
+  }
+  attachProfileFields(summary, row)
+  return row
+}
+
 /**
  * Build one Supabase insert row for a bulk web check-out: latest on-hand scan’s footage,
  * same job name, check_out. Returns null if the box is not in inventory or footage is missing.
@@ -767,15 +857,7 @@ export function buildWireBulkCheckoutInsert(
     spool_capacity_ft: null,
   }
 
-  const profile = newestProfileScanForBox(summary.scans)
-  if (profile) {
-    const wt = String(profile.wire_type ?? '').trim()
-    const lbl = (profile.wire_type_label || '').trim()
-    if (wt) row.wire_type = wt
-    if (lbl || wt) row.wire_type_label = lbl || wt
-    const cap = (profile.spool_capacity_ft || '').trim()
-    if (cap) row.spool_capacity_ft = cap
-  }
+  attachProfileFields(summary, row)
 
   return row
 }
