@@ -314,7 +314,7 @@ export function WirePage() {
       const hay = [
         report.job_name,
         formatDateTime(report.created_at),
-        report.count_empty_boxes ? 'count empty boxes' : '',
+        report.count_empty_boxes ? 'empty boxes count empty boxes' : '',
       ]
         .join(' ')
         .toLowerCase()
@@ -1595,8 +1595,15 @@ export function WirePage() {
                             <strong>{report.job_name}</strong>
                             <span className="wire-saved-reports-date">
                               {formatDateTime(report.created_at)}
-                              {report.count_empty_boxes ? ' · Empty' : ''}
                             </span>
+                            {report.count_empty_boxes ? (
+                              <span className="wire-saved-reports-empty-flag">
+                                Empty Boxes
+                                <span className="wire-saved-reports-empty-check" aria-hidden>
+                                  ✓
+                                </span>
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                         <button

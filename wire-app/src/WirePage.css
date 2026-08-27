@@ -632,6 +632,22 @@
   flex-shrink: 0;
 }
 
+.wire-saved-reports-empty-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.wire-saved-reports-empty-check {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 700;
+}
+
 .wire-saved-reports-open {
   flex-shrink: 0;
   padding: 0.12rem 0.5rem;
