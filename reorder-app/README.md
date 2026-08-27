@@ -19,13 +19,13 @@ Run `supabase/add-reorder-requests.sql` in the SQL Editor (creates `reorder_requ
 
 ## Pink tag URL format
 
-When hosted at `https://your-app.ondigitalocean.app`:
+When hosted at `https://your-app.ondigitalocean.app/reorder/`:
 
 ```
-https://your-app.ondigitalocean.app/r/{IPN}
+https://your-app.ondigitalocean.app/reorder/r/{IPN}
 ```
 
-Example: `https://your-app.ondigitalocean.app/r/TP13BK`
+Example: `https://your-app.ondigitalocean.app/reorder/r/TP13BK`
 
 Looks up `inventree_parts.ipn` in Supabase. Also supported: `?ipn=TP13BK` (and legacy `?sku=`).
 

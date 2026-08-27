@@ -4,7 +4,7 @@ import PortalPage from './pages/PortalPage'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
       <Routes>
         <Route path="/" element={<RequestFormPage />} />
         <Route path="/r/:ipn" element={<RequestFormPage />} />

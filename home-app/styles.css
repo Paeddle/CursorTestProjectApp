@@ -1,0 +1,97 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  color: #1c1917;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, #d6d3d1 0%, transparent 55%),
+    linear-gradient(180deg, #f5f5f4 0%, #e7e5e4 100%);
+}
+
+.page {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 3rem;
+}
+
+h1 {
+  margin: 0 0 2rem;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0c0a09;
+}
+
+.apps-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #d6d3d1;
+}
+
+.apps-table th,
+.apps-table td {
+  padding: 0.95rem 1.1rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.apps-table th {
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #78716c;
+  background: #fafaf9;
+}
+
+.apps-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.apps-table td:first-child {
+  font-size: 1.05rem;
+  font-weight: 600;
+  width: 40%;
+}
+
+.app-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  word-break: break-all;
+}
+
+.app-link:hover {
+  color: #1e3a8a;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 2rem 1rem 2.5rem;
+  }
+
+  .apps-table th,
+  .apps-table td {
+    padding: 0.75rem 0.7rem;
+    font-size: 0.92rem;
+  }
+
+  .apps-table td:first-child {
+    width: auto;
+  }
+
+  .app-link {
+    font-size: 0.8rem;
+  }
+}

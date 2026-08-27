@@ -58,8 +58,8 @@ After both secrets exist, every push to **`main`** runs `.github/workflows/deplo
 - **`Error: Unable to authenticate`** — Regenerate the API token and update the secret.
 - **`Could not find App`** — Wrong `DIGITALOCEAN_APP_ID` for this token’s account.
 
-- **Main app:** `https://your-app-xxxxx.ondigitalocean.app/`
-- **Warehouse catalog:** `https://your-app-xxxxx.ondigitalocean.app/warehouse-catalog`
+- **Home (app list):** `https://your-app-xxxxx.ondigitalocean.app/`
+- **Reorder:** `https://your-app-xxxxx.ondigitalocean.app/reorder/`
 - **Wire Tracker:** `https://your-app-xxxxx.ondigitalocean.app/wire/`
 - **Wire Box Scanner:** `https://your-app-xxxxx.ondigitalocean.app/wire-scanner/`
 - **PO scanner (if deployed):** `https://your-app-xxxxx.ondigitalocean.app/scanner`

@@ -1,0 +1,8 @@
+{
+  "name": "home-app",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node -e \"const fs=require('fs');fs.mkdirSync('dist',{recursive:true});fs.copyFileSync('index.html','dist/index.html');fs.copyFileSync('styles.css','dist/styles.css');\""
+  }
+}

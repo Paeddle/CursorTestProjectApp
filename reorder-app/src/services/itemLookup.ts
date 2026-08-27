@@ -47,7 +47,7 @@ export function ipnFromLocation(): string {
   const fromQuery = params.get('ipn') ?? params.get('sku') ?? params.get('s') ?? ''
   if (fromQuery.trim()) return decodeURIComponent(fromQuery.trim())
 
-  const match = window.location.pathname.match(/^\/r\/(.+)$/i)
+  const match = window.location.pathname.match(/\/r\/(.+)$/i)
   if (match?.[1]) return decodeURIComponent(match[1].trim())
 
   return ''

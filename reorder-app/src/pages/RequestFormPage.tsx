@@ -146,7 +146,7 @@ export default function RequestFormPage() {
     setRequestedBy('')
     setNotes('')
     setStatus(null)
-    window.history.replaceState({}, '', window.location.pathname.split('/r/')[0] || '/')
+    window.history.replaceState({}, '', import.meta.env.BASE_URL || '/')
   }
 
   if (submittedId) {

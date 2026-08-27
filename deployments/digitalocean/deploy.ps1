@@ -129,7 +129,7 @@ $env:DIGITALOCEAN_ACCESS_TOKEN = $doAccessToken
 
 $doctlPath = Ensure-Doctl
 
-foreach ($appDirName in @('warehouse-catalog-app', 'reorder-app')) {
+foreach ($appDirName in @('home-app', 'warehouse-catalog-app', 'reorder-app')) {
   $appDir = Join-Path $repoRoot $appDirName
   Write-Info "Installing $appDirName dependencies"
   Push-Location $appDir

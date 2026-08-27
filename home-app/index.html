@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SHS Web Apps</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <h1>SHS Web Apps</h1>
+      <table class="apps-table">
+        <thead>
+          <tr>
+            <th scope="col">App</th>
+            <th scope="col">URL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Reorder</td>
+            <td><a class="app-link" data-path="/reorder/" href="/reorder/">/reorder/</a></td>
+          </tr>
+          <tr>
+            <td>Wire Tracker</td>
+            <td><a class="app-link" data-path="/wire/" href="/wire/">/wire/</a></td>
+          </tr>
+          <tr>
+            <td>Wire Box Scanner</td>
+            <td><a class="app-link" data-path="/wire-scanner/" href="/wire-scanner/">/wire-scanner/</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+    <script>
+      document.querySelectorAll('.app-link').forEach(function (el) {
+        var path = el.getAttribute('data-path') || el.getAttribute('href') || ''
+        el.textContent = window.location.origin + path
+      })
+    </script>
+  </body>
+</html>

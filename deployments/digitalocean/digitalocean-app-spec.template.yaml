@@ -1,28 +1,20 @@
 name: __APP_NAME__
 region: __REGION__
-# Re-order form at /; warehouse catalog at /warehouse-catalog; wire tracker at /wire; wire scanner at /wire-scanner.
+# Home nav at /; reorder at /reorder; wire tracker at /wire; wire scanner at /wire-scanner.
+# Warehouse catalog remains at /warehouse-catalog but is not linked from the home page.
 static_sites:
-  - name: warehouse-catalog
+  - name: home
     github:
       repo: __GITHUB_REPO__
       branch: __GITHUB_BRANCH__
       deploy_on_push: true
     environment_slug: node-js
-    source_dir: warehouse-catalog-app
+    source_dir: home-app
     output_dir: dist
     build_command: npm install && npm run build
     catchall_document: index.html
     routes:
-      - path: /warehouse-catalog
-    envs:
-      - key: VITE_SUPABASE_URL
-        scope: BUILD_TIME
-        type: SECRET
-        value: "__VITE_SUPABASE_URL__"
-      - key: VITE_SUPABASE_ANON_KEY
-        scope: BUILD_TIME
-        type: SECRET
-        value: "__VITE_SUPABASE_ANON_KEY__"
+      - path: /
   - name: reorder
     github:
       repo: __GITHUB_REPO__
@@ -34,7 +26,7 @@ static_sites:
     build_command: npm install && npm run build
     catchall_document: index.html
     routes:
-      - path: /
+      - path: /reorder
     envs:
       - key: VITE_SUPABASE_URL
         scope: BUILD_TIME
@@ -77,6 +69,27 @@ static_sites:
     catchall_document: index.html
     routes:
       - path: /wire-scanner
+    envs:
+      - key: VITE_SUPABASE_URL
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_URL__"
+      - key: VITE_SUPABASE_ANON_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_ANON_KEY__"
+  - name: warehouse-catalog
+    github:
+      repo: __GITHUB_REPO__
+      branch: __GITHUB_BRANCH__
+      deploy_on_push: true
+    environment_slug: node-js
+    source_dir: warehouse-catalog-app
+    output_dir: dist
+    build_command: npm install && npm run build
+    catchall_document: index.html
+    routes:
+      - path: /warehouse-catalog
     envs:
       - key: VITE_SUPABASE_URL
         scope: BUILD_TIME
