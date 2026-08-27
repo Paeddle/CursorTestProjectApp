@@ -5,13 +5,13 @@
 }
 
 :root {
-  --ink: #07131f;
-  --ink-soft: #1a3348;
-  --foam: #e8f3f1;
-  --mint: #5eead4;
+  --ink: #07111c;
+  --ink-soft: #1a2a3c;
+  --foam: #e8eef4;
+  --mint: #5ec8d4;
   --amber: #f5b942;
-  --panel: rgba(8, 24, 38, 0.72);
-  --line: rgba(94, 234, 212, 0.28);
+  --panel: rgba(12, 22, 36, 0.74);
+  --line: rgba(94, 200, 212, 0.3);
 }
 
 html,
@@ -24,7 +24,7 @@ body {
   position: relative;
   color: var(--foam);
   font-family: 'Outfit', 'Avenir Next', 'Segoe UI', sans-serif;
-  background: #041018;
+  background: #0a121c;
   overflow-x: hidden;
 }
 
@@ -34,9 +34,10 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(94, 234, 212, 0.22), transparent 60%),
-    radial-gradient(ellipse 55% 45% at 90% 85%, rgba(245, 185, 66, 0.16), transparent 55%),
-    linear-gradient(160deg, #041018 0%, #0b2435 48%, #102a22 100%);
+    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(94, 200, 212, 0.18), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 78% 18%, rgba(120, 150, 190, 0.12), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 90% 85%, rgba(245, 185, 66, 0.12), transparent 55%),
+    linear-gradient(160deg, #0a121c 0%, #152536 45%, #1a2f3a 72%, #17343a 100%);
   animation: wash 14s ease-in-out infinite alternate;
 }
 
@@ -45,8 +46,8 @@ body {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(232, 243, 241, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232, 243, 241, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(232, 238, 244, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 238, 244, 0.04) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 20%, transparent 75%);
   animation: drift 22s linear infinite;
@@ -115,7 +116,7 @@ h1 {
 
 .login-form input:focus {
   border-color: var(--mint);
-  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
+  box-shadow: 0 0 0 3px rgba(94, 200, 212, 0.18);
 }
 
 .login-form button[type='submit'],
@@ -149,14 +150,14 @@ h1 {
 
 .reveal-btn:hover,
 .reveal-btn[aria-pressed='true'] {
-  background: rgba(94, 234, 212, 0.12);
+  background: rgba(94, 200, 212, 0.12);
   color: var(--mint);
   border-color: var(--mint);
 }
 
 .login-form button[type='submit']:hover,
 .logout-btn:hover {
-  background: #99f6e4;
+  background: #8edde8;
   transform: translateY(-1px);
 }
 
@@ -213,7 +214,7 @@ h1 {
 }
 
 .logout-btn:hover {
-  background: rgba(94, 234, 212, 0.12);
+  background: rgba(94, 200, 212, 0.12);
   color: var(--mint);
 }
 
@@ -248,7 +249,7 @@ h1 {
 }
 
 .apps-table tbody tr:hover {
-  background: rgba(94, 234, 212, 0.06);
+  background: rgba(94, 200, 212, 0.06);
 }
 
 .apps-table tbody tr:last-child td {
@@ -267,7 +268,7 @@ h1 {
   font-size: 0.88rem;
   color: var(--mint);
   text-decoration: none;
-  border-bottom: 1px solid rgba(94, 234, 212, 0.35);
+  border-bottom: 1px solid rgba(94, 200, 212, 0.35);
   word-break: break-all;
   transition: color 0.15s ease, border-color 0.15s ease;
 }
@@ -279,10 +280,10 @@ h1 {
 
 @keyframes wash {
   from {
-    filter: hue-rotate(0deg) saturate(1);
+    filter: hue-rotate(-4deg) saturate(0.95);
   }
   to {
-    filter: hue-rotate(12deg) saturate(1.08);
+    filter: hue-rotate(8deg) saturate(1.05);
   }
 }
 
