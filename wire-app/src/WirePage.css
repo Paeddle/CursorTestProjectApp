@@ -1,5 +1,5 @@
 .wire-page {
-  padding: 0 1.25rem 1.5rem;
+  padding: 1.5rem 1.25rem 1.5rem;
   max-width: 1500px;
   margin: 0 auto;
   box-sizing: border-box;
@@ -7,7 +7,8 @@
 }
 
 .wire-header {
-  margin-bottom: 1.25rem;
+  margin-top: 0.35rem;
+  margin-bottom: 1.5rem;
 }
 
 .wire-header-row {
@@ -487,7 +488,92 @@
   font-size: 1.15rem;
   font-weight: 700;
   color: #f1f5f9;
-  margin: 0 0 0.75rem 0;
+  margin: 0;
+}
+
+.wire-boxes-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.wire-boxes-mode-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 0.2rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  gap: 0.15rem;
+}
+
+.wire-boxes-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.wire-boxes-mode-btn:hover {
+  color: #e2e8f0;
+  background: rgba(51, 65, 85, 0.55);
+}
+
+.wire-boxes-mode-btn.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.wire-boxes-mode-btn.active:hover {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.wire-boxes-mode-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: rgba(15, 23, 42, 0.55);
+  color: inherit;
+}
+
+.wire-boxes-mode-btn.active .wire-boxes-mode-count {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.wire-box-status-bubble {
+  flex-shrink: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.65);
+}
+
+.wire-box-status-active {
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+.wire-box-status-inactive {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
 }
 
 .wire-boxes-bulk-bar {
@@ -918,7 +1004,7 @@
 
 @media (max-width: 768px) {
   .wire-page {
-    padding: 0.5rem 0 1.25rem;
+    padding: 1rem 0.85rem 1.25rem;
     max-width: 100%;
   }
 
@@ -1099,7 +1185,22 @@
 
 @media (max-width: 480px) {
   .wire-page {
-    padding: 0.35rem 0.65rem 1rem;
+    padding: 0.85rem 0.65rem 1rem;
+  }
+
+  .wire-boxes-section-nav {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wire-boxes-mode-toggle {
+    width: 100%;
+  }
+
+  .wire-boxes-mode-btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 40px;
   }
 
   .wire-report-toolbar-downloads .wire-report-secondary {

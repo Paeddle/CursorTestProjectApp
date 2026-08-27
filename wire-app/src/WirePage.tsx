@@ -188,6 +188,8 @@ export function WirePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchBox, setSearchBox] = useState('')
+  /** Active = in warehouse (checked in); inactive = checked out on a job. */
+  const [boxListMode, setBoxListMode] = useState<'active' | 'inactive'>('active')
   const [expandedBox, setExpandedBox] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [reportJob, setReportJob] = useState('')
@@ -354,10 +356,23 @@ export function WirePage() {
     )
   }, [countEmptyBoxes, allScans, reportJob])
 
+  const activeBoxCount = useMemo(
+    () => summaries.filter((s) => isBoxInInventory(s.scans)).length,
+    [summaries],
+  )
+  const inactiveBoxCount = useMemo(
+    () => summaries.length - activeBoxCount,
+    [summaries, activeBoxCount],
+  )
+
   const filtered = useMemo(() => {
+    const byStatus = summaries.filter((s) => {
+      const active = isBoxInInventory(s.scans)
+      return boxListMode === 'active' ? active : !active
+    })
     const q = searchBox.trim().toLowerCase()
-    if (!q) return summaries
-    return summaries.filter((s) => {
+    if (!q) return byStatus
+    return byStatus.filter((s) => {
       if (s.box_id.toLowerCase().includes(q)) return true
       if (s.scans.some((scan) => {
         const job = (scan.job_name || '').toLowerCase()
@@ -367,7 +382,7 @@ export function WirePage() {
       if (summaryMatchesWireTypeQuery(s, q)) return true
       return false
     })
-  }, [summaries, searchBox])
+  }, [summaries, searchBox, boxListMode])
 
   const filteredBoxKeys = useMemo(
     () => filtered.map((s) => s.box_id.toLowerCase()),
@@ -1008,10 +1023,35 @@ export function WirePage() {
       </section>
 
       <section className="wire-boxes-section" aria-labelledby="wire-boxes-heading">
-        <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
-          Boxes
-        </h2>
+        <div className="wire-boxes-section-nav">
+          <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
+            Boxes
+          </h2>
+          <div className="wire-boxes-mode-toggle" role="tablist" aria-label="Box status">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={boxListMode === 'active'}
+              className={`wire-boxes-mode-btn${boxListMode === 'active' ? ' active' : ''}`}
+              onClick={() => setBoxListMode('active')}
+            >
+              Active
+              <span className="wire-boxes-mode-count">{activeBoxCount}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={boxListMode === 'inactive'}
+              className={`wire-boxes-mode-btn${boxListMode === 'inactive' ? ' active' : ''}`}
+              onClick={() => setBoxListMode('inactive')}
+            >
+              Inactive
+              <span className="wire-boxes-mode-count">{inactiveBoxCount}</span>
+            </button>
+          </div>
+        </div>
 
+        {boxListMode === 'active' && (
         <div className="wire-boxes-bulk-bar" role="region" aria-label="Bulk check-out">
           <label className="wire-bulk-checkout-job-label">
             <span>Check out to job</span>
@@ -1045,6 +1085,7 @@ export function WirePage() {
               : `Check out selected (${selectedBoxKeys.size})`}
           </button>
         </div>
+        )}
 
       <div className="wire-controls">
         <input
@@ -1083,11 +1124,17 @@ export function WirePage() {
           <p>
             {searchBox.trim()
               ? 'No boxes match your filter.'
-              : 'No wire box scans yet. Use Open box scanner above to check boxes in.'}
+              : boxListMode === 'active'
+                ? 'No active boxes in the warehouse. Check boxes in with the scanner, or switch to Inactive.'
+                : 'No inactive boxes. Checked-out boxes will appear here.'}
           </p>
         </div>
       ) : (
-        <div className="wire-list-scroll" role="region" aria-label="Wire boxes">
+        <div
+          className="wire-list-scroll"
+          role="region"
+          aria-label={boxListMode === 'active' ? 'Active wire boxes' : 'Inactive wire boxes'}
+        >
           <div className="wire-list">
             {filtered.map((summary, indexInFiltered) => {
               const key = summary.box_id.toLowerCase()
@@ -1133,8 +1180,13 @@ export function WirePage() {
                         className="wire-card-header"
                         onClick={() => toggleExpanded(summary.box_id)}
                         aria-expanded={isExpanded}
-                        aria-label={`${summary.box_id}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
+                        aria-label={`${summary.box_id}, ${inInventory ? 'active' : 'inactive'}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
                       >
+                      <span
+                        className={`wire-box-status-bubble ${inInventory ? 'wire-box-status-active' : 'wire-box-status-inactive'}`}
+                        title={inInventory ? 'Active — in warehouse' : 'Inactive — checked out'}
+                        aria-hidden
+                      />
                       <span className="wire-card-title-block">
                         <span className="wire-card-title">{summary.box_id}</span>
                         <span className="wire-card-meta-sep" aria-hidden>
