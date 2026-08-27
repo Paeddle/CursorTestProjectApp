@@ -4,39 +4,135 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SHS Web Apps</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="atmosphere" aria-hidden="true"></div>
     <main class="page">
-      <h1>SHS Web Apps</h1>
-      <table class="apps-table">
-        <thead>
-          <tr>
-            <th scope="col">App</th>
-            <th scope="col">URL</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Reorder</td>
-            <td><a class="app-link" data-path="/reorder/" href="/reorder/">/reorder/</a></td>
-          </tr>
-          <tr>
-            <td>Wire Tracker</td>
-            <td><a class="app-link" data-path="/wire/" href="/wire/">/wire/</a></td>
-          </tr>
-          <tr>
-            <td>Wire Box Scanner</td>
-            <td><a class="app-link" data-path="/wire-scanner/" href="/wire-scanner/">/wire-scanner/</a></td>
-          </tr>
-        </tbody>
-      </table>
+      <header class="brand">
+        <p class="brand-mark">SHS</p>
+        <h1>SHS Web Apps</h1>
+        <p class="brand-sub">Internal tools for warehouse and shop floor work.</p>
+      </header>
+
+      <section id="gate" class="gate" hidden>
+        <form id="login-form" class="login-form" autocomplete="off">
+          <label for="password">Password</label>
+          <div class="login-row">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              placeholder="Enter password"
+              required
+              autofocus
+            />
+            <button type="submit">Unlock</button>
+          </div>
+          <p id="login-error" class="login-error" hidden>Wrong password. Try again.</p>
+        </form>
+        <p class="password-hint">
+          Password for now: <code>shs1rocks</code>
+        </p>
+      </section>
+
+      <section id="apps" class="apps" hidden>
+        <div class="apps-toolbar">
+          <p class="apps-label">Available apps</p>
+          <button type="button" id="logout-btn" class="logout-btn">Lock</button>
+        </div>
+        <table class="apps-table">
+          <thead>
+            <tr>
+              <th scope="col">App</th>
+              <th scope="col">URL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Reorder</td>
+              <td><a class="app-link" data-path="/reorder/" href="/reorder/">/reorder/</a></td>
+            </tr>
+            <tr>
+              <td>Wire Tracker</td>
+              <td><a class="app-link" data-path="/wire/" href="/wire/">/wire/</a></td>
+            </tr>
+            <tr>
+              <td>Wire Box Scanner</td>
+              <td>
+                <a class="app-link" data-path="/wire-scanner/" href="/wire-scanner/">/wire-scanner/</a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </main>
+    <script src="./auth.js"></script>
     <script>
-      document.querySelectorAll('.app-link').forEach(function (el) {
-        var path = el.getAttribute('data-path') || el.getAttribute('href') || ''
-        el.textContent = window.location.origin + path
-      })
+      ;(function () {
+        var AUTH_KEY = window.SHS_AUTH_KEY
+        var PASSWORD = window.SHS_AUTH_PASSWORD
+        var gate = document.getElementById('gate')
+        var apps = document.getElementById('apps')
+        var form = document.getElementById('login-form')
+        var errorEl = document.getElementById('login-error')
+        var logoutBtn = document.getElementById('logout-btn')
+
+        document.querySelectorAll('.app-link').forEach(function (el) {
+          var path = el.getAttribute('data-path') || el.getAttribute('href') || ''
+          el.textContent = window.location.origin + path
+        })
+
+        function isUnlocked() {
+          return localStorage.getItem(AUTH_KEY) === '1'
+        }
+
+        function showUnlocked() {
+          gate.hidden = true
+          apps.hidden = false
+          var params = new URLSearchParams(window.location.search)
+          var next = params.get('next')
+          if (next && next.charAt(0) === '/') {
+            window.history.replaceState({}, '', '/')
+            window.location.replace(next)
+          }
+        }
+
+        function showLocked() {
+          apps.hidden = true
+          gate.hidden = false
+        }
+
+        if (isUnlocked()) {
+          showUnlocked()
+        } else {
+          showLocked()
+        }
+
+        form.addEventListener('submit', function (event) {
+          event.preventDefault()
+          var value = document.getElementById('password').value
+          if (value === PASSWORD) {
+            localStorage.setItem(AUTH_KEY, '1')
+            errorEl.hidden = true
+            showUnlocked()
+          } else {
+            errorEl.hidden = false
+          }
+        })
+
+        logoutBtn.addEventListener('click', function () {
+          localStorage.removeItem(AUTH_KEY)
+          document.getElementById('password').value = ''
+          showLocked()
+        })
+      })()
     </script>
   </body>
 </html>

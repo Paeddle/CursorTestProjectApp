@@ -4,53 +4,251 @@
   box-sizing: border-box;
 }
 
+:root {
+  --ink: #07131f;
+  --ink-soft: #1a3348;
+  --foam: #e8f3f1;
+  --mint: #5eead4;
+  --amber: #f5b942;
+  --panel: rgba(8, 24, 38, 0.72);
+  --line: rgba(94, 234, 212, 0.28);
+}
+
+html,
 body {
   margin: 0;
-  min-height: 100vh;
-  font-family: Georgia, 'Times New Roman', Times, serif;
-  color: #1c1917;
+  min-height: 100%;
+}
+
+body {
+  position: relative;
+  color: var(--foam);
+  font-family: 'Outfit', 'Avenir Next', 'Segoe UI', sans-serif;
+  background: #041018;
+  overflow-x: hidden;
+}
+
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 10% -10%, #d6d3d1 0%, transparent 55%),
-    linear-gradient(180deg, #f5f5f4 0%, #e7e5e4 100%);
+    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(94, 234, 212, 0.22), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 90% 85%, rgba(245, 185, 66, 0.16), transparent 55%),
+    linear-gradient(160deg, #041018 0%, #0b2435 48%, #102a22 100%);
+  animation: wash 14s ease-in-out infinite alternate;
+}
+
+.atmosphere::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(232, 243, 241, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 243, 241, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 20%, transparent 75%);
+  animation: drift 22s linear infinite;
 }
 
 .page {
-  max-width: 52rem;
+  position: relative;
+  z-index: 1;
+  max-width: 46rem;
   margin: 0 auto;
-  padding: 3.5rem 1.5rem 3rem;
+  padding: clamp(3.5rem, 10vh, 6rem) 1.5rem 3rem;
+}
+
+.brand {
+  margin-bottom: 2.25rem;
+  animation: rise 0.7s ease-out both;
+}
+
+.brand-mark {
+  margin: 0 0 0.65rem;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--mint);
 }
 
 h1 {
-  margin: 0 0 2rem;
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  margin: 0;
+  font-size: clamp(2.6rem, 8vw, 4.2rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  color: #f7fffc;
+}
+
+.brand-sub {
+  margin: 1rem 0 0;
+  max-width: 28rem;
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: rgba(232, 243, 241, 0.72);
+}
+
+.gate,
+.apps {
+  animation: rise 0.75s ease-out 0.12s both;
+}
+
+.login-form {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1.25rem 0 0;
+}
+
+.login-form label {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 243, 241, 0.7);
+}
+
+.login-row {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.login-form input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel);
+  color: var(--foam);
+  font: inherit;
+  font-size: 1.05rem;
+  padding: 0.85rem 1rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-form input:focus {
+  border-color: var(--mint);
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.18);
+}
+
+.login-form button,
+.logout-btn {
+  border: 0;
+  border-radius: 0.4rem;
+  background: var(--mint);
+  color: var(--ink);
+  font: inherit;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #0c0a09;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.login-form button {
+  padding: 0.85rem 1.35rem;
+}
+
+.login-form button:hover,
+.logout-btn:hover {
+  background: #99f6e4;
+  transform: translateY(-1px);
+}
+
+.login-form button:active,
+.logout-btn:active {
+  transform: translateY(0);
+}
+
+.login-error {
+  margin: 0.15rem 0 0;
+  color: #fda4af;
+  font-size: 0.92rem;
+}
+
+.password-hint {
+  margin: 1.35rem 0 0;
+  font-size: 0.95rem;
+  color: rgba(232, 243, 241, 0.68);
+}
+
+.password-hint code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.95em;
+  color: var(--amber);
+  background: rgba(245, 185, 66, 0.12);
+  border: 1px solid rgba(245, 185, 66, 0.28);
+  border-radius: 0.3rem;
+  padding: 0.15rem 0.45rem;
+}
+
+.apps-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.apps-label {
+  margin: 0;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 243, 241, 0.7);
+}
+
+.logout-btn {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--foam);
+  border: 1px solid var(--line);
+}
+
+.logout-btn:hover {
+  background: rgba(94, 234, 212, 0.12);
+  color: var(--mint);
 }
 
 .apps-table {
   width: 100%;
   border-collapse: collapse;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid #d6d3d1;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  backdrop-filter: blur(10px);
 }
 
 .apps-table th,
 .apps-table td {
-  padding: 0.95rem 1.1rem;
+  padding: 1rem 1.1rem;
   text-align: left;
   vertical-align: middle;
-  border-bottom: 1px solid #e7e5e4;
+  border-bottom: 1px solid rgba(232, 243, 241, 0.08);
 }
 
 .apps-table th {
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #78716c;
-  background: #fafaf9;
+  color: rgba(232, 243, 241, 0.55);
+  background: rgba(4, 16, 24, 0.45);
+}
+
+.apps-table tbody tr {
+  transition: background 0.2s ease;
+}
+
+.apps-table tbody tr:hover {
+  background: rgba(94, 234, 212, 0.06);
 }
 
 .apps-table tbody tr:last-child td {
@@ -58,33 +256,64 @@ h1 {
 }
 
 .apps-table td:first-child {
-  font-size: 1.05rem;
-  font-weight: 600;
-  width: 40%;
+  font-size: 1.08rem;
+  font-weight: 700;
+  width: 38%;
+  color: #f7fffc;
 }
 
 .app-link {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.92rem;
-  color: #1d4ed8;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.88rem;
+  color: var(--mint);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(94, 234, 212, 0.35);
   word-break: break-all;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .app-link:hover {
-  color: #1e3a8a;
+  color: var(--amber);
+  border-bottom-color: rgba(245, 185, 66, 0.55);
+}
+
+@keyframes wash {
+  from {
+    filter: hue-rotate(0deg) saturate(1);
+  }
+  to {
+    filter: hue-rotate(12deg) saturate(1.08);
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-24px, -16px, 0);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 640px) {
   .page {
-    padding: 2rem 1rem 2.5rem;
+    padding: 2.5rem 1rem 2.5rem;
   }
 
   .apps-table th,
   .apps-table td {
-    padding: 0.75rem 0.7rem;
-    font-size: 0.92rem;
+    padding: 0.8rem 0.75rem;
   }
 
   .apps-table td:first-child {
@@ -92,6 +321,16 @@ h1 {
   }
 
   .app-link {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atmosphere,
+  .atmosphere::before,
+  .brand,
+  .gate,
+  .apps {
+    animation: none;
   }
 }
