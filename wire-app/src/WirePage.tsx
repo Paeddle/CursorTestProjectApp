@@ -1210,25 +1210,39 @@ export function WirePage() {
             <div className="wire-jobs-empty">No ongoing jobs added yet.</div>
           ) : (
             <div className="wire-jobs-list">
-              {managedJobs.map((job) => (
-                <label key={job} className="wire-jobs-item wire-inline-select wire-inline-select--end">
-                  <span className="wire-jobs-item-label">{job}</span>
-                  <input
-                    type="checkbox"
-                    checked={selectedManagedJobs.has(job)}
-                    disabled={loading || jobsWorking}
-                    onChange={() => {
-                      setSelectedManagedJobs((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(job)) next.delete(job)
-                        else next.add(job)
-                        return next
-                      })
-                    }}
-                    aria-label={`Select job ${job}`}
-                  />
-                </label>
-              ))}
+              {managedJobs.map((job) => {
+                const checked = selectedManagedJobs.has(job)
+                const disabled = loading || jobsWorking
+                return (
+                  <div key={job} className="wire-jobs-item wire-inline-select wire-inline-select--end">
+                    <span className="wire-jobs-item-label">{job}</span>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      aria-label={`Select job ${job}`}
+                      className={[
+                        'wire-card-select',
+                        checked ? 'wire-card-select--on' : '',
+                        disabled ? 'wire-card-select-disabled' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      disabled={disabled}
+                      onClick={() => {
+                        setSelectedManagedJobs((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(job)) next.delete(job)
+                          else next.add(job)
+                          return next
+                        })
+                      }}
+                    >
+                      <span className="wire-card-select-face" aria-hidden="true" />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -1364,11 +1378,19 @@ export function WirePage() {
                 const checked = selectedReportIds.has(report.id)
                 return (
                   <li key={report.id} className="wire-saved-reports-item">
-                    <label className="wire-inline-select">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
+                    <div className="wire-inline-select">
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        aria-label={`Select report ${report.job_name}`}
+                        className={[
+                          'wire-card-select',
+                          checked ? 'wire-card-select--on' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onClick={() => {
                           setSelectedReportIds((prev) => {
                             const next = new Set(prev)
                             if (next.has(report.id)) next.delete(report.id)
@@ -1376,8 +1398,9 @@ export function WirePage() {
                             return next
                           })
                         }}
-                        aria-label={`Select report ${report.job_name}`}
-                      />
+                      >
+                        <span className="wire-card-select-face" aria-hidden="true" />
+                      </button>
                       <span className="wire-saved-reports-meta">
                         <strong>{report.job_name}</strong>
                         <span className="wire-saved-reports-date">
@@ -1385,7 +1408,7 @@ export function WirePage() {
                           {report.count_empty_boxes ? ' · Count empty boxes' : ''}
                         </span>
                       </span>
-                    </label>
+                    </div>
                     <button
                       type="button"
                       className="wire-report-secondary"
@@ -1549,28 +1572,42 @@ export function WirePage() {
           <div className="wire-jobs-empty">No active wire types.</div>
         ) : (
           <div className="wire-jobs-list">
-            {wireTypes.map((preset) => (
-              <label key={preset.id} className="wire-jobs-item wire-inline-select wire-inline-select--end">
-                <span className="wire-jobs-item-label">
-                  {preset.label}
-                  <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={selectedWireTypeIds.has(preset.id)}
-                  disabled={loading || wireTypesWorking}
-                  onChange={() => {
-                    setSelectedWireTypeIds((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(preset.id)) next.delete(preset.id)
-                      else next.add(preset.id)
-                      return next
-                    })
-                  }}
-                  aria-label={`Select ${preset.label}`}
-                />
-              </label>
-            ))}
+            {wireTypes.map((preset) => {
+              const checked = selectedWireTypeIds.has(preset.id)
+              const disabled = loading || wireTypesWorking
+              return (
+                <div key={preset.id} className="wire-jobs-item wire-inline-select wire-inline-select--end">
+                  <span className="wire-jobs-item-label">
+                    {preset.label}
+                    <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
+                  </span>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={checked}
+                    aria-label={`Select ${preset.label}`}
+                    className={[
+                      'wire-card-select',
+                      checked ? 'wire-card-select--on' : '',
+                      disabled ? 'wire-card-select-disabled' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    disabled={disabled}
+                    onClick={() => {
+                      setSelectedWireTypeIds((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(preset.id)) next.delete(preset.id)
+                        else next.add(preset.id)
+                        return next
+                      })
+                    }}
+                  >
+                    <span className="wire-card-select-face" aria-hidden="true" />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
       </section>
