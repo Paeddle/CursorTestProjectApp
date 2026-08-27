@@ -722,11 +722,28 @@ function newestScanInBox(scans: WireBoxScan[]): WireBoxScan | null {
   return scans.reduce((a, b) => (scanTimeWireReport(a) >= scanTimeWireReport(b) ? a : b))
 }
 
+function jobNameIsRetired(jobName: string | null | undefined): boolean {
+  return (jobName || '').trim().toLowerCase() === RETIRED_JOB_NAME.toLowerCase()
+}
+
+function jobNameIsWarehouse(jobName: string | null | undefined): boolean {
+  return (jobName || '').trim().toLowerCase() === WAREHOUSE_JOB_NAME.toLowerCase()
+}
+
+function isWarehouseCheckInScan(scan: WireBoxScan): boolean {
+  if (!jobNameIsWarehouse(scan.job_name)) return false
+  return scan.check_type !== 'check_out'
+}
+
+function scansSortedOldestFirst(scans: WireBoxScan[]): WireBoxScan[] {
+  return [...scans].sort((a, b) => scanTimeWireReport(a) - scanTimeWireReport(b))
+}
+
 /** True when the box has been retired (latest location is Retired). */
 export function isBoxRetired(scans: WireBoxScan[]): boolean {
   const latest = newestScanInBox(scans)
   if (!latest) return false
-  return (latest.job_name || '').trim().toLowerCase() === RETIRED_JOB_NAME.toLowerCase()
+  return jobNameIsRetired(latest.job_name)
 }
 
 /** True when the box is still in use (warehouse or out on a job). */
@@ -816,37 +833,67 @@ export function activeBoxSummariesForJob(
 }
 
 /**
- * Build a restore-to-warehouse (active) or retire (inactive) insert.
- * Inactive = move to Retired location. Active = check in to Warehouse.
+ * Scan ids to delete to undo retirement.
+ * Removes trailing Retired check-outs, plus warehouse check-ins that a previous
+ * Set Active inserted immediately after Retired (so the box returns to its last
+ * real check-in or check-out, not forced warehouse stock).
+ */
+export function scanIdsToDeleteToRestoreActive(scans: WireBoxScan[]): string[] {
+  if (!isBoxRetired(scans)) return []
+  const sorted = scansSortedOldestFirst(scans)
+  const ids: string[] = []
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const scan = sorted[i]!
+    const prev = i > 0 ? sorted[i - 1] : undefined
+    const retired = jobNameIsRetired(scan.job_name)
+    const syntheticWarehouseRestore =
+      isWarehouseCheckInScan(scan) && !!prev && jobNameIsRetired(prev.job_name)
+    if (!retired && !syntheticWarehouseRestore) break
+    const id = (scan.id || '').trim()
+    if (id) ids.push(id)
+  }
+  return ids
+}
+
+export function restoredScanAfterUndoRetirement(scans: WireBoxScan[]): WireBoxScan | null {
+  const deleteIds = new Set(scanIdsToDeleteToRestoreActive(scans))
+  const remaining = scansSortedOldestFirst(scans).filter(
+    (scan) => !deleteIds.has((scan.id || '').trim()),
+  )
+  if (!remaining.length) return null
+  return remaining[remaining.length - 1] ?? null
+}
+
+/** Human-readable location the box will return to after undoing Retired. */
+export function describeRestoreActiveLocation(scans: WireBoxScan[]): string {
+  const restored = restoredScanAfterUndoRetirement(scans)
+  if (!restored) return 'its last location'
+  if (restored.check_type === 'check_out') {
+    return `checked out on ${formatWireJobNameDisplay(restored.job_name)}`
+  }
+  if (jobNameIsWarehouse(restored.job_name)) return 'in warehouse'
+  return `checked in on ${formatWireJobNameDisplay(restored.job_name)}`
+}
+
+/**
+ * Build a retire (inactive) insert. Restoring Active deletes Retired rows
+ * via scanIdsToDeleteToRestoreActive — it does not insert a warehouse check-in.
  */
 export function buildWireStatusChangeInsert(
   summary: WireBoxSummary,
   target: 'active' | 'inactive',
   options?: { jobName?: string; footageOverride?: string }
 ): WireStatusChangeInsertRow | null {
+  if (target === 'active') return null
+
   const retired = isBoxRetired(summary.scans)
-  if (target === 'active' && !retired) return null
-  if (target === 'inactive' && retired) return null
+  if (retired) return null
 
   const latest = newestScanInBox(summary.scans)
   const footage =
     (options?.footageOverride ?? latest?.current_footage ?? '').trim() || '0'
   const boxId = summary.box_id.trim()
   if (!boxId) return null
-
-  if (target === 'active') {
-    const row: WireStatusChangeInsertRow = {
-      box_id: boxId,
-      job_name: WAREHOUSE_JOB_NAME,
-      current_footage: footage,
-      check_type: 'check_in',
-      wire_type: null,
-      wire_type_label: null,
-      spool_capacity_ft: null,
-    }
-    attachProfileFields(summary, row)
-    return row
-  }
 
   const row: WireStatusChangeInsertRow = {
     box_id: boxId,

@@ -15,6 +15,7 @@ import {
   buildWireInventoryRows,
   buildWireMaterialsReport,
   buildWireStatusChangeInsert,
+  describeRestoreActiveLocation,
   downloadTextFile,
   downloadWireMaterialsReportPdf,
   emptyBoxesToRetireForJob,
@@ -23,6 +24,7 @@ import {
   isBoxActive,
   isBoxInInventory,
   isBoxRetired,
+  scanIdsToDeleteToRestoreActive,
   isSelectableWireJobName,
   parseFootage,
   reportRowsToCsv,
@@ -199,7 +201,7 @@ export function WirePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchBox, setSearchBox] = useState('')
-  /** Active = in warehouse (checked in); inactive = checked out on a job. */
+  /** Active = warehouse or checked out on a job; inactive = Retired. */
   const [boxListMode, setBoxListMode] = useState<'active' | 'inactive'>('active')
   const [expandedBox, setExpandedBox] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
@@ -658,6 +660,60 @@ export function WirePage() {
     boxSummaries: WireBoxSummary[],
     options?: { footageOverride?: string; confirmMessage?: string }
   ) => {
+    if (target === 'active') {
+      const scanIds: string[] = []
+      const skips: string[] = []
+      let restoreCount = 0
+      for (const s of boxSummaries) {
+        const ids = scanIdsToDeleteToRestoreActive(s.scans)
+        if (ids.length === 0) {
+          skips.push(s.box_id)
+          continue
+        }
+        restoreCount += 1
+        scanIds.push(...ids)
+      }
+      if (scanIds.length === 0) {
+        setError(
+          skips.length
+            ? `No boxes to restore (already active: ${skips.slice(0, 5).join(', ')}).`
+            : 'No boxes to restore to Active.',
+        )
+        return
+      }
+      if (
+        options?.confirmMessage &&
+        !window.confirm(options.confirmMessage.replace('{n}', String(restoreCount)))
+      ) {
+        return
+      }
+      setStatusWorking(true)
+      setError(null)
+      setBoxesMenuOpen(false)
+      setBoxesMenuCheckoutOpen(false)
+      try {
+        const { data, error: delErr } = await supabase
+          .from('wire_box_scans')
+          .delete()
+          .in('id', scanIds)
+          .select('id')
+        if (delErr) throw new Error(delErr.message)
+        if (!data?.length) {
+          throw new Error(
+            'No Retired scans were deleted. Check RLS delete policy (supabase/fix-wire-box-scans-delete-rls.sql).',
+          )
+        }
+        setSelectedBoxKeys(new Set())
+        selectionAnchorIndexRef.current = null
+        await load({ silent: true })
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to restore boxes to Active')
+      } finally {
+        setStatusWorking(false)
+      }
+      return
+    }
+
     const payloads: Record<string, string>[] = []
     const skips: string[] = []
     for (const s of boxSummaries) {
@@ -673,7 +729,7 @@ export function WirePage() {
     if (payloads.length === 0) {
       setError(
         skips.length
-          ? `No boxes to update (already ${target}${skips.length ? `: ${skips.slice(0, 5).join(', ')}` : ''}).`
+          ? `No boxes to update (already ${target}: ${skips.slice(0, 5).join(', ')}).`
           : `No boxes to mark ${target}.`,
       )
       return
@@ -708,7 +764,7 @@ export function WirePage() {
       footageOverride: active ? '0' : undefined,
       confirmMessage: active
         ? `Retire ${summary.box_id} (move to Inactive / Retired)?`
-        : `Restore ${summary.box_id} to Active (check in to warehouse)?`,
+        : `Restore ${summary.box_id} to Active by undoing Retired (back to ${describeRestoreActiveLocation(summary.scans)})?`,
     })
   }
 
@@ -720,7 +776,8 @@ export function WirePage() {
       return
     }
     await applyBoxStatus('active', selected, {
-      confirmMessage: 'Restore {n} selected box(es) to Active (warehouse)?',
+      confirmMessage:
+        'Restore {n} selected box(es) to Active by undoing Retired (back to each box\'s last check-in or check-out)?',
     })
   }
 
