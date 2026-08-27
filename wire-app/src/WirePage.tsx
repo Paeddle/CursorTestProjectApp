@@ -218,10 +218,13 @@ export function WirePage() {
   const [wireTypesMenuOpen, setWireTypesMenuOpen] = useState(false)
   const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(() => new Set())
   const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
+  const [selectedManagedJobs, setSelectedManagedJobs] = useState<Set<string>>(() => new Set())
+  const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const [jobSearchOpen, setJobSearchOpen] = useState(false)
   const boxesMenuRef = useRef<HTMLDivElement | null>(null)
   const wireTypesMenuRef = useRef<HTMLDivElement | null>(null)
   const reportsMenuRef = useRef<HTMLDivElement | null>(null)
+  const jobsMenuRef = useRef<HTMLDivElement | null>(null)
   const jobSearchRef = useRef<HTMLDivElement | null>(null)
   const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
   const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
@@ -323,7 +326,9 @@ export function WirePage() {
   }, [loadSavedReports])
 
   useEffect(() => {
-    if (!boxesMenuOpen && !wireTypesMenuOpen && !reportsMenuOpen && !jobSearchOpen) return
+    if (!boxesMenuOpen && !wireTypesMenuOpen && !reportsMenuOpen && !jobsMenuOpen && !jobSearchOpen) {
+      return
+    }
     const onDoc = (e: Event) => {
       const t = e.target
       if (!(t instanceof Node)) return
@@ -337,13 +342,16 @@ export function WirePage() {
       if (reportsMenuOpen && reportsMenuRef.current && !reportsMenuRef.current.contains(t)) {
         setReportsMenuOpen(false)
       }
+      if (jobsMenuOpen && jobsMenuRef.current && !jobsMenuRef.current.contains(t)) {
+        setJobsMenuOpen(false)
+      }
       if (jobSearchOpen && jobSearchRef.current && !jobSearchRef.current.contains(t)) {
         setJobSearchOpen(false)
       }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [boxesMenuOpen, wireTypesMenuOpen, reportsMenuOpen, jobSearchOpen])
+  }, [boxesMenuOpen, wireTypesMenuOpen, reportsMenuOpen, jobsMenuOpen, jobSearchOpen])
 
   useEffect(() => {
     if (!isConfigured()) return
@@ -1031,9 +1039,51 @@ export function WirePage() {
         setReportRows(null)
       }
       if (bulkCheckoutJob.trim() === name) setBulkCheckoutJob('')
+      setSelectedManagedJobs((prev) => {
+        const next = new Set(prev)
+        next.delete(name)
+        return next
+      })
       await loadManagedJobs()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not delete job')
+    } finally {
+      setJobsWorking(false)
+    }
+  }
+
+  const handleDeleteSelectedManagedJobs = async () => {
+    const names = [...selectedManagedJobs]
+    if (names.length === 0) {
+      setError('Select one or more jobs to delete.')
+      setJobsMenuOpen(false)
+      return
+    }
+    if (
+      !window.confirm(
+        `Delete ${names.length} job${names.length !== 1 ? 's' : ''}? This removes them from the jobs list.`,
+      )
+    ) {
+      return
+    }
+    setJobsWorking(true)
+    setError(null)
+    setJobsMenuOpen(false)
+    try {
+      for (const name of names) {
+        const key = normalizeJobNameKey(name)
+        const { error: delErr } = await supabase.from('wire_jobs').delete().eq('name_key', key)
+        if (delErr) throw new Error(delErr.message)
+        if (reportJob === name) {
+          setReportJob('')
+          setReportRows(null)
+        }
+        if (bulkCheckoutJob.trim() === name) setBulkCheckoutJob('')
+      }
+      setSelectedManagedJobs(new Set())
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not delete jobs')
     } finally {
       setJobsWorking(false)
     }
@@ -1129,23 +1179,55 @@ export function WirePage() {
             >
               Add job
             </button>
+            <div className="wire-section-menu" ref={jobsMenuRef}>
+              <button
+                type="button"
+                className="wire-boxes-menu-trigger"
+                aria-haspopup="menu"
+                aria-expanded={jobsMenuOpen}
+                aria-label="Jobs actions"
+                disabled={jobsWorking}
+                onClick={() => setJobsMenuOpen((v) => !v)}
+              >
+                ⋯
+              </button>
+              {jobsMenuOpen && (
+                <div className="wire-boxes-menu-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wire-boxes-menu-item"
+                    disabled={selectedManagedJobs.size === 0 || jobsWorking}
+                    onClick={() => void handleDeleteSelectedManagedJobs()}
+                  >
+                    Delete Selected
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {managedJobs.length === 0 ? (
             <div className="wire-jobs-empty">No ongoing jobs added yet.</div>
           ) : (
             <div className="wire-jobs-list">
               {managedJobs.map((job) => (
-                <div key={job} className="wire-jobs-item">
-                  <span>{job}</span>
-                  <button
-                    type="button"
-                    className="wire-delete-scan"
+                <label key={job} className="wire-jobs-item wire-inline-select wire-inline-select--end">
+                  <span className="wire-jobs-item-label">{job}</span>
+                  <input
+                    type="checkbox"
+                    checked={selectedManagedJobs.has(job)}
                     disabled={loading || jobsWorking}
-                    onClick={() => void handleDeleteManagedJob(job)}
-                  >
-                    Delete
-                  </button>
-                </div>
+                    onChange={() => {
+                      setSelectedManagedJobs((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(job)) next.delete(job)
+                        else next.add(job)
+                        return next
+                      })
+                    }}
+                    aria-label={`Select job ${job}`}
+                  />
+                </label>
               ))}
             </div>
           )}
@@ -1264,7 +1346,7 @@ export function WirePage() {
                     disabled={selectedReportIds.size === 0}
                     onClick={() => void handleDeleteSavedReports([...selectedReportIds])}
                   >
-                    Delete selected
+                    Delete Selected
                   </button>
                 </div>
               )}
@@ -1323,11 +1405,6 @@ export function WirePage() {
         <h2 id="wire-inventory-heading" className="wire-inventory-title">
           Wire inventory
         </h2>
-        <p className="wire-inventory-hint">
-          All boxes currently in the warehouse (checked in). Bars are remaining footage by type; the
-          table lists box counts and totals. Check-out removes a box from this stock until it is
-          checked back in. Retired (inactive) boxes are not included.
-        </p>
         {loading ? (
           <div className="wire-inventory-loading">Loading inventory…</div>
         ) : inventoryRows.length === 0 ? (
@@ -1410,41 +1487,9 @@ export function WirePage() {
       </section>
 
       <section className="wire-types-section" aria-labelledby="wire-types-heading">
-        <div className="wire-section-toolbar">
-          <h2 id="wire-types-heading" className="wire-types-section-title">
-            Wire types
-          </h2>
-          <div className="wire-section-menu" ref={wireTypesMenuRef}>
-            <button
-              type="button"
-              className="wire-boxes-menu-trigger"
-              aria-haspopup="menu"
-              aria-expanded={wireTypesMenuOpen}
-              aria-label="Wire types actions"
-              disabled={wireTypesWorking}
-              onClick={() => setWireTypesMenuOpen((v) => !v)}
-            >
-              ⋯
-            </button>
-            {wireTypesMenuOpen && (
-              <div className="wire-boxes-menu-dropdown" role="menu">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="wire-boxes-menu-item"
-                  disabled={selectedWireTypeIds.size === 0 || wireTypesWorking}
-                  onClick={() => void handleHideSelectedWireTypes()}
-                >
-                  Hide selected
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <p className="wire-types-hint">
-          Add types for the scanner dropdown and box editor. Select types, then use ⋯ → Hide selected.
-          Hide keeps history on boxes already scanned.
-        </p>
+        <h2 id="wire-types-heading" className="wire-types-section-title">
+          Wire types
+        </h2>
         <div className="wire-types-toolbar">
           <input
             type="text"
@@ -1472,6 +1517,32 @@ export function WirePage() {
           >
             Add type
           </button>
+          <div className="wire-section-menu" ref={wireTypesMenuRef}>
+            <button
+              type="button"
+              className="wire-boxes-menu-trigger"
+              aria-haspopup="menu"
+              aria-expanded={wireTypesMenuOpen}
+              aria-label="Wire types actions"
+              disabled={wireTypesWorking}
+              onClick={() => setWireTypesMenuOpen((v) => !v)}
+            >
+              ⋯
+            </button>
+            {wireTypesMenuOpen && (
+              <div className="wire-boxes-menu-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item"
+                  disabled={selectedWireTypeIds.size === 0 || wireTypesWorking}
+                  onClick={() => void handleHideSelectedWireTypes()}
+                >
+                  Hide Selected
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         {wireTypesMessage && <div className="wire-types-msg">{wireTypesMessage}</div>}
         {wireTypes.length === 0 ? (
@@ -1479,7 +1550,11 @@ export function WirePage() {
         ) : (
           <div className="wire-jobs-list">
             {wireTypes.map((preset) => (
-              <label key={preset.id} className="wire-jobs-item wire-inline-select">
+              <label key={preset.id} className="wire-jobs-item wire-inline-select wire-inline-select--end">
+                <span className="wire-jobs-item-label">
+                  {preset.label}
+                  <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
+                </span>
                 <input
                   type="checkbox"
                   checked={selectedWireTypeIds.has(preset.id)}
@@ -1494,10 +1569,6 @@ export function WirePage() {
                   }}
                   aria-label={`Select ${preset.label}`}
                 />
-                <span>
-                  {preset.label}
-                  <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
-                </span>
               </label>
             ))}
           </div>
@@ -1630,7 +1701,7 @@ export function WirePage() {
                   disabled={statusWorking || selectedBoxKeys.size === 0}
                   onClick={() => void handleMenuSetActive()}
                 >
-                  Set active
+                  Set Active
                 </button>
                 <button
                   type="button"
@@ -1639,7 +1710,16 @@ export function WirePage() {
                   disabled={statusWorking || selectedBoxKeys.size === 0}
                   onClick={() => void handleMenuSetInactive()}
                 >
-                  Set inactive
+                  Set Inactive
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item wire-boxes-menu-item-danger"
+                  disabled={deleting || selectedBoxKeys.size === 0}
+                  onClick={() => void handleMenuDeleteBoxes()}
+                >
+                  Delete Boxes
                 </button>
                 <div className="wire-boxes-menu-submenu">
                   <button
@@ -1653,7 +1733,7 @@ export function WirePage() {
                     }
                     onClick={() => setBoxesMenuCheckoutOpen((v) => !v)}
                   >
-                    Check out to job ▸
+                    Check Out To Job ▸
                   </button>
                   {boxesMenuCheckoutOpen && (
                     <div className="wire-boxes-menu-nested" role="menu">
@@ -1665,21 +1745,12 @@ export function WirePage() {
                           className="wire-boxes-menu-item"
                           onClick={() => void handleMenuCheckoutToJob(job)}
                         >
-                          {job}
+                          {job.replace(/\b\w/g, (c) => c.toUpperCase())}
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="wire-boxes-menu-item wire-boxes-menu-item-danger"
-                  disabled={deleting || selectedBoxKeys.size === 0}
-                  onClick={() => void handleMenuDeleteBoxes()}
-                >
-                  Delete boxes
-                </button>
               </div>
             )}
           </div>
@@ -1803,22 +1874,6 @@ export function WirePage() {
                       <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                     </button>
                     </div>
-                    <button
-                      type="button"
-                      className={`wire-box-status-toggle ${boxActive ? 'is-active' : 'is-inactive'}`}
-                      title={
-                        boxActive
-                          ? 'Retire box (move to Inactive)'
-                          : 'Restore to Active (warehouse)'
-                      }
-                      disabled={deleting || statusWorking}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void handleToggleBoxStatus(summary)
-                      }}
-                    >
-                      {boxActive ? 'Active' : 'Inactive'}
-                    </button>
                   </div>
                   {showTypeEditor && (
                     <div className="wire-type-inline-editor">

@@ -149,11 +149,27 @@
   cursor: pointer;
 }
 
+.wire-inline-select--end {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.wire-jobs-item-label {
+  min-width: 0;
+  flex: 1;
+  color: #e2e8f0;
+}
+
 .wire-inline-select input[type='checkbox'] {
   flex-shrink: 0;
   width: 0.95rem;
   height: 0.95rem;
   accent-color: #2563eb;
+  margin-left: auto;
+}
+
+.wire-jobs-toolbar .wire-section-menu {
+  margin-left: 0;
 }
 
 .wire-boxes-menu-submenu {
