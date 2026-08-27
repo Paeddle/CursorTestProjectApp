@@ -17,6 +17,7 @@ import {
   buildWireStatusChangeInsert,
   describeRestoreActiveLocation,
   downloadTextFile,
+  downloadAndOpenWireMaterialsReportsPdf,
   downloadWireMaterialsReportPdf,
   emptyBoxesToRetireForJob,
   formatInventoryFtDisplay,
@@ -72,6 +73,40 @@ function formatDateTime(iso: string) {
 function formatCheckType(raw: string | undefined): string {
   if (raw === 'check_out') return 'Check out'
   return 'In warehouse'
+}
+
+const SELECT_HINT = 'Click to select. Ctrl/Cmd+click to add or remove. Shift+click for a range.'
+
+function nextListSelection<T>(
+  e: MouseEvent,
+  index: number,
+  id: T,
+  orderedIds: T[],
+  prev: Set<T>,
+  anchorRef: { current: number | null },
+): Set<T> {
+  const ctrl = e.ctrlKey || e.metaKey
+  const shift = e.shiftKey
+  const anchor = anchorRef.current
+  if (shift && anchor !== null) {
+    const lo = Math.min(anchor, index)
+    const hi = Math.max(anchor, index)
+    const range = orderedIds.slice(lo, hi + 1)
+    if (ctrl) {
+      const next = new Set(prev)
+      for (const item of range) next.add(item)
+      return next
+    }
+    return new Set(range)
+  }
+  anchorRef.current = index
+  if (ctrl) {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  }
+  return new Set([id])
 }
 
 function normalizeJobNameKey(raw: string): string {
@@ -248,6 +283,9 @@ export function WirePage() {
   const [newTypeCapacity, setNewTypeCapacity] = useState('1000')
   const [wireTypesMessage, setWireTypesMessage] = useState<string | null>(null)
   const selectionAnchorIndexRef = useRef<number | null>(null)
+  const reportsAnchorIndexRef = useRef<number | null>(null)
+  const jobsAnchorIndexRef = useRef<number | null>(null)
+  const wireTypesAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
   const reportJobSelectOptions = useMemo(() => {
@@ -363,6 +401,10 @@ export function WirePage() {
     if (!isConfigured()) return
     void loadSavedReports()
   }, [loadSavedReports])
+
+  useEffect(() => {
+    reportsAnchorIndexRef.current = null
+  }, [savedReportQuery])
 
   useEffect(() => {
     if (!boxesMenuOpen && !wireTypesMenuOpen && !reportsMenuOpen && !jobsMenuOpen && !jobSearchOpen) {
@@ -982,6 +1024,42 @@ export function WirePage() {
     }
   }
 
+  const handlePrintSelectedReports = async () => {
+    const selected = savedReports.filter((r) => selectedReportIds.has(r.id))
+    if (selected.length === 0) {
+      setError('Select one or more saved reports to print.')
+      setReportsMenuOpen(false)
+      return
+    }
+    setReportsMenuOpen(false)
+    setPdfWorking(true)
+    setError(null)
+    const preview = window.open('about:blank', '_blank')
+    try {
+      const sections = selected.map((r) => ({
+        jobName: r.job_name,
+        rows: r.rows,
+        generatedLabel: `${formatDateTime(r.created_at)}${
+          r.count_empty_boxes ? ' · Count empty boxes' : ''
+        }`,
+      }))
+      const stem =
+        selected.length === 1
+          ? selected[0]!.job_name
+              .trim()
+              .replace(/[^\w\- ./()]+/g, '_')
+              .replace(/\s+/g, '_')
+              .slice(0, 80) || 'report'
+          : `reports-${selected.length}`
+      await downloadAndOpenWireMaterialsReportsPdf(sections, stem, preview)
+    } catch (e: unknown) {
+      preview?.close()
+      setError(e instanceof Error ? e.message : 'Could not print saved reports')
+    } finally {
+      setPdfWorking(false)
+    }
+  }
+
   const deleteBox = async (boxId: string, scanCount: number) => {
     if (
       !window.confirm(
@@ -1026,27 +1104,10 @@ export function WirePage() {
     if (!canSelect) return
     e.preventDefault()
     e.stopPropagation()
-    if (e.shiftKey && selectionAnchorIndexRef.current !== null) {
-      const anchor = selectionAnchorIndexRef.current
-      const lo = Math.min(anchor, indexInFiltered)
-      const hi = Math.max(anchor, indexInFiltered)
-      setSelectedBoxKeys((prev) => {
-        const next = new Set(prev)
-        for (let i = lo; i <= hi; i++) {
-          const s = filtered[i]
-          if (s) next.add(s.box_id.toLowerCase())
-        }
-        return next
-      })
-    } else {
-      setSelectedBoxKeys((prev) => {
-        const next = new Set(prev)
-        if (next.has(boxKey)) next.delete(boxKey)
-        else next.add(boxKey)
-        return next
-      })
-    }
-    selectionAnchorIndexRef.current = indexInFiltered
+    const orderedIds = filtered.map((s) => s.box_id.toLowerCase())
+    setSelectedBoxKeys((prev) =>
+      nextListSelection(e, indexInFiltered, boxKey, orderedIds, prev, selectionAnchorIndexRef),
+    )
   }
 
   const handleBulkCheckout = async () => {
@@ -1315,7 +1376,7 @@ export function WirePage() {
             <div className="wire-jobs-empty">No ongoing jobs added yet.</div>
           ) : (
             <div className="wire-jobs-list">
-              {managedJobs.map((job) => {
+              {managedJobs.map((job, index) => {
                 const checked = selectedManagedJobs.has(job)
                 const disabled = loading || jobsWorking
                 return (
@@ -1326,6 +1387,7 @@ export function WirePage() {
                       role="checkbox"
                       aria-checked={checked}
                       aria-label={`Select job ${job}`}
+                      title={SELECT_HINT}
                       className={[
                         'wire-card-select',
                         checked ? 'wire-card-select--on' : '',
@@ -1334,13 +1396,12 @@ export function WirePage() {
                         .filter(Boolean)
                         .join(' ')}
                       disabled={disabled}
-                      onClick={() => {
-                        setSelectedManagedJobs((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(job)) next.delete(job)
-                          else next.add(job)
-                          return next
-                        })
+                      onClick={(e) => {
+                        if (disabled) return
+                        e.preventDefault()
+                        setSelectedManagedJobs((prev) =>
+                          nextListSelection(e, index, job, managedJobs, prev, jobsAnchorIndexRef),
+                        )
                       }}
                     >
                       <span className="wire-card-select-face" aria-hidden="true" />
@@ -1438,6 +1499,15 @@ export function WirePage() {
                     type="button"
                     role="menuitem"
                     className="wire-boxes-menu-item"
+                    disabled={selectedReportIds.size === 0 || pdfWorking}
+                    onClick={() => void handlePrintSelectedReports()}
+                  >
+                    {pdfWorking ? 'Printing…' : 'Print'}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wire-boxes-menu-item"
                     disabled={selectedReportIds.size === 0}
                     onClick={() => void handleDeleteSavedReports([...selectedReportIds])}
                   >
@@ -1467,7 +1537,7 @@ export function WirePage() {
                 <p className="wire-saved-reports-empty">No saved reports match that search.</p>
               ) : (
                 <ul className="wire-saved-reports-list">
-                  {filteredSavedReports.map((report) => {
+                  {filteredSavedReports.map((report, index) => {
                     const checked = selectedReportIds.has(report.id)
                     const isOpen = openedSavedReportId === report.id
                     return (
@@ -1481,19 +1551,26 @@ export function WirePage() {
                             role="checkbox"
                             aria-checked={checked}
                             aria-label={`Select report ${report.job_name}`}
+                            title={SELECT_HINT}
                             className={[
                               'wire-card-select',
                               checked ? 'wire-card-select--on' : '',
                             ]
                               .filter(Boolean)
                               .join(' ')}
-                            onClick={() => {
-                              setSelectedReportIds((prev) => {
-                                const next = new Set(prev)
-                                if (next.has(report.id)) next.delete(report.id)
-                                else next.add(report.id)
-                                return next
-                              })
+                            onClick={(e) => {
+                              e.preventDefault()
+                              const orderedIds = filteredSavedReports.map((r) => r.id)
+                              setSelectedReportIds((prev) =>
+                                nextListSelection(
+                                  e,
+                                  index,
+                                  report.id,
+                                  orderedIds,
+                                  prev,
+                                  reportsAnchorIndexRef,
+                                ),
+                              )
                             }}
                           >
                             <span className="wire-card-select-face" aria-hidden="true" />
@@ -1701,7 +1778,7 @@ export function WirePage() {
           <div className="wire-jobs-empty">No active wire types.</div>
         ) : (
           <div className="wire-jobs-list">
-            {wireTypes.map((preset) => {
+            {wireTypes.map((preset, index) => {
               const checked = selectedWireTypeIds.has(preset.id)
               const disabled = loading || wireTypesWorking
               return (
@@ -1715,6 +1792,7 @@ export function WirePage() {
                     role="checkbox"
                     aria-checked={checked}
                     aria-label={`Select ${preset.label}`}
+                    title={SELECT_HINT}
                     className={[
                       'wire-card-select',
                       checked ? 'wire-card-select--on' : '',
@@ -1723,13 +1801,13 @@ export function WirePage() {
                       .filter(Boolean)
                       .join(' ')}
                     disabled={disabled}
-                    onClick={() => {
-                      setSelectedWireTypeIds((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(preset.id)) next.delete(preset.id)
-                        else next.add(preset.id)
-                        return next
-                      })
+                    onClick={(e) => {
+                      if (disabled) return
+                      e.preventDefault()
+                      const orderedIds = wireTypes.map((p) => p.id)
+                      setSelectedWireTypeIds((prev) =>
+                        nextListSelection(e, index, preset.id, orderedIds, prev, wireTypesAnchorIndexRef),
+                      )
                     }}
                   >
                     <span className="wire-card-select-face" aria-hidden="true" />
@@ -1970,7 +2048,7 @@ export function WirePage() {
                         ]
                           .filter(Boolean)
                           .join(' ')}
-                        title="Select for bulk actions. Shift+click another row to select a range."
+                        title={SELECT_HINT}
                         disabled={deleting || statusWorking}
                         onClick={(e) =>
                           handleBoxCheckboxClick(e, indexInFiltered, key, !(deleting || statusWorking))

@@ -603,19 +603,25 @@ export function downloadTextFile(filename: string, content: string, mime: string
   URL.revokeObjectURL(url)
 }
 
-/** US Letter (8.5" × 11") portrait PDF; table spans nearly full page width, centered via equal side margins. */
-export async function downloadWireMaterialsReportPdf(
-  jobName: string,
-  rows: WireReportRow[],
-  filenameStem: string
-): Promise<void> {
+export type WirePdfReportSection = {
+  jobName: string
+  rows: WireReportRow[]
+  generatedLabel?: string
+}
+
+async function loadMaterialsPdfLibs() {
   const [{ default: jsPDF }, autoTableMod] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
   ])
-  const autoTable = autoTableMod.default
+  return { jsPDF, autoTable: autoTableMod.default }
+}
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+function addMaterialsReportSection(
+  doc: InstanceType<Awaited<ReturnType<typeof loadMaterialsPdfLibs>>['jsPDF']>,
+  autoTable: Awaited<ReturnType<typeof loadMaterialsPdfLibs>>['autoTable'],
+  section: WirePdfReportSection,
+): void {
   const pageW = doc.internal.pageSize.getWidth()
   const marginMm = 12
   const tableWidth = pageW - 2 * marginMm
@@ -629,23 +635,22 @@ export async function downloadWireMaterialsReportPdf(
   y += 8
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.text(`Job: ${jobName}`, pageW / 2, y, { align: 'center' })
+  doc.text(`Job: ${section.jobName}`, pageW / 2, y, { align: 'center' })
   y += 5
-  doc.text(`Generated: ${new Date().toLocaleString()}`, pageW / 2, y, { align: 'center' })
+  doc.text(`Generated: ${section.generatedLabel || new Date().toLocaleString()}`, pageW / 2, y, {
+    align: 'center',
+  })
   y += 10
-
-  const head = [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)']]
-  const body = rows.map((r) => [
-    r.wireType,
-    r.startFt === null ? '—' : formatNum(r.startFt),
-    r.endFt === null ? '—' : formatNum(r.endFt),
-    r.usedFt === null ? '—' : formatNum(r.usedFt),
-  ])
 
   autoTable(doc, {
     startY: y,
-    head,
-    body,
+    head: [['Wire type', 'Start (ft)', 'End (ft)', 'Used (ft)']],
+    body: section.rows.map((r) => [
+      r.wireType,
+      r.startFt === null ? '—' : formatNum(r.startFt),
+      r.endFt === null ? '—' : formatNum(r.endFt),
+      r.usedFt === null ? '—' : formatNum(r.usedFt),
+    ]),
     tableWidth,
     styles: {
       fontSize: 9,
@@ -663,8 +668,64 @@ export async function downloadWireMaterialsReportPdf(
     },
     margin: { left: marginMm, right: marginMm },
   })
+}
 
-  doc.save(`wire-materials-${filenameStem}.pdf`)
+/** US Letter (8.5" × 11") portrait PDF; one section per saved/created report. */
+export async function buildWireMaterialsReportsPdfBlob(
+  sections: WirePdfReportSection[],
+): Promise<Blob> {
+  if (sections.length === 0) throw new Error('No reports to print')
+  const { jsPDF, autoTable } = await loadMaterialsPdfLibs()
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  sections.forEach((section, i) => {
+    if (i > 0) doc.addPage()
+    addMaterialsReportSection(doc, autoTable, section)
+  })
+  return doc.output('blob')
+}
+
+export async function downloadWireMaterialsReportPdf(
+  jobName: string,
+  rows: WireReportRow[],
+  filenameStem: string
+): Promise<void> {
+  const blob = await buildWireMaterialsReportsPdfBlob([
+    { jobName, rows, generatedLabel: new Date().toLocaleString() },
+  ])
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `wire-materials-${filenameStem}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** Download a PDF of one or more reports and open it in a new browser tab. */
+export async function downloadAndOpenWireMaterialsReportsPdf(
+  sections: WirePdfReportSection[],
+  filenameStem: string,
+  previewWindow?: Window | null,
+): Promise<void> {
+  const blob = await buildWireMaterialsReportsPdfBlob(sections)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `wire-materials-${filenameStem}.pdf`
+  a.click()
+
+  const tab = previewWindow && !previewWindow.closed ? previewWindow : window.open(url, '_blank')
+  if (tab) {
+    try {
+      tab.location.href = url
+    } catch {
+      /* already opened with blob url */
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000)
+    return
+  }
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 8_000)
+  throw new Error('PDF downloaded. Allow pop-ups to also open it in the browser.')
 }
 
 export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
