@@ -41,6 +41,16 @@
   margin: 0 0 0.25rem 0;
 }
 
+.home-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-title-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
 .wire-controls {
   display: flex;
   flex-wrap: wrap;

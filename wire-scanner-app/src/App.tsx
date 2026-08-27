@@ -421,7 +421,7 @@ function App() {
     return (
       <div className="app">
         <header className="app-header">
-          <h1>Wire Box Scanner</h1>
+          <h1><a href="/" className="home-title-link">Wire Box Scanner</a></h1>
         </header>
         <div className="section section-error">
           <p>
@@ -441,7 +441,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Wire Box Scanner</h1>
+        <h1><a href="/" className="home-title-link">Wire Box Scanner</a></h1>
       </header>
 
       {status && (

@@ -1136,7 +1136,7 @@ export function WirePage() {
     return (
       <div className="wire-page">
         <header className="wire-header">
-          <h1>Wire Tracker</h1>
+          <h1><a href="/" className="home-title-link">Wire Tracker</a></h1>
         </header>
         <div className="wire-setup">
           <p>Configure Supabase in your <code>.env</code> and run <code>supabase/add-wire-box-scans.sql</code>.</p>
@@ -1149,7 +1149,7 @@ export function WirePage() {
     <div className="wire-page">
       <header className="wire-header">
         <div className="wire-header-row">
-          <h1>Wire Tracker</h1>
+          <h1><a href="/" className="home-title-link">Wire Tracker</a></h1>
           <a className="wire-scanner-link" href={wireScannerHref()} target="_blank" rel="noopener noreferrer">
             Open box scanner
           </a>

@@ -16,9 +16,7 @@
     <div class="atmosphere" aria-hidden="true"></div>
     <main class="page">
       <header class="brand">
-        <p class="brand-mark">SHS</p>
         <h1>SHS Web Apps</h1>
-        <p class="brand-sub">Internal tools for warehouse and shop floor work.</p>
       </header>
 
       <section id="gate" class="gate" hidden>
@@ -33,6 +31,9 @@
               required
               autofocus
             />
+            <button type="button" id="reveal-password" class="reveal-btn" aria-pressed="false">
+              Show
+            </button>
             <button type="submit">Unlock</button>
           </div>
           <p id="login-error" class="login-error" hidden>Wrong password. Try again.</p>
@@ -83,6 +84,8 @@
         var form = document.getElementById('login-form')
         var errorEl = document.getElementById('login-error')
         var logoutBtn = document.getElementById('logout-btn')
+        var revealBtn = document.getElementById('reveal-password')
+        var passwordInput = document.getElementById('password')
 
         document.querySelectorAll('.app-link').forEach(function (el) {
           var path = el.getAttribute('data-path') || el.getAttribute('href') || ''
@@ -115,9 +118,16 @@
           showLocked()
         }
 
+        revealBtn.addEventListener('click', function () {
+          var showing = passwordInput.type === 'text'
+          passwordInput.type = showing ? 'password' : 'text'
+          revealBtn.textContent = showing ? 'Show' : 'Hide'
+          revealBtn.setAttribute('aria-pressed', showing ? 'false' : 'true')
+        })
+
         form.addEventListener('submit', function (event) {
           event.preventDefault()
-          var value = document.getElementById('password').value
+          var value = passwordInput.value
           if (value === PASSWORD) {
             localStorage.setItem(AUTH_KEY, '1')
             errorEl.hidden = true
@@ -129,7 +139,10 @@
 
         logoutBtn.addEventListener('click', function () {
           localStorage.removeItem(AUTH_KEY)
-          document.getElementById('password').value = ''
+          passwordInput.value = ''
+          passwordInput.type = 'password'
+          revealBtn.textContent = 'Show'
+          revealBtn.setAttribute('aria-pressed', 'false')
           showLocked()
         })
       })()
