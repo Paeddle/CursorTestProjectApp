@@ -26,11 +26,6 @@ function isWarehouseJobName(name: string): boolean {
   return normalizeJobNameKey(name) === normalizeJobNameKey(WAREHOUSE_JOB_NAME)
 }
 
-function isValidBoxIdFormat(id: string): boolean {
-  if (!id) return false
-  return /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/.test(id) || /^[a-zA-Z][a-zA-Z0-9-]*\d+$/.test(id)
-}
-
 function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   if (!searchOrHash || !searchOrHash.trim()) return null
   const s = searchOrHash.trim()
@@ -58,35 +53,6 @@ interface BoxProfile {
   capacityFt: string
   label: string
   remainingFt: string | null
-}
-
-function FootageContextHint({
-  currentFootage,
-  capacityStr,
-  typeLabel,
-}: {
-  currentFootage: string
-  capacityStr: string | null
-  typeLabel?: string | null
-}) {
-  const cur = parseFootageNumber(currentFootage)
-  const cap = capacityStr ? parseFootageNumber(capacityStr) : null
-  if (cur === null || cap === null || cap <= 0) return null
-  const pct = Math.min(100, Math.round((cur / cap) * 100))
-  return (
-    <p className="footage-context" role="status">
-      {typeLabel && (
-        <span className="footage-context-type">
-          {typeLabel}
-          <span className="footage-context-sep"> · </span>
-        </span>
-      )}
-      <span>
-        <strong>{cur}</strong> ft left of <strong>{cap}</strong> ft on spool
-      </span>
-      <span className="footage-context-pct"> ({pct}% of full reel)</span>
-    </p>
-  )
 }
 
 function App() {
@@ -451,22 +417,6 @@ function App() {
     setShowScanner(true)
   }
 
-  const capacityForHint =
-    hasExistingScans === false
-      ? spoolCapacityStr.trim() || null
-      : boxProfile
-        ? boxProfile.capacityFt
-        : null
-
-  const typeLabelForHint =
-    hasExistingScans === false
-      ? selectedPresetId
-        ? getWireTypePreset(selectedPresetId, wireTypes)?.label ?? selectedPresetId
-        : null
-      : boxProfile
-        ? boxProfile.label
-        : null
-
   if (!isSupabaseConfigured) {
     return (
       <div className="app">
@@ -527,9 +477,6 @@ function App() {
                   Check out
                 </button>
               </div>
-              <p className="field-hint">
-                Check in = warehouse stock. Check out = send to a job.
-              </p>
             </div>
             <button
               type="button"
@@ -541,54 +488,25 @@ function App() {
           </section>
         ) : (
           <form onSubmit={handleSubmit} className="section form-section">
-            {boxMetaLoading && (
-              <p className="box-meta-loading">Checking this box in the database…</p>
-            )}
-
             {!boxMetaLoading && hasExistingScans === false && (
-              <div className="init-banner" role="region" aria-label="New box setup">
-                <strong>New box — first entry</strong>
-                <div className="form-field">
-                  <label className="label" htmlFor="wire-type-preset">
-                    Wire type
-                  </label>
-                  <select
-                    id="wire-type-preset"
-                    className="input"
-                    value={selectedPresetId}
-                    onChange={(e) => setSelectedPresetId(e.target.value)}
-                    required
-                  >
-                    <option value="">Select wire type…</option>
-                    {wireTypes.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label} — default {p.defaultCapacityFt} ft
-                      </option>
-                    ))}
-                  </select>
-                  {wireTypesLoading && <p className="field-hint">Loading wire types…</p>}
-                </div>
-              </div>
-            )}
-
-            {!boxMetaLoading && hasExistingScans === true && boxProfile && (
-              <div className="profile-banner" role="status">
-                <strong>Box reel on file</strong>
-                <p>
-                  {boxProfile.label}
-                  <span className="profile-cap"> · Full spool {boxProfile.capacityFt} ft</span>
-                  <span className="profile-cap">
-                    {' '}
-                    · Current {boxProfile.remainingFt ? `${boxProfile.remainingFt} ft` : '—'}
-                  </span>
-                </p>
-              </div>
-            )}
-
-            {!boxMetaLoading && hasExistingScans === true && !boxProfile && (
-              <div className="legacy-banner">
-                <strong>No reel profile</strong>
-                <p>This box has scans but no wire type / spool size stored (added before that feature). Footage is shown without a denominator until you use a new box ID or backfill in the database.</p>
+              <div className="form-field">
+                <label className="label" htmlFor="wire-type-preset">
+                  Wire type
+                </label>
+                <select
+                  id="wire-type-preset"
+                  className="input"
+                  value={selectedPresetId}
+                  onChange={(e) => setSelectedPresetId(e.target.value)}
+                  required
+                >
+                  <option value="">Select wire type…</option>
+                  {wireTypes.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label} — default {p.defaultCapacityFt} ft
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -616,22 +534,15 @@ function App() {
                   Check out
                 </button>
               </div>
-              <p className="field-hint">
-                Check in puts the box in warehouse stock. Check out assigns it to a job.
-              </p>
             </div>
             <div className="form-field">
               <label className="label">Box ID</label>
               <div className="box-id-display">{boxId}</div>
-              {!isValidBoxIdFormat(boxId) && (
-                <p className="field-hint">Expected format like bx-1234</p>
-              )}
             </div>
             {checkType === 'check_in' ? (
               <div className="form-field">
                 <span className="label">Location</span>
                 <div className="box-id-display warehouse-location-display">Warehouse</div>
-                <p className="field-hint">Checked-in boxes are warehouse stock (same as Inventory).</p>
               </div>
             ) : (
               <div className="form-field">
@@ -661,7 +572,7 @@ function App() {
             )}
             <div className="form-field">
               <label className="label" htmlFor="current-footage">
-                Current footage (feet remaining on spool)
+                Current footage
               </label>
               <input
                 id="current-footage"
@@ -673,13 +584,6 @@ function App() {
                 autoComplete="off"
                 disabled={boxMetaLoading}
               />
-              {!boxMetaLoading && (
-                <FootageContextHint
-                  currentFootage={currentFootage}
-                  capacityStr={capacityForHint}
-                  typeLabel={typeLabelForHint}
-                />
-              )}
             </div>
             <div className="form-actions">
               <button

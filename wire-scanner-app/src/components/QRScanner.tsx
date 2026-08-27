@@ -203,11 +203,6 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       <div className="qr-scanner-header">
         <div className="qr-scanner-header-text">
           <h3>Scan wire box QR code</h3>
-          <p className="qr-scanner-hint">
-            Small movements are OK: native reads run every camera frame when supported, and we request up to
-            60&nbsp;fps from the camera when the device allows. Marks next to the QR can still slow things
-            down.
-          </p>
         </div>
         <button type="button" className="qr-scanner-close" onClick={onClose}>
           Close
