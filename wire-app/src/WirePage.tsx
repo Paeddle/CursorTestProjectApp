@@ -106,6 +106,9 @@ function nextListSelection<T>(
     else next.add(id)
     return next
   }
+  if (prev.has(id) && prev.size === 1) {
+    return new Set()
+  }
   return new Set([id])
 }
 
@@ -707,12 +710,25 @@ export function WirePage() {
 
   const handleOpenSavedReport = (report: SavedMaterialsReport) => {
     setOpenedSavedReportId(report.id)
+    setSelectedReportIds((prev) => {
+      const next = new Set(prev)
+      next.add(report.id)
+      return next
+    })
     setReportJob(report.job_name)
     setCountEmptyBoxes(report.count_empty_boxes)
     setReportRows(report.rows)
     window.setTimeout(() => {
       reportPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 0)
+  }
+
+  const applySavedReportSelection = (next: Set<string>) => {
+    setSelectedReportIds(next)
+    if (openedSavedReportId && !next.has(openedSavedReportId)) {
+      setOpenedSavedReportId(null)
+      setReportRows(null)
+    }
   }
 
   const handleDeleteSavedReports = async (ids: string[]) => {
@@ -1561,13 +1577,13 @@ export function WirePage() {
                             onClick={(e) => {
                               e.preventDefault()
                               const orderedIds = filteredSavedReports.map((r) => r.id)
-                              setSelectedReportIds((prev) =>
+                              applySavedReportSelection(
                                 nextListSelection(
                                   e,
                                   index,
                                   report.id,
                                   orderedIds,
-                                  prev,
+                                  selectedReportIds,
                                   reportsAnchorIndexRef,
                                 ),
                               )
