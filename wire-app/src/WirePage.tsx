@@ -11,16 +11,18 @@ function wireScannerHref(): string {
   return '/wire-scanner/'
 }
 import {
-  activeBoxSummariesForJob,
   buildWireBulkCheckoutInsert,
   buildWireInventoryRows,
   buildWireMaterialsReport,
   buildWireStatusChangeInsert,
   downloadTextFile,
   downloadWireMaterialsReportPdf,
+  emptyBoxesToRetireForJob,
   formatInventoryFtDisplay,
   formatWireJobNameDisplay,
+  isBoxActive,
   isBoxInInventory,
+  isBoxRetired,
   isSelectableWireJobName,
   parseFootage,
   reportRowsToCsv,
@@ -209,9 +211,18 @@ export function WirePage() {
   const [savedReportsLoading, setSavedReportsLoading] = useState(false)
   const [reportWorking, setReportWorking] = useState(false)
   const [boxesMenuOpen, setBoxesMenuOpen] = useState(false)
+  const [boxesMenuCheckoutOpen, setBoxesMenuCheckoutOpen] = useState(false)
   const [statusWorking, setStatusWorking] = useState(false)
   const [selectedBoxKeys, setSelectedBoxKeys] = useState<Set<string>>(() => new Set())
+  const [selectedWireTypeIds, setSelectedWireTypeIds] = useState<Set<string>>(() => new Set())
+  const [wireTypesMenuOpen, setWireTypesMenuOpen] = useState(false)
+  const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(() => new Set())
+  const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
+  const [jobSearchOpen, setJobSearchOpen] = useState(false)
   const boxesMenuRef = useRef<HTMLDivElement | null>(null)
+  const wireTypesMenuRef = useRef<HTMLDivElement | null>(null)
+  const reportsMenuRef = useRef<HTMLDivElement | null>(null)
+  const jobSearchRef = useRef<HTMLDivElement | null>(null)
   const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
   const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
   const [managedJobs, setManagedJobs] = useState<string[]>([])
@@ -312,16 +323,27 @@ export function WirePage() {
   }, [loadSavedReports])
 
   useEffect(() => {
-    if (!boxesMenuOpen) return
+    if (!boxesMenuOpen && !wireTypesMenuOpen && !reportsMenuOpen && !jobSearchOpen) return
     const onDoc = (e: Event) => {
-      const el = boxesMenuRef.current
-      if (el && e.target instanceof Node && !el.contains(e.target)) {
+      const t = e.target
+      if (!(t instanceof Node)) return
+      if (boxesMenuOpen && boxesMenuRef.current && !boxesMenuRef.current.contains(t)) {
         setBoxesMenuOpen(false)
+        setBoxesMenuCheckoutOpen(false)
+      }
+      if (wireTypesMenuOpen && wireTypesMenuRef.current && !wireTypesMenuRef.current.contains(t)) {
+        setWireTypesMenuOpen(false)
+      }
+      if (reportsMenuOpen && reportsMenuRef.current && !reportsMenuRef.current.contains(t)) {
+        setReportsMenuOpen(false)
+      }
+      if (jobSearchOpen && jobSearchRef.current && !jobSearchRef.current.contains(t)) {
+        setJobSearchOpen(false)
       }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [boxesMenuOpen])
+  }, [boxesMenuOpen, wireTypesMenuOpen, reportsMenuOpen, jobSearchOpen])
 
   useEffect(() => {
     if (!isConfigured()) return
@@ -361,10 +383,16 @@ export function WirePage() {
     }
   }
 
-  const handleHideWireType = async (preset: WireTypePreset) => {
+  const handleHideSelectedWireTypes = async () => {
+    const selected = wireTypes.filter((p) => selectedWireTypeIds.has(p.id))
+    if (selected.length === 0) {
+      setError('Select one or more wire types to hide.')
+      setWireTypesMenuOpen(false)
+      return
+    }
     if (
       !window.confirm(
-        `Hide “${preset.label}” from the dropdown? Existing boxes keep their history.`,
+        `Hide ${selected.length} wire type${selected.length !== 1 ? 's' : ''} from the dropdown? Existing boxes keep their history.`,
       )
     ) {
       return
@@ -372,9 +400,17 @@ export function WirePage() {
     setWireTypesWorking(true)
     setWireTypesMessage(null)
     setError(null)
+    setWireTypesMenuOpen(false)
     try {
-      await deactivateWireType(preset.id)
-      setWireTypesMessage(`Hidden “${preset.label}”.`)
+      for (const preset of selected) {
+        await deactivateWireType(preset.id)
+      }
+      setWireTypesMessage(
+        selected.length === 1
+          ? `Hidden “${selected[0]!.label}”.`
+          : `Hidden ${selected.length} wire types.`,
+      )
+      setSelectedWireTypeIds(new Set())
       await reloadWireTypes()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not hide wire type')
@@ -402,17 +438,24 @@ export function WirePage() {
   }, [countEmptyBoxes, allScans, reportJob])
 
   const activeBoxCount = useMemo(
-    () => summaries.filter((s) => isBoxInInventory(s.scans)).length,
+    () => summaries.filter((s) => isBoxActive(s.scans)).length,
     [summaries],
   )
   const inactiveBoxCount = useMemo(
-    () => summaries.length - activeBoxCount,
-    [summaries, activeBoxCount],
+    () => summaries.filter((s) => isBoxRetired(s.scans)).length,
+    [summaries],
   )
+
+  const jobSearchSuggestions = useMemo(() => {
+    const q = searchBox.trim().toLowerCase()
+    const list = allJobNameSuggestions
+    if (!q) return list.slice(0, 12)
+    return list.filter((j) => j.toLowerCase().includes(q)).slice(0, 12)
+  }, [allJobNameSuggestions, searchBox])
 
   const filtered = useMemo(() => {
     const byStatus = summaries.filter((s) => {
-      const active = isBoxInInventory(s.scans)
+      const active = isBoxActive(s.scans)
       return boxListMode === 'active' ? active : !active
     })
     const q = searchBox.trim().toLowerCase()
@@ -539,12 +582,11 @@ export function WirePage() {
       }
 
       if (countEmptyBoxes) {
-        const toDeactivate = activeBoxSummariesForJob(summaries, job)
-        if (toDeactivate.length > 0) {
-          const payloads = toDeactivate
+        const toRetire = emptyBoxesToRetireForJob(summaries, job)
+        if (toRetire.length > 0) {
+          const payloads = toRetire
             .map((s) =>
               buildWireStatusChangeInsert(s, 'inactive', {
-                jobName: job,
                 footageOverride: '0',
               }),
             )
@@ -553,7 +595,7 @@ export function WirePage() {
 
           if (payloads.length > 0) {
             const ok = window.confirm(
-              `Count empty boxes is on. Mark ${payloads.length} active box${payloads.length !== 1 ? 'es' : ''} used on “${job}” as inactive (checked out at 0 ft)?`,
+              `Count empty boxes is on. Move ${payloads.length} emptied box${payloads.length !== 1 ? 'es' : ''} from “${job}” to Retired (inactive)?`,
             )
             if (ok) {
               const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
@@ -577,12 +619,27 @@ export function WirePage() {
     setReportRows(report.rows)
   }
 
-  const handleDeleteSavedReport = async (id: string) => {
-    if (!window.confirm('Delete this saved report?')) return
+  const handleDeleteSavedReports = async (ids: string[]) => {
+    if (ids.length === 0) {
+      setError('Select one or more saved reports to delete.')
+      setReportsMenuOpen(false)
+      return
+    }
+    if (
+      !window.confirm(
+        `Delete ${ids.length} saved report${ids.length !== 1 ? 's' : ''}? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
     setError(null)
+    setReportsMenuOpen(false)
     try {
-      await deleteMaterialsReport(id)
-      setSavedReports((prev) => prev.filter((r) => r.id !== id))
+      for (const id of ids) {
+        await deleteMaterialsReport(id)
+      }
+      setSavedReports((prev) => prev.filter((r) => !ids.includes(r.id)))
+      setSelectedReportIds(new Set())
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not delete saved report')
     }
@@ -591,13 +648,12 @@ export function WirePage() {
   const applyBoxStatus = async (
     target: 'active' | 'inactive',
     boxSummaries: WireBoxSummary[],
-    options?: { jobName?: string; footageOverride?: string; confirmMessage?: string }
+    options?: { footageOverride?: string; confirmMessage?: string }
   ) => {
     const payloads: Record<string, string>[] = []
     const skips: string[] = []
     for (const s of boxSummaries) {
       const built = buildWireStatusChangeInsert(s, target, {
-        jobName: options?.jobName,
         footageOverride: options?.footageOverride,
       })
       if (!built) {
@@ -623,6 +679,7 @@ export function WirePage() {
     setStatusWorking(true)
     setError(null)
     setBoxesMenuOpen(false)
+    setBoxesMenuCheckoutOpen(false)
     try {
       const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
       if (insErr) throw new Error(insErr.message)
@@ -637,13 +694,13 @@ export function WirePage() {
   }
 
   const handleToggleBoxStatus = async (summary: WireBoxSummary) => {
-    const active = isBoxInInventory(summary.scans)
+    const active = isBoxActive(summary.scans)
     const target = active ? 'inactive' : 'active'
     await applyBoxStatus(target, [summary], {
-      jobName: active ? reportJob.trim() || undefined : undefined,
+      footageOverride: active ? '0' : undefined,
       confirmMessage: active
-        ? `Mark ${summary.box_id} inactive (check out)?`
-        : `Mark ${summary.box_id} active (check in to warehouse)?`,
+        ? `Retire ${summary.box_id} (move to Inactive / Retired)?`
+        : `Restore ${summary.box_id} to Active (check in to warehouse)?`,
     })
   }
 
@@ -655,7 +712,7 @@ export function WirePage() {
       return
     }
     await applyBoxStatus('active', selected, {
-      confirmMessage: 'Set {n} selected box(es) to active (check in to warehouse)?',
+      confirmMessage: 'Restore {n} selected box(es) to Active (warehouse)?',
     })
   }
 
@@ -667,9 +724,121 @@ export function WirePage() {
       return
     }
     await applyBoxStatus('inactive', selected, {
-      jobName: bulkCheckoutJob.trim() || reportJob.trim() || undefined,
-      confirmMessage: 'Set {n} selected box(es) to inactive (check out)?',
+      footageOverride: '0',
+      confirmMessage: 'Retire {n} selected box(es) to Inactive?',
     })
+  }
+
+  const handleMenuDeleteBoxes = async () => {
+    const selected = summaries.filter((s) => selectedBoxKeys.has(s.box_id.toLowerCase()))
+    if (selected.length === 0) {
+      setError('Select one or more boxes to delete.')
+      setBoxesMenuOpen(false)
+      return
+    }
+    const totalScans = selected.reduce((n, s) => n + s.scans.length, 0)
+    if (
+      !window.confirm(
+        `Delete ${selected.length} box${selected.length !== 1 ? 'es' : ''} and ${totalScans} scan${totalScans !== 1 ? 's' : ''}? This cannot be undone.`,
+      )
+    ) {
+      setBoxesMenuOpen(false)
+      return
+    }
+    setDeleting(true)
+    setError(null)
+    setBoxesMenuOpen(false)
+    try {
+      for (const s of selected) {
+        const { data, error: delErr } = await supabase
+          .from('wire_box_scans')
+          .delete()
+          .eq('box_id', s.box_id)
+          .select('id')
+        if (delErr) throw new Error(delErr.message)
+        if (!data?.length) {
+          throw new Error(
+            `No rows deleted for ${s.box_id}. Check RLS delete policy (supabase/fix-wire-box-scans-delete-rls.sql).`,
+          )
+        }
+      }
+      setSelectedBoxKeys(new Set())
+      selectionAnchorIndexRef.current = null
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to delete boxes')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleMenuCheckoutToJob = async (jobName: string) => {
+    const job = jobName.trim()
+    if (!job) return
+    const selectedSummaries = summaries.filter(
+      (s) => selectedBoxKeys.has(s.box_id.toLowerCase()) && isBoxInInventory(s.scans),
+    )
+    if (selectedSummaries.length === 0) {
+      setError('Select at least one warehouse (checked-in) box to check out.')
+      setBoxesMenuOpen(false)
+      setBoxesMenuCheckoutOpen(false)
+      return
+    }
+    setBulkCheckoutJob(job)
+    const skips: string[] = []
+    const payloads: Record<string, string>[] = []
+    for (const s of selectedSummaries) {
+      const built = buildWireBulkCheckoutInsert(s, job)
+      if (!built) {
+        skips.push(s.box_id)
+        continue
+      }
+      payloads.push(toSupabaseWireInsert({ ...built, scanned_at: new Date().toISOString() }))
+    }
+    if (skips.length > 0) {
+      setError(
+        `Cannot check out: ${skips.join(', ')} — each box must be in the warehouse with footage on its latest scan.`,
+      )
+      return
+    }
+    if (
+      !window.confirm(
+        `Check out ${payloads.length} box${payloads.length !== 1 ? 'es' : ''} to “${job}”?`,
+      )
+    ) {
+      return
+    }
+    setBulkCheckoutWorking(true)
+    setError(null)
+    setBoxesMenuOpen(false)
+    setBoxesMenuCheckoutOpen(false)
+    try {
+      const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
+      if (insErr) throw new Error(insErr.message)
+      const jobKey = normalizeJobNameKey(job)
+      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
+        { name: job, name_key: jobKey, is_active: true },
+        { onConflict: 'name_key' },
+      )
+      if (jobErr) throw new Error(jobErr.message)
+      setSelectedBoxKeys(new Set())
+      selectionAnchorIndexRef.current = null
+      await loadManagedJobs()
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Bulk check out failed')
+    } finally {
+      setBulkCheckoutWorking(false)
+    }
+  }
+
+  const selectAllFilteredBoxes = () => {
+    setSelectedBoxKeys(new Set(filteredBoxKeys))
+  }
+
+  const clearSelectedBoxes = () => {
+    setSelectedBoxKeys(new Set())
+    selectionAnchorIndexRef.current = null
   }
 
   const safeReportFileStem = () =>
@@ -1073,7 +1242,34 @@ export function WirePage() {
         )}
 
         <div className="wire-saved-reports" aria-label="Saved materials reports">
-          <h3 className="wire-saved-reports-title">Saved reports</h3>
+          <div className="wire-section-toolbar">
+            <h3 className="wire-saved-reports-title">Saved reports</h3>
+            <div className="wire-section-menu" ref={reportsMenuRef}>
+              <button
+                type="button"
+                className="wire-boxes-menu-trigger"
+                aria-haspopup="menu"
+                aria-expanded={reportsMenuOpen}
+                aria-label="Saved reports actions"
+                onClick={() => setReportsMenuOpen((v) => !v)}
+              >
+                ⋯
+              </button>
+              {reportsMenuOpen && (
+                <div className="wire-boxes-menu-dropdown" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wire-boxes-menu-item"
+                    disabled={selectedReportIds.size === 0}
+                    onClick={() => void handleDeleteSavedReports([...selectedReportIds])}
+                  >
+                    Delete selected
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
           {savedReportsLoading ? (
             <p className="wire-saved-reports-empty">Loading saved reports…</p>
           ) : savedReports.length === 0 ? (
@@ -1082,16 +1278,32 @@ export function WirePage() {
             </p>
           ) : (
             <ul className="wire-saved-reports-list">
-              {savedReports.map((report) => (
-                <li key={report.id} className="wire-saved-reports-item">
-                  <div className="wire-saved-reports-meta">
-                    <strong>{report.job_name}</strong>
-                    <span className="wire-saved-reports-date">
-                      {formatDateTime(report.created_at)}
-                      {report.count_empty_boxes ? ' · Count empty boxes' : ''}
-                    </span>
-                  </div>
-                  <div className="wire-saved-reports-actions">
+              {savedReports.map((report) => {
+                const checked = selectedReportIds.has(report.id)
+                return (
+                  <li key={report.id} className="wire-saved-reports-item">
+                    <label className="wire-inline-select">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedReportIds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(report.id)) next.delete(report.id)
+                            else next.add(report.id)
+                            return next
+                          })
+                        }}
+                        aria-label={`Select report ${report.job_name}`}
+                      />
+                      <span className="wire-saved-reports-meta">
+                        <strong>{report.job_name}</strong>
+                        <span className="wire-saved-reports-date">
+                          {formatDateTime(report.created_at)}
+                          {report.count_empty_boxes ? ' · Count empty boxes' : ''}
+                        </span>
+                      </span>
+                    </label>
                     <button
                       type="button"
                       className="wire-report-secondary"
@@ -1099,80 +1311,12 @@ export function WirePage() {
                     >
                       Open
                     </button>
-                    <button
-                      type="button"
-                      className="wire-delete-scan"
-                      onClick={() => void handleDeleteSavedReport(report.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
-      </section>
-
-      <section className="wire-types-section" aria-labelledby="wire-types-heading">
-        <h2 id="wire-types-heading" className="wire-types-section-title">
-          Wire types
-        </h2>
-        <p className="wire-types-hint">
-          Add or hide types shown in the scanner dropdown and the box editor. Hide keeps history on
-          boxes already scanned.
-        </p>
-        <div className="wire-types-toolbar">
-          <input
-            type="text"
-            className="wire-jobs-input"
-            value={newTypeLabel}
-            onChange={(e) => setNewTypeLabel(e.target.value)}
-            placeholder="New wire type name…"
-            disabled={loading || wireTypesWorking}
-          />
-          <input
-            type="text"
-            className="wire-types-capacity-input"
-            value={newTypeCapacity}
-            onChange={(e) => setNewTypeCapacity(e.target.value)}
-            placeholder="Default ft"
-            inputMode="numeric"
-            disabled={loading || wireTypesWorking}
-            aria-label="Default spool feet"
-          />
-          <button
-            type="button"
-            className="wire-report-secondary"
-            disabled={loading || wireTypesWorking || !newTypeLabel.trim()}
-            onClick={() => void handleAddWireType()}
-          >
-            Add type
-          </button>
-        </div>
-        {wireTypesMessage && <div className="wire-types-msg">{wireTypesMessage}</div>}
-        {wireTypes.length === 0 ? (
-          <div className="wire-jobs-empty">No active wire types.</div>
-        ) : (
-          <div className="wire-jobs-list">
-            {wireTypes.map((preset) => (
-              <div key={preset.id} className="wire-jobs-item">
-                <span>
-                  {preset.label}
-                  <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
-                </span>
-                <button
-                  type="button"
-                  className="wire-delete-scan"
-                  disabled={loading || wireTypesWorking}
-                  onClick={() => void handleHideWireType(preset)}
-                >
-                  Hide
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
 
       <section className="wire-inventory-section" aria-labelledby="wire-inventory-heading">
@@ -1182,7 +1326,7 @@ export function WirePage() {
         <p className="wire-inventory-hint">
           All boxes currently in the warehouse (checked in). Bars are remaining footage by type; the
           table lists box counts and totals. Check-out removes a box from this stock until it is
-          checked back in.
+          checked back in. Retired (inactive) boxes are not included.
         </p>
         {loading ? (
           <div className="wire-inventory-loading">Loading inventory…</div>
@@ -1265,6 +1409,101 @@ export function WirePage() {
         )}
       </section>
 
+      <section className="wire-types-section" aria-labelledby="wire-types-heading">
+        <div className="wire-section-toolbar">
+          <h2 id="wire-types-heading" className="wire-types-section-title">
+            Wire types
+          </h2>
+          <div className="wire-section-menu" ref={wireTypesMenuRef}>
+            <button
+              type="button"
+              className="wire-boxes-menu-trigger"
+              aria-haspopup="menu"
+              aria-expanded={wireTypesMenuOpen}
+              aria-label="Wire types actions"
+              disabled={wireTypesWorking}
+              onClick={() => setWireTypesMenuOpen((v) => !v)}
+            >
+              ⋯
+            </button>
+            {wireTypesMenuOpen && (
+              <div className="wire-boxes-menu-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item"
+                  disabled={selectedWireTypeIds.size === 0 || wireTypesWorking}
+                  onClick={() => void handleHideSelectedWireTypes()}
+                >
+                  Hide selected
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="wire-types-hint">
+          Add types for the scanner dropdown and box editor. Select types, then use ⋯ → Hide selected.
+          Hide keeps history on boxes already scanned.
+        </p>
+        <div className="wire-types-toolbar">
+          <input
+            type="text"
+            className="wire-jobs-input"
+            value={newTypeLabel}
+            onChange={(e) => setNewTypeLabel(e.target.value)}
+            placeholder="New wire type name…"
+            disabled={loading || wireTypesWorking}
+          />
+          <input
+            type="text"
+            className="wire-types-capacity-input"
+            value={newTypeCapacity}
+            onChange={(e) => setNewTypeCapacity(e.target.value)}
+            placeholder="Default ft"
+            inputMode="numeric"
+            disabled={loading || wireTypesWorking}
+            aria-label="Default spool feet"
+          />
+          <button
+            type="button"
+            className="wire-report-secondary"
+            disabled={loading || wireTypesWorking || !newTypeLabel.trim()}
+            onClick={() => void handleAddWireType()}
+          >
+            Add type
+          </button>
+        </div>
+        {wireTypesMessage && <div className="wire-types-msg">{wireTypesMessage}</div>}
+        {wireTypes.length === 0 ? (
+          <div className="wire-jobs-empty">No active wire types.</div>
+        ) : (
+          <div className="wire-jobs-list">
+            {wireTypes.map((preset) => (
+              <label key={preset.id} className="wire-jobs-item wire-inline-select">
+                <input
+                  type="checkbox"
+                  checked={selectedWireTypeIds.has(preset.id)}
+                  disabled={loading || wireTypesWorking}
+                  onChange={() => {
+                    setSelectedWireTypeIds((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(preset.id)) next.delete(preset.id)
+                      else next.add(preset.id)
+                      return next
+                    })
+                  }}
+                  aria-label={`Select ${preset.label}`}
+                />
+                <span>
+                  {preset.label}
+                  <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="wire-boxes-section" aria-labelledby="wire-boxes-heading">
         <div className="wire-boxes-section-nav">
           <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
@@ -1294,104 +1533,157 @@ export function WirePage() {
           </div>
         </div>
 
-        {boxListMode === 'active' && (
-        <div className="wire-boxes-bulk-bar" role="region" aria-label="Bulk check-out">
-          <label className="wire-bulk-checkout-job-label">
-            <span>Check out to job</span>
-            <select
-              className="wire-bulk-checkout-job-select"
-              value={bulkCheckoutJob}
-              onChange={(e) => setBulkCheckoutJob(e.target.value)}
-              disabled={loading || bulkCheckoutWorking || allJobNameSuggestions.length === 0}
+        <div className="wire-controls">
+          <div className="wire-search-wrap" ref={jobSearchRef}>
+            <input
+              type="text"
+              className="wire-search"
+              placeholder="Filter by box, job, or wire type…"
+              value={searchBox}
+              onChange={(e) => {
+                setSearchBox(e.target.value)
+                setJobSearchOpen(true)
+              }}
+              onFocus={() => setJobSearchOpen(true)}
+              aria-autocomplete="list"
+              aria-expanded={jobSearchOpen}
+            />
+            <button
+              type="button"
+              className="wire-search-chevron"
+              aria-label="Show job suggestions"
+              onClick={() => setJobSearchOpen((v) => !v)}
             >
-              <option value="">Select a job…</option>
-              {allJobNameSuggestions.map((j) => (
-                <option key={j} value={j}>
-                  {j}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="wire-bulk-checkout-submit"
-            disabled={
-              loading ||
-              bulkCheckoutWorking ||
-              selectedBoxKeys.size === 0 ||
-              !bulkCheckoutJob.trim()
-            }
-            onClick={() => void handleBulkCheckout()}
-          >
-            {bulkCheckoutWorking
-              ? 'Checking out…'
-              : `Check out selected (${selectedBoxKeys.size})`}
-          </button>
-        </div>
-        )}
-
-      <div className="wire-controls">
-        <input
-          type="text"
-          className="wire-search"
-          placeholder="Filter by box, job, or wire type…"
-          value={searchBox}
-          onChange={(e) => setSearchBox(e.target.value)}
-        />
-        <button
-          type="button"
-          className="wire-toolbar-btn"
-          onClick={() => load()}
-          disabled={loading}
-          title="Reload wire box data from the server"
-        >
-          Search
-        </button>
-        {filtered.length > 0 && (
+              ▾
+            </button>
+            {jobSearchOpen && jobSearchSuggestions.length > 0 && (
+              <ul className="wire-search-suggestions" role="listbox">
+                {jobSearchSuggestions.map((job) => (
+                  <li key={job}>
+                    <button
+                      type="button"
+                      className="wire-search-suggestion"
+                      onClick={() => {
+                        setSearchBox(job)
+                        setJobSearchOpen(false)
+                      }}
+                    >
+                      {job}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <button
             type="button"
             className="wire-toolbar-btn"
-            onClick={areAllFilteredExpanded ? collapseAllFiltered : expandAllFiltered}
+            onClick={() => load()}
+            disabled={loading}
+            title="Reload wire box data from the server"
           >
-            {areAllFilteredExpanded ? 'Collapse all boxes' : 'Expand all boxes'}
+            Search
           </button>
-        )}
-        <div className="wire-boxes-menu" ref={boxesMenuRef}>
           <button
             type="button"
-            className="wire-boxes-menu-trigger"
-            aria-haspopup="menu"
-            aria-expanded={boxesMenuOpen}
-            aria-label="Box actions menu"
-            disabled={statusWorking || deleting}
-            onClick={() => setBoxesMenuOpen((v) => !v)}
+            className="wire-toolbar-btn"
+            disabled={filtered.length === 0}
+            onClick={selectAllFilteredBoxes}
           >
-            ⋯
+            Select all
           </button>
-          {boxesMenuOpen && (
-            <div className="wire-boxes-menu-dropdown" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                className="wire-boxes-menu-item"
-                disabled={statusWorking || selectedBoxKeys.size === 0}
-                onClick={() => void handleMenuSetActive()}
-              >
-                Set active
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="wire-boxes-menu-item"
-                disabled={statusWorking || selectedBoxKeys.size === 0}
-                onClick={() => void handleMenuSetInactive()}
-              >
-                Set inactive
-              </button>
-            </div>
+          {selectedBoxKeys.size > 0 && (
+            <button type="button" className="wire-toolbar-btn" onClick={clearSelectedBoxes}>
+              Clear ({selectedBoxKeys.size})
+            </button>
           )}
+          {filtered.length > 0 && (
+            <button
+              type="button"
+              className="wire-toolbar-btn"
+              onClick={areAllFilteredExpanded ? collapseAllFiltered : expandAllFiltered}
+            >
+              {areAllFilteredExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
+          )}
+          <div className="wire-boxes-menu" ref={boxesMenuRef}>
+            <button
+              type="button"
+              className="wire-boxes-menu-trigger"
+              aria-haspopup="menu"
+              aria-expanded={boxesMenuOpen}
+              aria-label="Box actions menu"
+              disabled={statusWorking || deleting || bulkCheckoutWorking}
+              onClick={() => {
+                setBoxesMenuOpen((v) => !v)
+                setBoxesMenuCheckoutOpen(false)
+              }}
+            >
+              ⋯
+            </button>
+            {boxesMenuOpen && (
+              <div className="wire-boxes-menu-dropdown" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item"
+                  disabled={statusWorking || selectedBoxKeys.size === 0}
+                  onClick={() => void handleMenuSetActive()}
+                >
+                  Set active
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item"
+                  disabled={statusWorking || selectedBoxKeys.size === 0}
+                  onClick={() => void handleMenuSetInactive()}
+                >
+                  Set inactive
+                </button>
+                <div className="wire-boxes-menu-submenu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wire-boxes-menu-item"
+                    disabled={
+                      bulkCheckoutWorking ||
+                      selectedBoxKeys.size === 0 ||
+                      allJobNameSuggestions.length === 0
+                    }
+                    onClick={() => setBoxesMenuCheckoutOpen((v) => !v)}
+                  >
+                    Check out to job ▸
+                  </button>
+                  {boxesMenuCheckoutOpen && (
+                    <div className="wire-boxes-menu-nested" role="menu">
+                      {allJobNameSuggestions.map((job) => (
+                        <button
+                          key={job}
+                          type="button"
+                          role="menuitem"
+                          className="wire-boxes-menu-item"
+                          onClick={() => void handleMenuCheckoutToJob(job)}
+                        >
+                          {job}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item wire-boxes-menu-item-danger"
+                  disabled={deleting || selectedBoxKeys.size === 0}
+                  onClick={() => void handleMenuDeleteBoxes()}
+                >
+                  Delete boxes
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
       {error && <div className="wire-error">{error}</div>}
 
@@ -1403,8 +1695,8 @@ export function WirePage() {
             {searchBox.trim()
               ? 'No boxes match your filter.'
               : boxListMode === 'active'
-                ? 'No active boxes in the warehouse. Check boxes in with the scanner, or switch to Inactive.'
-                : 'No inactive boxes. Checked-out boxes will appear here.'}
+                ? 'No active boxes. Active includes warehouse stock and boxes checked out to jobs.'
+                : 'No retired (inactive) boxes yet. Use Set inactive, or Count empty boxes when creating a report.'}
           </p>
         </div>
       ) : (
@@ -1424,7 +1716,8 @@ export function WirePage() {
               const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
               const headerRemaining = boxHeaderRemainingFootage(summary.scans)
               const nScans = summary.scans.length
-              const inInventory = isBoxInInventory(summary.scans)
+              const boxActive = isBoxActive(summary.scans)
+              const inWarehouse = isBoxInInventory(summary.scans)
               return (
                 <div key={key} className="wire-card">
                   <div className="wire-card-header-row">
@@ -1453,11 +1746,17 @@ export function WirePage() {
                         className="wire-card-header"
                         onClick={() => toggleExpanded(summary.box_id)}
                         aria-expanded={isExpanded}
-                        aria-label={`${summary.box_id}, ${inInventory ? 'active' : 'inactive'}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
+                        aria-label={`${summary.box_id}, ${boxActive ? 'active' : 'inactive'}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
                       >
                       <span
-                        className={`wire-box-status-bubble ${inInventory ? 'wire-box-status-active' : 'wire-box-status-inactive'}`}
-                        title={inInventory ? 'Active — in warehouse' : 'Inactive — checked out'}
+                        className={`wire-box-status-bubble ${boxActive ? 'wire-box-status-active' : 'wire-box-status-inactive'}`}
+                        title={
+                          boxActive
+                            ? inWarehouse
+                              ? 'Active — in warehouse'
+                              : 'Active — checked out to a job'
+                            : 'Inactive — retired'
+                        }
                         aria-hidden
                       />
                       <span className="wire-card-title-block">
@@ -1506,11 +1805,11 @@ export function WirePage() {
                     </div>
                     <button
                       type="button"
-                      className={`wire-box-status-toggle ${inInventory ? 'is-active' : 'is-inactive'}`}
+                      className={`wire-box-status-toggle ${boxActive ? 'is-active' : 'is-inactive'}`}
                       title={
-                        inInventory
-                          ? 'Mark inactive (check out)'
-                          : 'Mark active (check in to warehouse)'
+                        boxActive
+                          ? 'Retire box (move to Inactive)'
+                          : 'Restore to Active (warehouse)'
                       }
                       disabled={deleting || statusWorking}
                       onClick={(e) => {
@@ -1518,19 +1817,7 @@ export function WirePage() {
                         void handleToggleBoxStatus(summary)
                       }}
                     >
-                      {inInventory ? 'Active' : 'Inactive'}
-                    </button>
-                    <button
-                      type="button"
-                      className="wire-delete-box"
-                      title="Delete this box and all its scans"
-                      disabled={deleting || statusWorking}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteBox(summary.box_id, summary.scans.length)
-                      }}
-                    >
-                      Delete box
+                      {boxActive ? 'Active' : 'Inactive'}
                     </button>
                   </div>
                   {showTypeEditor && (

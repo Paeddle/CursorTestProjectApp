@@ -683,7 +683,16 @@ export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
  */
 export const WAREHOUSE_JOB_NAME = 'Inventory'
 
-export const INTERNAL_WIRE_JOB_NAMES = new Set([WAREHOUSE_JOB_NAME.toLowerCase()])
+/**
+ * Retired / no-longer-in-use location. Boxes here are Inactive in Wire Tracker.
+ * Checked out to a real job still counts as Active.
+ */
+export const RETIRED_JOB_NAME = 'Retired'
+
+export const INTERNAL_WIRE_JOB_NAMES = new Set([
+  WAREHOUSE_JOB_NAME.toLowerCase(),
+  RETIRED_JOB_NAME.toLowerCase(),
+])
 
 export function isSelectableWireJobName(name: string): boolean {
   const j = String(name ?? '').trim()
@@ -695,7 +704,8 @@ export function isSelectableWireJobName(name: string): boolean {
 export function formatWireJobNameDisplay(jobName: string | null | undefined): string {
   const j = String(jobName ?? '').trim()
   if (!j) return '—'
-  if (INTERNAL_WIRE_JOB_NAMES.has(j.toLowerCase())) return 'Warehouse'
+  if (j.toLowerCase() === WAREHOUSE_JOB_NAME.toLowerCase()) return 'Warehouse'
+  if (j.toLowerCase() === RETIRED_JOB_NAME.toLowerCase()) return 'Retired'
   return j
 }
 
@@ -712,8 +722,24 @@ function newestScanInBox(scans: WireBoxScan[]): WireBoxScan | null {
   return scans.reduce((a, b) => (scanTimeWireReport(a) >= scanTimeWireReport(b) ? a : b))
 }
 
-/** True when the box is currently in the warehouse (latest scan is a check-in, not out on a job). */
+/** True when the box has been retired (latest location is Retired). */
+export function isBoxRetired(scans: WireBoxScan[]): boolean {
+  const latest = newestScanInBox(scans)
+  if (!latest) return false
+  return (latest.job_name || '').trim().toLowerCase() === RETIRED_JOB_NAME.toLowerCase()
+}
+
+/** True when the box is still in use (warehouse or out on a job). */
+export function isBoxActive(scans: WireBoxScan[]): boolean {
+  return !isBoxRetired(scans)
+}
+
+/**
+ * True when the box is currently in the warehouse (latest scan is a check-in, not out on a job,
+ * and not retired).
+ */
 export function isBoxInInventory(scans: WireBoxScan[]): boolean {
+  if (isBoxRetired(scans)) return false
   const latest = newestScanInBox(scans)
   if (!latest) return false
   if (latest.check_type === 'check_out') return false
@@ -766,35 +792,41 @@ function attachProfileFields(
 }
 
 /**
- * Active (in-warehouse) boxes that have at least one scan for the given job.
- * Used when finishing a materials report with “Count empty boxes”.
+ * Active (still in use) boxes that qualify for “Count empty boxes” on a job:
+ * latest scan is still a check-out on that job (emptied / tossed), not yet Retired.
  */
+export function emptyBoxesToRetireForJob(
+  summaries: WireBoxSummary[],
+  jobName: string
+): WireBoxSummary[] {
+  const want = jobName.trim()
+  if (!want) return []
+  return summaries.filter((summary) => {
+    if (isBoxRetired(summary.scans)) return false
+    return isTossedEmptyAfterJobCheckout(summary.scans, want)
+  })
+}
+
+/** @deprecated Prefer emptyBoxesToRetireForJob for count-empty retirement. */
 export function activeBoxSummariesForJob(
   summaries: WireBoxSummary[],
   jobName: string
 ): WireBoxSummary[] {
-  const want = jobName.trim().toLowerCase()
-  if (!want) return []
-  return summaries.filter((summary) => {
-    if (!isBoxInInventory(summary.scans)) return false
-    return summary.scans.some(
-      (scan) => (scan.job_name || '').trim().toLowerCase() === want
-    )
-  })
+  return emptyBoxesToRetireForJob(summaries, jobName)
 }
 
 /**
- * Build a check-in (active) or check-out (inactive) insert. Returns null if already in that state
- * or footage is missing.
+ * Build a restore-to-warehouse (active) or retire (inactive) insert.
+ * Inactive = move to Retired location. Active = check in to Warehouse.
  */
 export function buildWireStatusChangeInsert(
   summary: WireBoxSummary,
   target: 'active' | 'inactive',
   options?: { jobName?: string; footageOverride?: string }
 ): WireStatusChangeInsertRow | null {
-  const currentlyActive = isBoxInInventory(summary.scans)
-  if (target === 'active' && currentlyActive) return null
-  if (target === 'inactive' && !currentlyActive) return null
+  const retired = isBoxRetired(summary.scans)
+  if (target === 'active' && !retired) return null
+  if (target === 'inactive' && retired) return null
 
   const latest = newestScanInBox(summary.scans)
   const footage =
@@ -816,11 +848,9 @@ export function buildWireStatusChangeInsert(
     return row
   }
 
-  const job =
-    (options?.jobName || latest?.job_name || 'Closed').trim() || 'Closed'
   const row: WireStatusChangeInsertRow = {
     box_id: boxId,
-    job_name: job,
+    job_name: RETIRED_JOB_NAME,
     current_footage: footage,
     check_type: 'check_out',
     wire_type: null,
