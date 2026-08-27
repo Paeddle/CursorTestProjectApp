@@ -9,15 +9,33 @@ export type SavedMaterialsReport = {
   created_at: string
 }
 
+function numOrNull(value: unknown): number | null {
+  if (value == null || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 function parseRows(raw: unknown): WireReportRow[] {
-  if (!Array.isArray(raw)) return []
-  return raw.map((r) => {
-    const row = r as Partial<WireReportRow>
+  let value: unknown = raw
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value) as unknown
+    } catch {
+      return []
+    }
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const inner = (value as { rows?: unknown }).rows
+    value = Array.isArray(inner) ? inner : []
+  }
+  if (!Array.isArray(value)) return []
+  return value.map((r) => {
+    const row = (r ?? {}) as Record<string, unknown>
     return {
-      wireType: String(row.wireType ?? ''),
-      startFt: row.startFt == null ? null : Number(row.startFt),
-      endFt: row.endFt == null ? null : Number(row.endFt),
-      usedFt: row.usedFt == null ? null : Number(row.usedFt),
+      wireType: String(row.wireType ?? row.wire_type ?? ''),
+      startFt: numOrNull(row.startFt ?? row.start_ft),
+      endFt: numOrNull(row.endFt ?? row.end_ft),
+      usedFt: numOrNull(row.usedFt ?? row.used_ft),
       notes: String(row.notes ?? ''),
     }
   })

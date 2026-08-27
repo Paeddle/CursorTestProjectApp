@@ -527,8 +527,8 @@
 }
 
 .wire-saved-reports {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
   border-top: 1px solid #334155;
 }
 
@@ -539,6 +539,28 @@
   color: #cbd5e1;
 }
 
+.wire-saved-reports-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 0.45rem 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.wire-saved-reports-search::placeholder {
+  color: #64748b;
+}
+
+.wire-saved-reports-search:focus {
+  outline: none;
+  border-color: #64748b;
+}
+
 .wire-saved-reports-empty {
   margin: 0;
   color: #94a3b8;
@@ -546,41 +568,83 @@
 }
 
 .wire-saved-reports-list {
+  --saved-report-row: 1.95rem;
+  --saved-report-gap: 0.2rem;
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: var(--saved-report-gap);
+  max-height: calc(10 * var(--saved-report-row) + 9 * var(--saved-report-gap));
+  overflow-y: auto;
+  padding-right: 0.15rem;
 }
 
 .wire-saved-reports-item {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.55rem 0.85rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
+  gap: 0.45rem;
+  min-height: var(--saved-report-row);
+  height: var(--saved-report-row);
+  padding: 0 0.5rem;
+  border-radius: 6px;
   border: 1px solid #334155;
   background: #0f172a;
 }
 
+.wire-saved-reports-item.is-open {
+  border-color: #3b82f6;
+  background: #172554;
+}
+
+.wire-saved-reports-item .wire-inline-select {
+  flex: 1;
+  min-width: 0;
+}
+
 .wire-saved-reports-meta {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .wire-saved-reports-meta strong {
   color: #f1f5f9;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wire-saved-reports-date {
   color: #94a3b8;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.wire-saved-reports-open {
+  flex-shrink: 0;
+  padding: 0.12rem 0.5rem;
+  border-radius: 5px;
+  border: 1px solid #475569;
+  background: #334155;
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.wire-saved-reports-open:hover {
+  background: #475569;
 }
 
 .wire-saved-reports-actions {
@@ -1274,8 +1338,18 @@
 
 .wire-report-preview {
   overflow-x: auto;
+  margin-top: 0.85rem;
   border-radius: 8px;
   border: 1px solid #334155;
+  scroll-margin-top: 0.75rem;
+}
+
+.wire-report-preview-caption {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+  color: #93c5fd;
+  background: #0f172a;
+  border-bottom: 1px solid #334155;
 }
 
 .wire-report-table {
@@ -1504,6 +1578,12 @@
     min-height: 44px;
     width: 100%;
     padding: 0.6rem 1rem;
+  }
+
+  .wire-saved-reports-open {
+    min-height: 0;
+    width: auto;
+    padding: 0.12rem 0.5rem;
   }
 
   .wire-report-toolbar-downloads .wire-report-secondary {

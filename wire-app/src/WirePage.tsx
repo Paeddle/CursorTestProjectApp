@@ -211,6 +211,9 @@ export function WirePage() {
   const [countEmptyBoxes, setCountEmptyBoxes] = useState(false)
   const [savedReports, setSavedReports] = useState<SavedMaterialsReport[]>([])
   const [savedReportsLoading, setSavedReportsLoading] = useState(false)
+  const [savedReportQuery, setSavedReportQuery] = useState('')
+  const [openedSavedReportId, setOpenedSavedReportId] = useState<string | null>(null)
+  const reportPreviewRef = useRef<HTMLDivElement | null>(null)
   const [reportWorking, setReportWorking] = useState(false)
   const [boxesMenuOpen, setBoxesMenuOpen] = useState(false)
   const [boxesMenuCheckoutOpen, setBoxesMenuCheckoutOpen] = useState(false)
@@ -247,6 +250,40 @@ export function WirePage() {
   const selectionAnchorIndexRef = useRef<number | null>(null)
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
+  const reportJobSelectOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    const add = (name: string) => {
+      const t = name.trim()
+      if (!t) return
+      const key = t.toLowerCase()
+      if (seen.has(key)) return
+      seen.add(key)
+      out.push(t)
+    }
+    for (const j of jobOptions) add(j)
+    if (reportJob) add(reportJob)
+    for (const r of savedReports) add(r.job_name)
+    return out
+  }, [jobOptions, reportJob, savedReports])
+  const filteredSavedReports = useMemo(() => {
+    const q = savedReportQuery.trim().toLowerCase()
+    if (!q) return savedReports
+    return savedReports.filter((report) => {
+      const hay = [
+        report.job_name,
+        formatDateTime(report.created_at),
+        report.count_empty_boxes ? 'count empty boxes' : '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      return hay.includes(q)
+    })
+  }, [savedReports, savedReportQuery])
+  const openedSavedReport = useMemo(
+    () => savedReports.find((r) => r.id === openedSavedReportId) ?? null,
+    [savedReports, openedSavedReportId],
+  )
   const allJobNameSuggestions = useMemo(() => {
     const merged = new Set<string>()
     for (const j of managedJobs) {
@@ -430,22 +467,24 @@ export function WirePage() {
   }
 
   useEffect(() => {
-    if (reportJob && !jobOptions.includes(reportJob)) {
-      setReportJob('')
-      setReportRows(null)
-    }
-  }, [jobOptions, reportJob])
+    if (!reportJob) return
+    if (openedSavedReportId) return
+    if (reportJobSelectOptions.includes(reportJob)) return
+    setReportJob('')
+    setReportRows(null)
+  }, [reportJob, reportJobSelectOptions, openedSavedReportId])
 
   useEffect(() => {
+    if (openedSavedReportId) return
     if (!reportJob.trim()) return
     setReportRows((prev) =>
       prev === null
         ? null
         : buildWireMaterialsReport(reportJob.trim(), allScans, {
             countEmptyTossedBoxes: countEmptyBoxes,
-          })
+          }),
     )
-  }, [countEmptyBoxes, allScans, reportJob])
+  }, [countEmptyBoxes, allScans, reportJob, openedSavedReportId])
 
   const activeBoxCount = useMemo(
     () => summaries.filter((s) => isBoxActive(s.scans)).length,
@@ -583,6 +622,7 @@ export function WirePage() {
           rows,
         })
         setSavedReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)])
+        setOpenedSavedReportId(saved.id)
       } catch (saveErr: unknown) {
         setError(
           saveErr instanceof Error
@@ -624,9 +664,13 @@ export function WirePage() {
   }
 
   const handleOpenSavedReport = (report: SavedMaterialsReport) => {
+    setOpenedSavedReportId(report.id)
     setReportJob(report.job_name)
     setCountEmptyBoxes(report.count_empty_boxes)
     setReportRows(report.rows)
+    window.setTimeout(() => {
+      reportPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 0)
   }
 
   const handleDeleteSavedReports = async (ids: string[]) => {
@@ -650,6 +694,10 @@ export function WirePage() {
       }
       setSavedReports((prev) => prev.filter((r) => !ids.includes(r.id)))
       setSelectedReportIds(new Set())
+      if (openedSavedReportId && ids.includes(openedSavedReportId)) {
+        setOpenedSavedReportId(null)
+        setReportRows(null)
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not delete saved report')
     }
@@ -1311,13 +1359,14 @@ export function WirePage() {
                 className="wire-report-select"
                 value={reportJob}
                 onChange={(e) => {
+                  setOpenedSavedReportId(null)
                   setReportJob(e.target.value)
                   setReportRows(null)
                 }}
-                disabled={loading || jobOptions.length === 0}
+                disabled={loading || reportJobSelectOptions.length === 0}
               >
                 <option value="">Select a job…</option>
-                {jobOptions.map((j) => (
+                {reportJobSelectOptions.map((j) => (
                   <option key={j} value={j}>
                     {j}
                   </option>
@@ -1369,31 +1418,6 @@ export function WirePage() {
             </button>
           </div>
         </div>
-        {reportRows && (
-          <div className="wire-report-preview">
-            <table className="wire-report-table">
-              <thead>
-                <tr>
-                  <th>Wire type</th>
-                  <th>Start (ft)</th>
-                  <th>End (ft)</th>
-                  <th>Total used (ft)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportRows.map((row, i) => (
-                  <tr key={`${row.wireType}-${i}`}>
-                    <td>{row.wireType}</td>
-                    <td className="wire-report-num">{row.startFt === null ? '—' : row.startFt}</td>
-                    <td className="wire-report-num">{row.endFt === null ? '—' : row.endFt}</td>
-                    <td className="wire-report-num">{row.usedFt === null ? '—' : row.usedFt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
         <div className="wire-saved-reports" aria-label="Saved materials reports">
           <div className="wire-section-toolbar">
             <h3 className="wire-saved-reports-title">Saved reports</h3>
@@ -1430,55 +1454,103 @@ export function WirePage() {
               No saved reports yet. Create a report to store it here.
             </p>
           ) : (
-            <ul className="wire-saved-reports-list">
-              {savedReports.map((report) => {
-                const checked = selectedReportIds.has(report.id)
-                return (
-                  <li key={report.id} className="wire-saved-reports-item">
-                    <div className="wire-inline-select">
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={checked}
-                        aria-label={`Select report ${report.job_name}`}
-                        className={[
-                          'wire-card-select',
-                          checked ? 'wire-card-select--on' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                        onClick={() => {
-                          setSelectedReportIds((prev) => {
-                            const next = new Set(prev)
-                            if (next.has(report.id)) next.delete(report.id)
-                            else next.add(report.id)
-                            return next
-                          })
-                        }}
+            <>
+              <input
+                type="search"
+                className="wire-saved-reports-search"
+                placeholder="Search saved reports…"
+                value={savedReportQuery}
+                onChange={(e) => setSavedReportQuery(e.target.value)}
+                aria-label="Search saved reports"
+              />
+              {filteredSavedReports.length === 0 ? (
+                <p className="wire-saved-reports-empty">No saved reports match that search.</p>
+              ) : (
+                <ul className="wire-saved-reports-list">
+                  {filteredSavedReports.map((report) => {
+                    const checked = selectedReportIds.has(report.id)
+                    const isOpen = openedSavedReportId === report.id
+                    return (
+                      <li
+                        key={report.id}
+                        className={`wire-saved-reports-item${isOpen ? ' is-open' : ''}`}
                       >
-                        <span className="wire-card-select-face" aria-hidden="true" />
-                      </button>
-                      <span className="wire-saved-reports-meta">
-                        <strong>{report.job_name}</strong>
-                        <span className="wire-saved-reports-date">
-                          {formatDateTime(report.created_at)}
-                          {report.count_empty_boxes ? ' · Count empty boxes' : ''}
-                        </span>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="wire-report-secondary"
-                      onClick={() => handleOpenSavedReport(report)}
-                    >
-                      Open
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+                        <div className="wire-inline-select">
+                          <button
+                            type="button"
+                            role="checkbox"
+                            aria-checked={checked}
+                            aria-label={`Select report ${report.job_name}`}
+                            className={[
+                              'wire-card-select',
+                              checked ? 'wire-card-select--on' : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' ')}
+                            onClick={() => {
+                              setSelectedReportIds((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(report.id)) next.delete(report.id)
+                                else next.add(report.id)
+                                return next
+                              })
+                            }}
+                          >
+                            <span className="wire-card-select-face" aria-hidden="true" />
+                          </button>
+                          <span className="wire-saved-reports-meta">
+                            <strong>{report.job_name}</strong>
+                            <span className="wire-saved-reports-date">
+                              {formatDateTime(report.created_at)}
+                              {report.count_empty_boxes ? ' · Empty' : ''}
+                            </span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="wire-saved-reports-open"
+                          onClick={() => handleOpenSavedReport(report)}
+                        >
+                          Open
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </>
           )}
         </div>
+        {reportRows && (
+          <div className="wire-report-preview" ref={reportPreviewRef} id="wire-report-preview">
+            {openedSavedReport && (
+              <div className="wire-report-preview-caption">
+                Opened saved report · {openedSavedReport.job_name} ·{' '}
+                {formatDateTime(openedSavedReport.created_at)}
+              </div>
+            )}
+            <table className="wire-report-table">
+              <thead>
+                <tr>
+                  <th>Wire type</th>
+                  <th>Start (ft)</th>
+                  <th>End (ft)</th>
+                  <th>Total used (ft)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportRows.map((row, i) => (
+                  <tr key={`${row.wireType}-${i}`}>
+                    <td>{row.wireType}</td>
+                    <td className="wire-report-num">{row.startFt === null ? '—' : row.startFt}</td>
+                    <td className="wire-report-num">{row.endFt === null ? '—' : row.endFt}</td>
+                    <td className="wire-report-num">{row.usedFt === null ? '—' : row.usedFt}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="wire-inventory-section" aria-labelledby="wire-inventory-heading">
