@@ -172,22 +172,6 @@ h1 {
   font-size: 0.92rem;
 }
 
-.password-hint {
-  margin: 1.35rem 0 0;
-  font-size: 0.95rem;
-  color: rgba(232, 243, 241, 0.68);
-}
-
-.password-hint code {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 0.95em;
-  color: var(--amber);
-  background: rgba(245, 185, 66, 0.12);
-  border: 1px solid rgba(245, 185, 66, 0.28);
-  border-radius: 0.3rem;
-  padding: 0.15rem 0.45rem;
-}
-
 .apps-toolbar {
   display: flex;
   align-items: center;
