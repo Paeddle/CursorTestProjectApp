@@ -34,10 +34,10 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(94, 200, 212, 0.18), transparent 60%),
-    radial-gradient(ellipse 50% 40% at 78% 18%, rgba(120, 150, 190, 0.12), transparent 55%),
-    radial-gradient(ellipse 55% 45% at 90% 85%, rgba(245, 185, 66, 0.12), transparent 55%),
-    linear-gradient(160deg, #0a121c 0%, #152536 45%, #1a2f3a 72%, #17343a 100%);
+    radial-gradient(ellipse 70% 55% at 15% 10%, rgba(64, 168, 196, 0.16), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 78% 18%, rgba(100, 140, 180, 0.14), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 90% 85%, rgba(245, 185, 66, 0.08), transparent 55%),
+    linear-gradient(160deg, #0a121c 0%, #14202e 42%, #1a2b3d 70%, #1c3348 100%);
   animation: wash 14s ease-in-out infinite alternate;
 }
 
@@ -72,7 +72,7 @@ h1 {
   font-weight: 800;
   letter-spacing: -0.04em;
   line-height: 0.95;
-  color: #f7fffc;
+  color: #f3f6fa;
 }
 
 .gate,
@@ -264,10 +264,10 @@ h1 {
 
 @keyframes wash {
   from {
-    filter: hue-rotate(-4deg) saturate(0.95);
+    filter: hue-rotate(-8deg) saturate(0.92);
   }
   to {
-    filter: hue-rotate(8deg) saturate(1.05);
+    filter: hue-rotate(2deg) saturate(1.02);
   }
 }
 
