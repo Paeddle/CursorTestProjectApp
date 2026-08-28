@@ -241,6 +241,7 @@ export function WirePage() {
   const [searchBox, setSearchBox] = useState('')
   /** Active = warehouse or checked out on a job; inactive = Retired. */
   const [boxListMode, setBoxListMode] = useState<'active' | 'inactive'>('active')
+  const [workspaceTab, setWorkspaceTab] = useState<'reports' | 'inventory' | 'types'>('reports')
   const [expandedBox, setExpandedBox] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [reportJob, setReportJob] = useState('')
@@ -709,6 +710,7 @@ export function WirePage() {
   }
 
   const handleOpenSavedReport = (report: SavedMaterialsReport) => {
+    setWorkspaceTab('reports')
     setOpenedSavedReportId(report.id)
     setSelectedReportIds((prev) => {
       const next = new Set(prev)
@@ -1338,8 +1340,53 @@ export function WirePage() {
         </div>
       </header>
 
-      <section className="wire-report-section" aria-labelledby="wire-report-heading">
-        <h2 id="wire-report-heading" className="wire-report-title">
+      <section className="wire-workspace" aria-label="Tracker workspace">
+        <div className="wire-sheet-tabbar">
+          <div className="wire-sheet-tabs" role="tablist" aria-label="Workspace sheets">
+            <button
+              type="button"
+              role="tab"
+              id="wire-tab-reports"
+              aria-controls="wire-panel-reports"
+              aria-selected={workspaceTab === 'reports'}
+              className={`wire-sheet-tab${workspaceTab === 'reports' ? ' active' : ''}`}
+              onClick={() => setWorkspaceTab('reports')}
+            >
+              Reports
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="wire-tab-inventory"
+              aria-controls="wire-panel-inventory"
+              aria-selected={workspaceTab === 'inventory'}
+              className={`wire-sheet-tab${workspaceTab === 'inventory' ? ' active' : ''}`}
+              onClick={() => setWorkspaceTab('inventory')}
+            >
+              Inventory
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="wire-tab-types"
+              aria-controls="wire-panel-types"
+              aria-selected={workspaceTab === 'types'}
+              className={`wire-sheet-tab${workspaceTab === 'types' ? ' active' : ''}`}
+              onClick={() => setWorkspaceTab('types')}
+            >
+              Wire types
+            </button>
+          </div>
+        </div>
+        <div className="wire-sheet-body">
+          <div
+            role="tabpanel"
+            id="wire-panel-reports"
+            aria-labelledby="wire-tab-reports"
+            hidden={workspaceTab !== 'reports'}
+            className="wire-sheet-panel"
+          >
+        <h2 id="wire-report-heading" className="wire-visually-hidden">
           Materials used report
         </h2>
         <div className="wire-jobs-manager" role="region" aria-label="Existing jobs">
@@ -1651,10 +1698,16 @@ export function WirePage() {
             </table>
           </div>
         )}
-      </section>
+          </div>
 
-      <section className="wire-inventory-section" aria-labelledby="wire-inventory-heading">
-        <h2 id="wire-inventory-heading" className="wire-inventory-title">
+          <div
+            role="tabpanel"
+            id="wire-panel-inventory"
+            aria-labelledby="wire-tab-inventory"
+            hidden={workspaceTab !== 'inventory'}
+            className="wire-sheet-panel"
+          >
+        <h2 id="wire-inventory-heading" className="wire-visually-hidden">
           Wire inventory
         </h2>
         {loading ? (
@@ -1736,10 +1789,16 @@ export function WirePage() {
             </div>
           </>
         )}
-      </section>
+          </div>
 
-      <section className="wire-types-section" aria-labelledby="wire-types-heading">
-        <h2 id="wire-types-heading" className="wire-types-section-title">
+          <div
+            role="tabpanel"
+            id="wire-panel-types"
+            aria-labelledby="wire-tab-types"
+            hidden={workspaceTab !== 'types'}
+            className="wire-sheet-panel"
+          >
+        <h2 id="wire-types-heading" className="wire-visually-hidden">
           Wire types
         </h2>
         <div className="wire-types-toolbar">
@@ -1840,6 +1899,8 @@ export function WirePage() {
             })}
           </div>
         )}
+          </div>
+        </div>
       </section>
 
       <section className="wire-boxes-section" aria-labelledby="wire-boxes-heading">
