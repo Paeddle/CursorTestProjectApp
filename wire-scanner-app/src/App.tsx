@@ -20,6 +20,25 @@ function normalizeBoxId(raw: string): string {
   return raw.trim()
 }
 
+/** Wire box labels on QR stickers, e.g. BX-0001. */
+const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
+
+function stripScanValuePrefixes(raw: string): string {
+  // Some camera / barcode UIs prepend "URL:" before the decoded payload.
+  return raw.trim().replace(/^(URL|URI)\s*:\s*/i, '').trim()
+}
+
+function findBoxIdInText(text: string): string | null {
+  const match = text.match(BOX_ID_PATTERN)
+  if (!match) return null
+  // Canonical display form: BX-0001 (keeps digit padding from the QR).
+  return `BX-${match[1].slice(3)}`
+}
+
+function escapeIlikeExact(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
+
 function normalizeJobNameKey(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').toLowerCase()
 }
@@ -38,8 +57,47 @@ function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   const query = s.startsWith('?') || s.startsWith('#') ? '?' + s.slice(1) : '?' + s
   const params = new URLSearchParams(query)
   const box = params.get('box')
-  if (box) return normalizeBoxId(box)
-  if (s.startsWith('#') && s.length > 1 && !s.includes('=')) return normalizeBoxId(s.slice(1))
+  if (box) {
+    const fromParam = findBoxIdInText(box) || normalizeBoxId(box)
+    return fromParam
+  }
+  if (s.startsWith('#') && s.length > 1 && !s.includes('=')) {
+    const hashVal = normalizeBoxId(s.slice(1))
+    return findBoxIdInText(hashVal) || hashVal
+  }
+  return null
+}
+
+/** Pull only the box id from a QR payload (plain BX-####, ?box=, or full scanner URL). */
+function extractBoxIdFromScannedValue(value: string): string | null {
+  const raw = stripScanValuePrefixes(value || '')
+  if (!raw) return null
+
+  const looksLikeUrl = /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org)\b/i.test(raw)
+  if (looksLikeUrl) {
+    try {
+      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
+      const url = new URL(href)
+      const fromParams =
+        getBoxIdFromQueryOrHash(url.search) || getBoxIdFromQueryOrHash(url.hash)
+      if (fromParams) return findBoxIdInText(fromParams) || fromParams
+      const fromPath = findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
+      if (fromPath) return fromPath
+    } catch {
+      // fall through to text match
+    }
+    const embedded = findBoxIdInText(raw)
+    if (embedded) return embedded
+    return null
+  }
+
+  const embedded = findBoxIdInText(raw)
+  if (embedded) return embedded
+
+  // Plain id that is not a URL (legacy formats)
+  if (!/\s/.test(raw) && raw.length < 64 && !raw.includes('://')) {
+    return normalizeBoxId(raw)
+  }
   return null
 }
 
@@ -145,25 +203,26 @@ function App() {
     }
 
     const id = normalizeBoxId(boxId)
+    const idMatch = escapeIlikeExact(id)
     let cancelled = false
     setBoxMetaLoading(true)
 
     ;(async () => {
       try {
         const [countRes, profileRes, latestRes] = await Promise.all([
-          supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).eq('box_id', id),
+          supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).ilike('box_id', idMatch),
           supabase
             .from('wire_box_scans')
-            .select('wire_type, spool_capacity_ft, wire_type_label, current_footage')
-            .eq('box_id', id)
+            .select('box_id, wire_type, spool_capacity_ft, wire_type_label, current_footage')
+            .ilike('box_id', idMatch)
             .not('spool_capacity_ft', 'is', null)
             .order('scanned_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
           supabase
             .from('wire_box_scans')
-            .select('job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft')
-            .eq('box_id', id)
+            .select('box_id, job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft')
+            .ilike('box_id', idMatch)
             .order('scanned_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
@@ -180,6 +239,7 @@ function App() {
         }
 
         const latest = latestRes.data as {
+          box_id?: string | null
           job_name?: string | null
           check_type?: string | null
           current_footage?: string | null
@@ -187,6 +247,11 @@ function App() {
           wire_type_label?: string | null
           spool_capacity_ft?: string | null
         } | null
+        const storedBoxId = latest?.box_id ? String(latest.box_id).trim() : ''
+        // Keep DB casing for future inserts so we don't split one box into two ids.
+        if (storedBoxId && storedBoxId !== id) {
+          setBoxId(storedBoxId)
+        }
         const retired = latest ? isRetiredJobName(String(latest.job_name ?? '')) : false
         setBoxRetired(retired)
 
@@ -290,24 +355,17 @@ function App() {
   }, [])
 
   const handleQRScanned = useCallback((value: string) => {
-    const raw = (value || '').trim()
-    if (!raw) return
-    let id: string | null = null
-    if (/^https?:\/\//i.test(raw)) {
-      try {
-        const url = new URL(raw)
-        id = getBoxIdFromQueryOrHash(url.search) || getBoxIdFromQueryOrHash(url.hash)
-        if (!id) id = normalizeBoxId(raw)
-      } catch {
-        id = normalizeBoxId(raw)
-      }
-    } else {
-      id = normalizeBoxId(raw)
-    }
+    const id = extractBoxIdFromScannedValue(value)
     if (id) {
       setBoxId(id)
       setShowScanner(false)
+      return
     }
+    setStatus({
+      type: 'error',
+      message: 'Could not read a box ID (expected BX-0000) from that QR code.',
+    })
+    setShowScanner(false)
   }, [])
 
   useEffect(() => {

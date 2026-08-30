@@ -14,6 +14,21 @@ function normalizeBoxId(raw: string): string {
   return raw.trim()
 }
 
+/** Wire box labels on QR stickers, e.g. BX-0001. */
+const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
+
+function stripScanValuePrefixes(raw: string): string {
+  // Some camera / barcode UIs prepend "URL:" before the decoded payload.
+  return raw.trim().replace(/^(URL|URI)\s*:\s*/i, '').trim()
+}
+
+function findBoxIdInText(text: string): string | null {
+  const match = text.match(BOX_ID_PATTERN)
+  if (!match) return null
+  // Canonical display form: BX-0001 (keeps digit padding from the QR).
+  return `BX-${match[1].slice(3)}`
+}
+
 function normalizeJobNameKey(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').toLowerCase()
 }
@@ -29,8 +44,46 @@ function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   const query = s.startsWith('?') || s.startsWith('#') ? '?' + s.slice(1) : '?' + s
   const params = new URLSearchParams(query)
   const box = params.get('box')
-  if (box) return normalizeBoxId(box)
-  if (s.startsWith('#') && s.length > 1 && !s.includes('=')) return normalizeBoxId(s.slice(1))
+  if (box) {
+    const fromParam = findBoxIdInText(box) || normalizeBoxId(box)
+    return fromParam
+  }
+  if (s.startsWith('#') && s.length > 1 && !s.includes('=')) {
+    const hashVal = normalizeBoxId(s.slice(1))
+    return findBoxIdInText(hashVal) || hashVal
+  }
+  return null
+}
+
+/** Pull only the box id from a QR payload (plain BX-####, ?box=, or full scanner URL). */
+function extractBoxIdFromScannedValue(value: string): string | null {
+  const raw = stripScanValuePrefixes(value || '')
+  if (!raw) return null
+
+  const looksLikeUrl = /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org)\b/i.test(raw)
+  if (looksLikeUrl) {
+    try {
+      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
+      const url = new URL(href)
+      const fromParams =
+        getBoxIdFromQueryOrHash(url.search) || getBoxIdFromQueryOrHash(url.hash)
+      if (fromParams) return findBoxIdInText(fromParams) || fromParams
+      const fromPath = findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
+      if (fromPath) return fromPath
+    } catch {
+      // fall through to text match
+    }
+    const embedded = findBoxIdInText(raw)
+    if (embedded) return embedded
+    return null
+  }
+
+  const embedded = findBoxIdInText(raw)
+  if (embedded) return embedded
+
+  if (!/\s/.test(raw) && raw.length < 64 && !raw.includes('://')) {
+    return normalizeBoxId(raw)
+  }
   return null
 }
 
@@ -250,24 +303,17 @@ export default function WireScannerPage() {
   }, [])
 
   const handleQRScanned = useCallback((value: string) => {
-    const raw = (value || '').trim()
-    if (!raw) return
-    let id: string | null = null
-    if (/^https?:\/\//i.test(raw)) {
-      try {
-        const url = new URL(raw)
-        id = getBoxIdFromQueryOrHash(url.search) || getBoxIdFromQueryOrHash(url.hash)
-        if (!id) id = normalizeBoxId(raw)
-      } catch {
-        id = normalizeBoxId(raw)
-      }
-    } else {
-      id = normalizeBoxId(raw)
-    }
+    const id = extractBoxIdFromScannedValue(value)
     if (id) {
       setBoxId(id)
       setShowScanner(false)
+      return
     }
+    setStatus({
+      type: 'error',
+      message: 'Could not read a box ID (expected BX-0000) from that QR code.',
+    })
+    setShowScanner(false)
   }, [])
 
   useEffect(() => {
