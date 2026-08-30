@@ -1131,6 +1131,37 @@
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
 }
 
+.wire-card--retired {
+  border-color: #7f1d1d;
+  background: linear-gradient(180deg, rgba(127, 29, 29, 0.18), #1e293b 2.5rem);
+}
+
+.wire-card-retired-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #fecaca;
+  background: #7f1d1d;
+  border: 1px solid #f87171;
+  vertical-align: middle;
+}
+
+.wire-card-retired-note {
+  margin: 0 0.85rem 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid #b91c1c;
+}
+
 .wire-boxes-bulk-bar {
   display: flex;
   flex-wrap: wrap;

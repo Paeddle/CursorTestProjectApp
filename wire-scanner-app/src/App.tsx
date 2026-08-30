@@ -13,6 +13,8 @@ import './App.css'
 
 /** Same as Tracker warehouse stock: every check-in is stored under this job name. */
 const WAREHOUSE_JOB_NAME = 'Inventory'
+/** Same as Tracker: inactive / retired boxes use this job name and cannot be scanned. */
+const RETIRED_JOB_NAME = 'Retired'
 
 function normalizeBoxId(raw: string): string {
   return raw.trim()
@@ -24,6 +26,10 @@ function normalizeJobNameKey(raw: string): string {
 
 function isWarehouseJobName(name: string): boolean {
   return normalizeJobNameKey(name) === normalizeJobNameKey(WAREHOUSE_JOB_NAME)
+}
+
+function isRetiredJobName(name: string): boolean {
+  return normalizeJobNameKey(name) === normalizeJobNameKey(RETIRED_JOB_NAME)
 }
 
 function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
@@ -69,6 +75,7 @@ function App() {
   /** null = not loaded yet */
   const [hasExistingScans, setHasExistingScans] = useState<boolean | null>(null)
   const [boxProfile, setBoxProfile] = useState<BoxProfile | null>(null)
+  const [boxRetired, setBoxRetired] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [spoolCapacityStr, setSpoolCapacityStr] = useState('')
 
@@ -129,6 +136,7 @@ function App() {
     setSelectedPresetId('')
     setSpoolCapacityStr('')
     setBoxProfile(null)
+    setBoxRetired(false)
     setHasExistingScans(null)
 
     if (!boxId || !supabase) {
@@ -142,13 +150,20 @@ function App() {
 
     ;(async () => {
       try {
-        const [countRes, profileRes] = await Promise.all([
+        const [countRes, profileRes, latestRes] = await Promise.all([
           supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).eq('box_id', id),
           supabase
             .from('wire_box_scans')
             .select('wire_type, spool_capacity_ft, wire_type_label, current_footage')
             .eq('box_id', id)
             .not('spool_capacity_ft', 'is', null)
+            .order('scanned_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('wire_box_scans')
+            .select('job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft')
+            .eq('box_id', id)
             .order('scanned_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
@@ -159,11 +174,23 @@ function App() {
         if (countRes.error) {
           console.error(countRes.error)
           setHasExistingScans(false)
+          setBoxRetired(false)
         } else {
           setHasExistingScans((countRes.count ?? 0) > 0)
         }
 
-        const row = profileRes.data as {
+        const latest = latestRes.data as {
+          job_name?: string | null
+          check_type?: string | null
+          current_footage?: string | null
+          wire_type?: string | null
+          wire_type_label?: string | null
+          spool_capacity_ft?: string | null
+        } | null
+        const retired = latest ? isRetiredJobName(String(latest.job_name ?? '')) : false
+        setBoxRetired(retired)
+
+        const row = (profileRes.data ?? latest) as {
           wire_type: string
           spool_capacity_ft: string
           wire_type_label?: string | null
@@ -196,6 +223,7 @@ function App() {
         if (!cancelled) {
           setHasExistingScans(false)
           setBoxProfile(null)
+          setBoxRetired(false)
         }
       } finally {
         if (!cancelled) setBoxMetaLoading(false)
@@ -335,6 +363,12 @@ function App() {
       showError('Scan a QR code first.')
       return
     }
+    if (boxRetired) {
+      showError(
+        'This box is Retired (inactive). No check-in or check-out is allowed. Delete the box in Wire Tracker to reuse this ID.',
+      )
+      return
+    }
     if (hasExistingScans === false) {
       if (!selectedPresetId) {
         showError('This box has no scans yet. Choose a wire type to initialize the box.')
@@ -413,6 +447,7 @@ function App() {
     setCurrentFootage('')
     setSelectedPresetId('')
     setSpoolCapacityStr('')
+    setBoxRetired(false)
     setStatus(null)
     setShowScanner(true)
   }
@@ -488,7 +523,27 @@ function App() {
           </section>
         ) : (
           <form onSubmit={handleSubmit} className="section form-section">
-            {!boxMetaLoading && hasExistingScans === false && (
+            {boxMetaLoading && (
+              <p className="box-meta-loading">Checking this box in the database…</p>
+            )}
+
+            {!boxMetaLoading && boxRetired && (
+              <div className="retired-banner" role="alert">
+                <strong>Retired (inactive)</strong>
+                <p>
+                  This box cannot be checked in or checked out. Delete it in Wire Tracker if you need
+                  to reuse this box ID for new data.
+                </p>
+                {boxProfile && (
+                  <p className="retired-banner-meta">
+                    {boxProfile.label}
+                    {boxProfile.remainingFt ? ` · Remaining ${boxProfile.remainingFt} ft` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!boxMetaLoading && !boxRetired && hasExistingScans === false && (
               <div className="form-field">
                 <label className="label" htmlFor="wire-type-preset">
                   Wire type
@@ -510,6 +565,7 @@ function App() {
               </div>
             )}
 
+            {!boxRetired && (
             <div className="form-field">
               <span className="label" id="check-type-label-form">
                 Warehouse or job
@@ -535,11 +591,12 @@ function App() {
                 </button>
               </div>
             </div>
+            )}
             <div className="form-field">
               <label className="label">Box ID</label>
               <div className="box-id-display">{boxId}</div>
             </div>
-            {checkType === 'check_in' ? (
+            {!boxRetired && (checkType === 'check_in' ? (
               <div className="form-field">
                 <span className="label">Location</span>
                 <div className="box-id-display warehouse-location-display">Warehouse</div>
@@ -569,10 +626,11 @@ function App() {
                   ))}
                 </datalist>
               </div>
-            )}
+            ))}
+            {!boxRetired && (
             <div className="form-field">
               <label className="label" htmlFor="current-footage">
-                Current footage
+                Current footage (feet remaining on spool)
               </label>
               <input
                 id="current-footage"
@@ -585,6 +643,7 @@ function App() {
                 disabled={boxMetaLoading}
               />
             </div>
+            )}
             <div className="form-actions">
               <button
                 type="button"
@@ -594,6 +653,7 @@ function App() {
               >
                 Scan another
               </button>
+              {!boxRetired && (
               <button
                 type="submit"
                 className="btn btn-primary"
@@ -601,6 +661,7 @@ function App() {
               >
                 {submitting ? 'Saving…' : 'Save'}
               </button>
+              )}
             </div>
           </form>
         )}

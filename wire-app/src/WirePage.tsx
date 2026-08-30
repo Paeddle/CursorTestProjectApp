@@ -619,6 +619,15 @@ export function WirePage() {
   }
 
   const deleteScan = async (scan: WireBoxScan) => {
+    const summary = summaries.find(
+      (s) => s.box_id.toLowerCase() === String(scan.box_id || '').trim().toLowerCase(),
+    )
+    if (summary && isBoxRetired(summary.scans)) {
+      setError(
+        'Retired boxes are locked. Delete the entire box to clear history, or Set Active to restore it.',
+      )
+      return
+    }
     if (
       !window.confirm(
         `Delete this scan for ${scan.box_id} (${formatCheckType(scan.check_type)}, ${formatWireJobNameDisplay(scan.job_name)})?`
@@ -1276,6 +1285,11 @@ export function WirePage() {
   }
 
   const handleUpdateBoxWireType = async (summary: WireBoxSummary, presetId: string) => {
+    if (isBoxRetired(summary.scans)) {
+      setError('Retired boxes are locked. Wire type cannot be changed until the box is deleted or restored to Active.')
+      setEditingTypeBoxKey(null)
+      return
+    }
     const key = summary.box_id.toLowerCase()
     const trimmedId = presetId.trim()
     if (!trimmedId) return
@@ -2077,7 +2091,8 @@ export function WirePage() {
                     disabled={
                       bulkCheckoutWorking ||
                       selectedBoxKeys.size === 0 ||
-                      allJobNameSuggestions.length === 0
+                      allJobNameSuggestions.length === 0 ||
+                      boxListMode === 'inactive'
                     }
                     onClick={() => setBoxesMenuCheckoutOpen((v) => !v)}
                   >
@@ -2138,7 +2153,10 @@ export function WirePage() {
               const boxActive = isBoxActive(summary.scans)
               const inWarehouse = isBoxInInventory(summary.scans)
               return (
-                <div key={key} className="wire-card">
+                <div
+                  key={key}
+                  className={`wire-card${!boxActive ? ' wire-card--retired' : ''}`}
+                >
                   <div className="wire-card-header-row">
                     <div className="wire-card-header-main">
                       <button
@@ -2165,7 +2183,7 @@ export function WirePage() {
                         className="wire-card-header"
                         onClick={() => toggleExpanded(summary.box_id)}
                         aria-expanded={isExpanded}
-                        aria-label={`${summary.box_id}, ${boxActive ? 'active' : 'inactive'}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
+                        aria-label={`${summary.box_id}, ${boxActive ? 'active' : 'retired'}, ${headerWire}, default ${headerDefault}, ${nScans} scan${nScans !== 1 ? 's' : ''}`}
                       >
                       <span
                         className={`wire-box-status-bubble ${boxActive ? 'wire-box-status-active' : 'wire-box-status-inactive'}`}
@@ -2174,16 +2192,22 @@ export function WirePage() {
                             ? inWarehouse
                               ? 'Active — in warehouse'
                               : 'Active — checked out to a job'
-                            : 'Inactive — retired'
+                            : 'Retired — inactive (locked)'
                         }
                         aria-hidden
                       />
                       <span className="wire-card-title-block">
                         <span className="wire-card-title">{summary.box_id}</span>
+                        {!boxActive && (
+                          <span className="wire-card-retired-badge" title="No check-in, check-out, or edits until deleted or restored">
+                            Retired
+                          </span>
+                        )}
                         <span className="wire-card-meta-sep" aria-hidden>
                           ·
                         </span>
                         <span className="wire-card-meta">
+                          {boxActive ? (
                           <span
                             className="wire-card-wire-type wire-card-wire-type-editable"
                             role="button"
@@ -2203,6 +2227,11 @@ export function WirePage() {
                           >
                             {headerWire}
                           </span>
+                          ) : (
+                            <span className="wire-card-wire-type" title="Wire type locked on retired boxes">
+                              {headerWire}
+                            </span>
+                          )}
                           <span className="wire-card-meta-sep" aria-hidden>
                             ·
                           </span>
@@ -2223,8 +2252,13 @@ export function WirePage() {
                     </button>
                     </div>
                   </div>
-                  {showTypeEditor && (
-                    <div className="wire-type-inline-editor">
+                  {!boxActive && (
+                    <div className="wire-card-retired-note" role="status">
+                      Retired — locked. Check-in/out and edits are blocked. Delete the box to reuse this
+                      ID, or use Set Active to restore.
+                    </div>
+                  )}
+                  {showTypeEditor && boxActive && (                    <div className="wire-type-inline-editor">
                       <label className="wire-type-inline-label" htmlFor={`wire-type-edit-${key}`}>
                         Wire type
                       </label>
@@ -2288,8 +2322,12 @@ export function WirePage() {
                                 <button
                                   type="button"
                                   className="wire-delete-scan"
-                                  title="Delete this scan"
-                                  disabled={deleting}
+                                  title={
+                                    boxActive
+                                      ? 'Delete this scan'
+                                      : 'Retired boxes are locked — delete the whole box instead'
+                                  }
+                                  disabled={deleting || !boxActive}
                                   onClick={() => deleteScan(scan)}
                                 >
                                   Delete
