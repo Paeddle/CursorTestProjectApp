@@ -126,6 +126,10 @@
   letter-spacing: 0.03em;
 }
 
+.job-name-new-label {
+  margin-top: 0.75rem;
+}
+
 .input {
   width: 100%;
   padding: 0.65rem 0.75rem;

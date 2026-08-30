@@ -179,7 +179,12 @@ function App() {
         if (cancelled) return
         const names = (data ?? [])
           .map((r) => (typeof r.name === 'string' ? r.name.trim() : ''))
-          .filter((n) => n && normalizeJobNameKey(n) !== 'inventory')
+          .filter(
+            (n) =>
+              n &&
+              normalizeJobNameKey(n) !== 'inventory' &&
+              !isRetiredJobName(n),
+          )
         setJobOptions(names)
       } catch {
         if (!cancelled) setJobOptions([])
@@ -661,14 +666,43 @@ function App() {
               </div>
             ) : (
               <div className="form-field">
-                <label className="label" htmlFor="job-name">
-                  Job name
+                <label className="label" htmlFor="job-name-select">
+                  Job / location
+                </label>
+                <select
+                  id="job-name-select"
+                  className="input"
+                  value={
+                    jobOptions.some(
+                      (j) => normalizeJobNameKey(j) === normalizeJobNameKey(jobName),
+                    )
+                      ? jobOptions.find(
+                          (j) => normalizeJobNameKey(j) === normalizeJobNameKey(jobName),
+                        )!
+                      : ''
+                  }
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setJobName(next)
+                    if (next) void persistJobOption(next)
+                  }}
+                >
+                  <option value="">
+                    {jobOptions.length === 0 ? 'No saved jobs yet…' : 'Select a saved job…'}
+                  </option>
+                  {jobOptions.map((j) => (
+                    <option key={j} value={j}>
+                      {j}
+                    </option>
+                  ))}
+                </select>
+                <label className="label job-name-new-label" htmlFor="job-name">
+                  Or type a new job name
                 </label>
                 <input
                   id="job-name"
                   type="text"
                   className="input"
-                  list="job-name-options"
                   value={jobName}
                   onChange={(e) => setJobName(e.target.value)}
                   onBlur={() => {
@@ -678,11 +712,6 @@ function App() {
                   autoComplete="off"
                   required
                 />
-                <datalist id="job-name-options">
-                  {jobOptions.map((j) => (
-                    <option key={j} value={j} />
-                  ))}
-                </datalist>
               </div>
             ))}
             {!boxRetired && (
