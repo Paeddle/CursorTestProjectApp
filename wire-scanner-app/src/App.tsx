@@ -119,6 +119,32 @@ interface BoxProfile {
   remainingFt: string | null
 }
 
+interface LastScanInfo {
+  jobName: string
+  checkType: CheckType
+  remainingFt: string | null
+  scannedAt: string | null
+}
+
+function formatJobLocationDisplay(jobName: string): string {
+  if (isWarehouseJobName(jobName)) return 'Warehouse'
+  if (isRetiredJobName(jobName)) return 'Retired'
+  return jobName.trim() || '—'
+}
+
+function formatLastScanWhen(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 function App() {
   const [showScanner, setShowScanner] = useState(false)
   const [checkType, setCheckType] = useState<CheckType>('check_in')
@@ -134,6 +160,7 @@ function App() {
   const [hasExistingScans, setHasExistingScans] = useState<boolean | null>(null)
   const [boxProfile, setBoxProfile] = useState<BoxProfile | null>(null)
   const [boxRetired, setBoxRetired] = useState(false)
+  const [lastScan, setLastScan] = useState<LastScanInfo | null>(null)
   const [selectedPresetId, setSelectedPresetId] = useState('')
   const [spoolCapacityStr, setSpoolCapacityStr] = useState('')
 
@@ -200,6 +227,7 @@ function App() {
     setSpoolCapacityStr('')
     setBoxProfile(null)
     setBoxRetired(false)
+    setLastScan(null)
     setHasExistingScans(null)
 
     if (!boxId || !supabase) {
@@ -226,7 +254,9 @@ function App() {
             .maybeSingle(),
           supabase
             .from('wire_box_scans')
-            .select('box_id, job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft')
+            .select(
+              'box_id, job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft, scanned_at',
+            )
             .ilike('box_id', idMatch)
             .order('scanned_at', { ascending: false })
             .limit(1)
@@ -239,6 +269,7 @@ function App() {
           console.error(countRes.error)
           setHasExistingScans(false)
           setBoxRetired(false)
+          setLastScan(null)
         } else {
           setHasExistingScans((countRes.count ?? 0) > 0)
         }
@@ -251,6 +282,7 @@ function App() {
           wire_type?: string | null
           wire_type_label?: string | null
           spool_capacity_ft?: string | null
+          scanned_at?: string | null
         } | null
         const storedBoxId = latest?.box_id ? String(latest.box_id).trim() : ''
         // Keep DB casing for future inserts so we don't split one box into two ids.
@@ -259,6 +291,20 @@ function App() {
         }
         const retired = latest ? isRetiredJobName(String(latest.job_name ?? '')) : false
         setBoxRetired(retired)
+
+        if (latest?.job_name != null || latest?.check_type != null) {
+          const ctRaw = String(latest.check_type ?? '').trim().toLowerCase()
+          const ct: CheckType = ctRaw === 'check_out' ? 'check_out' : 'check_in'
+          const rem = latest.current_footage ? String(latest.current_footage).trim() : ''
+          setLastScan({
+            jobName: String(latest.job_name ?? '').trim(),
+            checkType: ct,
+            remainingFt: rem || null,
+            scannedAt: latest.scanned_at ? String(latest.scanned_at) : null,
+          })
+        } else {
+          setLastScan(null)
+        }
 
         const row = (profileRes.data ?? latest) as {
           wire_type: string
@@ -294,6 +340,7 @@ function App() {
           setHasExistingScans(false)
           setBoxProfile(null)
           setBoxRetired(false)
+          setLastScan(null)
         }
       } finally {
         if (!cancelled) setBoxMetaLoading(false)
@@ -330,6 +377,19 @@ function App() {
     setSpoolCapacityStr(cap)
     setCurrentFootage(cap)
   }, [selectedPresetId, hasExistingScans, wireTypes])
+
+  const alreadyCheckedOut =
+    !boxRetired &&
+    lastScan != null &&
+    lastScan.checkType === 'check_out' &&
+    !isWarehouseJobName(lastScan.jobName) &&
+    !isRetiredJobName(lastScan.jobName)
+
+  // Already out on a job — default to check-in so they can't double-checkout by accident.
+  useEffect(() => {
+    if (boxMetaLoading || !alreadyCheckedOut) return
+    setCheckType('check_in')
+  }, [boxMetaLoading, alreadyCheckedOut, boxId])
 
   const clearStatus = useCallback(() => setStatus(null), [])
 
@@ -443,12 +503,28 @@ function App() {
       }
     }
     if (checkType === 'check_out') {
+      if (alreadyCheckedOut && lastScan) {
+        showError(
+          `This box is already checked out to ${formatJobLocationDisplay(lastScan.jobName)}. Check it in to the warehouse before checking it out again.`,
+        )
+        return
+      }
       if (!job) {
         showError('Choose a job for check-out.')
         return
       }
       if (isWarehouseJobName(job)) {
         showError('Check-out needs a real job name, not Warehouse / Inventory.')
+        return
+      }
+      if (
+        lastScan &&
+        lastScan.checkType === 'check_out' &&
+        normalizeJobNameKey(lastScan.jobName) === normalizeJobNameKey(job)
+      ) {
+        showError(
+          `Already checked out to ${formatJobLocationDisplay(lastScan.jobName)}. Check in first, then check out again if needed.`,
+        )
         return
       }
     }
@@ -628,6 +704,30 @@ function App() {
               </div>
             )}
 
+            {!boxMetaLoading && !boxRetired && lastScan && (
+              <div
+                className={`last-scan-panel${alreadyCheckedOut ? ' last-scan-panel--out' : ''}`}
+                role="status"
+              >
+                <strong>Last location</strong>
+                <p className="last-scan-panel-main">
+                  {lastScan.checkType === 'check_out' ? 'Checked out' : 'Checked in'}
+                  {' · '}
+                  {formatJobLocationDisplay(lastScan.jobName)}
+                </p>
+                <p className="last-scan-panel-meta">
+                  {lastScan.remainingFt ? `Remaining ${lastScan.remainingFt} ft` : null}
+                  {lastScan.remainingFt && formatLastScanWhen(lastScan.scannedAt) ? ' · ' : null}
+                  {formatLastScanWhen(lastScan.scannedAt)}
+                </p>
+                {alreadyCheckedOut && (
+                  <p className="last-scan-panel-warn">
+                    Already out on this job. Check in to the warehouse before checking out again.
+                  </p>
+                )}
+              </div>
+            )}
+
             {!boxRetired && (
             <div className="form-field">
               <span className="label" id="check-type-label-form">
@@ -649,10 +749,22 @@ function App() {
                   type="button"
                   className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
                   onClick={() => setCheckType('check_out')}
+                  disabled={alreadyCheckedOut}
+                  title={
+                    alreadyCheckedOut && lastScan
+                      ? `Already checked out to ${formatJobLocationDisplay(lastScan.jobName)}`
+                      : undefined
+                  }
                 >
                   Check out
                 </button>
               </div>
+              {alreadyCheckedOut && (
+                <p className="field-hint">
+                  Check-out is locked until this box is checked in from{' '}
+                  {formatJobLocationDisplay(lastScan!.jobName)}.
+                </p>
+              )}
             </div>
             )}
             <div className="form-field">
