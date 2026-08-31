@@ -433,16 +433,6 @@ function App() {
     setShowScanner(false)
   }, [])
 
-  useEffect(() => {
-    if (!supabase) return
-    const normalized = jobName.trim().replace(/\s+/g, ' ')
-    if (!normalized) return
-    const t = window.setTimeout(() => {
-      void persistJobOption(normalized)
-    }, 500)
-    return () => window.clearTimeout(t)
-  }, [jobName, persistJobOption])
-
   const buildProfileInsert = (): {
     wire_type?: string
     wire_type_label?: string
@@ -793,11 +783,7 @@ function App() {
                         )!
                       : ''
                   }
-                  onChange={(e) => {
-                    const next = e.target.value
-                    setJobName(next)
-                    if (next) void persistJobOption(next)
-                  }}
+                  onChange={(e) => setJobName(e.target.value)}
                 >
                   <option value="">
                     {jobOptions.length === 0 ? 'No saved jobs yet…' : 'Select a saved job…'}
@@ -817,9 +803,6 @@ function App() {
                   className="input"
                   value={jobName}
                   onChange={(e) => setJobName(e.target.value)}
-                  onBlur={() => {
-                    void persistJobOption(jobName)
-                  }}
                   placeholder="e.g. Smith Residence"
                   autoComplete="off"
                   required
