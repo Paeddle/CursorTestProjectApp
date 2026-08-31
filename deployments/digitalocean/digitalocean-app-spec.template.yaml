@@ -15,6 +15,15 @@ static_sites:
     catchall_document: index.html
     routes:
       - path: /
+    envs:
+      - key: VITE_SUPABASE_URL
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_URL__"
+      - key: VITE_SUPABASE_ANON_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_ANON_KEY__"
   - name: reorder
     github:
       repo: __GITHUB_REPO__

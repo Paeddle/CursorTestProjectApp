@@ -43,7 +43,10 @@
       <section id="apps" class="apps" hidden>
         <div class="apps-toolbar">
           <p class="apps-label">Available apps</p>
-          <button type="button" id="logout-btn" class="logout-btn">Lock</button>
+          <div class="apps-toolbar-actions">
+            <button type="button" id="view-bug-reports-btn" class="ghost-link-btn">Bug reports</button>
+            <button type="button" id="logout-btn" class="logout-btn">Lock</button>
+          </div>
         </div>
         <table class="apps-table">
           <thead>
@@ -70,8 +73,84 @@
           </tbody>
         </table>
       </section>
+
+      <footer class="page-footer">
+        <button type="button" id="report-bug-btn" class="ghost-link-btn">Report a bug</button>
+      </footer>
     </main>
+
+    <div id="bug-report-dialog" class="dialog" hidden aria-hidden="true">
+      <div class="dialog-backdrop" data-dialog-close="bug-report"></div>
+      <div
+        class="dialog-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bug-report-title"
+      >
+        <header class="dialog-header">
+          <h2 id="bug-report-title">Report a bug</h2>
+          <button type="button" class="dialog-close" data-dialog-close="bug-report" aria-label="Close">
+            ×
+          </button>
+        </header>
+        <form id="bug-report-form" class="dialog-form">
+          <label for="bug-reporter-name">Your name</label>
+          <input
+            id="bug-reporter-name"
+            name="reporterName"
+            type="text"
+            maxlength="120"
+            placeholder="e.g. Alex"
+            required
+            autocomplete="name"
+          />
+          <label for="bug-comment">What happened?</label>
+          <textarea
+            id="bug-comment"
+            name="comment"
+            rows="5"
+            maxlength="4000"
+            placeholder="Steps to reproduce, what you expected, and what you saw instead…"
+            required
+          ></textarea>
+          <p id="bug-report-error" class="dialog-error" hidden></p>
+          <p id="bug-report-success" class="dialog-success" hidden>Thanks — your report was saved.</p>
+          <div class="dialog-actions">
+            <button type="button" class="dialog-secondary" data-dialog-close="bug-report">Cancel</button>
+            <button type="submit" id="bug-report-submit" class="dialog-primary">Send report</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="bug-view-dialog" class="dialog" hidden aria-hidden="true">
+      <div class="dialog-backdrop" data-dialog-close="bug-view"></div>
+      <div
+        class="dialog-panel dialog-panel--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bug-view-title"
+      >
+        <header class="dialog-header">
+          <h2 id="bug-view-title">Bug reports</h2>
+          <button type="button" class="dialog-close" data-dialog-close="bug-view" aria-label="Close">
+            ×
+          </button>
+        </header>
+        <div class="dialog-body">
+          <p id="bug-view-status" class="dialog-hint">Loading…</p>
+          <ul id="bug-view-list" class="bug-report-list" hidden></ul>
+        </div>
+        <div class="dialog-actions dialog-actions--footer">
+          <button type="button" id="bug-view-refresh" class="dialog-secondary">Refresh</button>
+          <button type="button" class="dialog-primary" data-dialog-close="bug-view">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./config.js"></script>
     <script src="./auth.js"></script>
+    <script src="./bug-reports.js"></script>
     <script>
       ;(function () {
         var AUTH_KEY = window.SHS_AUTH_KEY
@@ -141,6 +220,161 @@
           revealBtn.textContent = 'Show'
           revealBtn.setAttribute('aria-pressed', 'false')
           showLocked()
+        })
+
+        // --- Bug reports ---
+        var reportBugBtn = document.getElementById('report-bug-btn')
+        var viewBugReportsBtn = document.getElementById('view-bug-reports-btn')
+        var reportDialog = document.getElementById('bug-report-dialog')
+        var viewDialog = document.getElementById('bug-view-dialog')
+        var reportForm = document.getElementById('bug-report-form')
+        var reportError = document.getElementById('bug-report-error')
+        var reportSuccess = document.getElementById('bug-report-success')
+        var reportSubmit = document.getElementById('bug-report-submit')
+        var viewStatus = document.getElementById('bug-view-status')
+        var viewList = document.getElementById('bug-view-list')
+        var viewRefresh = document.getElementById('bug-view-refresh')
+        var reporterNameInput = document.getElementById('bug-reporter-name')
+        var bugCommentInput = document.getElementById('bug-comment')
+        var lastFocusedBeforeDialog = null
+
+        function openDialog(dialogEl) {
+          lastFocusedBeforeDialog = document.activeElement
+          dialogEl.hidden = false
+          dialogEl.setAttribute('aria-hidden', 'false')
+          document.body.classList.add('dialog-open')
+          var focusTarget = dialogEl.querySelector('input, textarea, button')
+          if (focusTarget) focusTarget.focus()
+        }
+
+        function closeDialog(name) {
+          var dialogEl = name === 'bug-view' ? viewDialog : reportDialog
+          dialogEl.hidden = true
+          dialogEl.setAttribute('aria-hidden', 'true')
+          if (reportDialog.hidden && viewDialog.hidden) {
+            document.body.classList.remove('dialog-open')
+          }
+          if (lastFocusedBeforeDialog && typeof lastFocusedBeforeDialog.focus === 'function') {
+            lastFocusedBeforeDialog.focus()
+          }
+        }
+
+        document.querySelectorAll('[data-dialog-close]').forEach(function (el) {
+          el.addEventListener('click', function () {
+            closeDialog(el.getAttribute('data-dialog-close'))
+          })
+        })
+
+        document.addEventListener('keydown', function (event) {
+          if (event.key !== 'Escape') return
+          if (!reportDialog.hidden) closeDialog('bug-report')
+          if (!viewDialog.hidden) closeDialog('bug-view')
+        })
+
+        function renderBugReports(rows) {
+          viewList.innerHTML = ''
+          if (!rows || rows.length === 0) {
+            viewStatus.textContent = 'No bug reports yet.'
+            viewStatus.hidden = false
+            viewList.hidden = true
+            return
+          }
+          viewStatus.hidden = true
+          viewList.hidden = false
+          rows.forEach(function (row) {
+            var item = document.createElement('li')
+            item.className = 'bug-report-item'
+            var when = window.SHSBugReports.formatWhen(row.created_at)
+            var name = window.SHSBugReports.escapeHtml(row.reporter_name)
+            var comment = window.SHSBugReports.escapeHtml(row.comment).replace(/\n/g, '<br />')
+            var page = row.page_url
+              ? '<a class="bug-report-page" href="' +
+                window.SHSBugReports.escapeHtml(row.page_url) +
+                '" target="_blank" rel="noopener noreferrer">' +
+                window.SHSBugReports.escapeHtml(row.page_url) +
+                '</a>'
+              : ''
+            item.innerHTML =
+              '<div class="bug-report-item-head"><strong>' +
+              name +
+              '</strong><time datetime="' +
+              window.SHSBugReports.escapeHtml(row.created_at || '') +
+              '">' +
+              window.SHSBugReports.escapeHtml(when) +
+              '</time></div><p class="bug-report-item-body">' +
+              comment +
+              '</p>' +
+              (page ? '<p class="bug-report-item-meta">' + page + '</p>' : '')
+            viewList.appendChild(item)
+          })
+        }
+
+        function loadBugReports() {
+          if (!window.SHSBugReports || !window.SHSBugReports.isConfigured()) {
+            viewStatus.textContent =
+              'Bug reports need Supabase config. Run the home-app build with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, and run supabase/add-bug-reports.sql.'
+            viewStatus.hidden = false
+            viewList.hidden = true
+            return
+          }
+          viewStatus.textContent = 'Loading…'
+          viewStatus.hidden = false
+          viewList.hidden = true
+          window.SHSBugReports.fetchRecent(100)
+            .then(function (rows) {
+              renderBugReports(rows)
+            })
+            .catch(function (err) {
+              viewStatus.textContent = err && err.message ? err.message : 'Could not load bug reports.'
+              viewStatus.hidden = false
+              viewList.hidden = true
+            })
+        }
+
+        reportBugBtn.addEventListener('click', function () {
+          reportError.hidden = true
+          reportSuccess.hidden = true
+          reportSubmit.disabled = false
+          openDialog(reportDialog)
+        })
+
+        viewBugReportsBtn.addEventListener('click', function () {
+          openDialog(viewDialog)
+          loadBugReports()
+        })
+
+        viewRefresh.addEventListener('click', function () {
+          loadBugReports()
+        })
+
+        reportForm.addEventListener('submit', function (event) {
+          event.preventDefault()
+          reportError.hidden = true
+          reportSuccess.hidden = true
+          if (!window.SHSBugReports || !window.SHSBugReports.isConfigured()) {
+            reportError.textContent =
+              'Bug reports are not configured. Deploy with Supabase env vars and run supabase/add-bug-reports.sql.'
+            reportError.hidden = false
+            return
+          }
+          reportSubmit.disabled = true
+          window.SHSBugReports.submit({
+            reporterName: reporterNameInput.value,
+            comment: bugCommentInput.value,
+          })
+            .then(function () {
+              reportSuccess.hidden = false
+              reportForm.reset()
+              reportSubmit.disabled = false
+              window.setTimeout(function () {
+                closeDialog('bug-report')
+              }, 1200)
+            })
+            .catch(function (err) {
+              reportError.textContent = err && err.message ? err.message : 'Could not send report.'
+              reportError.hidden = false
+              reportSubmit.disabled = false
+            })
         })
       })()
     </script>
