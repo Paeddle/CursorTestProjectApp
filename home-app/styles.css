@@ -187,6 +187,10 @@ h1 {
   flex-shrink: 0;
 }
 
+.related-toolbar {
+  margin-top: 1.75rem;
+}
+
 .page-footer {
   margin-top: 2rem;
   padding-top: 1rem;
