@@ -2,20 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { isSupabaseConfigured } from './lib/supabase'
 import {
   checkInMatchesQuery,
-  displayPartMeta,
   displayPartTitle,
-  formatDate,
+  formatCheckInWhen,
   formatDateTime,
   isHttpUrl,
+  normalizeLookupKey,
   partMatchesQuery,
+  trimField,
 } from './partsHelpers'
 import {
-  deleteCheckIn,
   deletePart,
   fetchCheckIns,
   fetchParts,
 } from './services/partsService'
-import { CATALOG_FIELD_LABELS, PART_FIELD_LABELS, type PartCheckIn, type PartFields, type TrackedPart } from './types'
+import { CATALOG_FIELD_LABELS, type PartCheckIn, type PartFields, type TrackedPart } from './types'
 import './PartsPage.css'
 
 type WorkspaceTab = 'checkin' | 'parts'
@@ -69,8 +69,8 @@ export function PartsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [expandedCheckIns, setExpandedCheckIns] = useState<Set<string>>(new Set())
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set())
+  const [focusedPartId, setFocusedPartId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -101,15 +101,6 @@ export function PartsPage() {
     [parts, search],
   )
 
-  const toggleCheckIn = (id: string) => {
-    setExpandedCheckIns((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   const togglePart = (id: string) => {
     setExpandedParts((prev) => {
       const next = new Set(prev)
@@ -119,32 +110,40 @@ export function PartsPage() {
     })
   }
 
-  const expandAllCheckIns = () => {
-    if (filteredCheckIns.length > 0 && filteredCheckIns.every((r) => expandedCheckIns.has(r.id))) {
-      setExpandedCheckIns(new Set())
-    } else {
-      setExpandedCheckIns(new Set(filteredCheckIns.map((r) => r.id)))
+  const openPartFromCheckIn = (row: PartCheckIn) => {
+    const byId = row.part_id ? parts.find((p) => p.id === row.part_id) : undefined
+    const upc = normalizeLookupKey(row.upc_code)
+    const ipn = normalizeLookupKey(row.ipn)
+    const name = trimField(row.part_name).toLowerCase()
+    const match =
+      byId ??
+      parts.find((p) => upc && normalizeLookupKey(p.upc_code) === upc) ??
+      parts.find((p) => ipn && normalizeLookupKey(p.ipn) === ipn) ??
+      parts.find((p) => name && trimField(p.part_name).toLowerCase() === name)
+
+    if (!match) {
+      setError('That check-in is not linked to a part in the catalog yet.')
+      return
     }
+
+    setError(null)
+    setSearch('')
+    setWorkspaceTab('parts')
+    setExpandedParts(new Set([match.id]))
+    setFocusedPartId(match.id)
   }
+
+  useEffect(() => {
+    if (workspaceTab !== 'parts' || !focusedPartId) return
+    const el = document.getElementById(`part-card-${focusedPartId}`)
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [workspaceTab, focusedPartId, parts])
 
   const expandAllParts = () => {
     if (filteredParts.length > 0 && filteredParts.every((r) => expandedParts.has(r.id))) {
       setExpandedParts(new Set())
     } else {
       setExpandedParts(new Set(filteredParts.map((r) => r.id)))
-    }
-  }
-
-  const handleDeleteCheckIn = async (id: string) => {
-    if (!window.confirm('Delete this check-in?')) return
-    setDeletingId(id)
-    try {
-      await deleteCheckIn(id)
-      setCheckIns((prev) => prev.filter((r) => r.id !== id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete check-in.')
-    } finally {
-      setDeletingId(null)
     }
   }
 
@@ -181,8 +180,6 @@ export function PartsPage() {
     )
   }
 
-  const allCheckInsExpanded =
-    filteredCheckIns.length > 0 && filteredCheckIns.every((r) => expandedCheckIns.has(r.id))
   const allPartsExpanded =
     filteredParts.length > 0 && filteredParts.every((r) => expandedParts.has(r.id))
 
@@ -244,11 +241,6 @@ export function PartsPage() {
             <button type="button" className="parts-toolbar-btn" onClick={() => void load()} disabled={loading}>
               Refresh
             </button>
-            {workspaceTab === 'checkin' && filteredCheckIns.length > 0 && (
-              <button type="button" className="parts-toolbar-btn" onClick={expandAllCheckIns}>
-                {allCheckInsExpanded ? 'Collapse all' : 'Expand all'}
-              </button>
-            )}
             {workspaceTab === 'parts' && filteredParts.length > 0 && (
               <button type="button" className="parts-toolbar-btn" onClick={expandAllParts}>
                 {allPartsExpanded ? 'Collapse all' : 'Expand all'}
@@ -293,47 +285,20 @@ export function PartsPage() {
             ) : (
               <div className="parts-list-scroll">
                 <div className="parts-list">
-                  {filteredCheckIns.map((row) => {
-                    const isExpanded = expandedCheckIns.has(row.id)
-                    return (
-                      <div key={row.id} className="parts-card">
-                        <button
-                          type="button"
-                          className="parts-card-header"
-                          onClick={() => toggleCheckIn(row.id)}
-                          aria-expanded={isExpanded}
-                        >
-                          <span className="parts-card-title-block">
-                            <span className="parts-card-title">{displayPartTitle(row)}</span>
-                            <span className="parts-card-meta-sep" aria-hidden>
-                              ·
-                            </span>
-                            <span className="parts-card-meta">
-                              {formatDate(row.check_in_date)}
-                              {displayPartMeta(row) !== 'No details' ? ` · ${displayPartMeta(row)}` : ''}
-                            </span>
-                          </span>
-                          <span className="parts-card-chevron">{isExpanded ? '▾' : '▸'}</span>
-                        </button>
-                        {isExpanded && (
-                          <div className="parts-card-body">
-                            <FieldRows row={row} labels={PART_FIELD_LABELS} />
-                            <div className="parts-card-footer">
-                              <span className="parts-muted">Scanned {formatDateTime(row.scanned_at)}</span>
-                              <button
-                                type="button"
-                                className="parts-delete"
-                                disabled={deletingId === row.id}
-                                onClick={() => void handleDeleteCheckIn(row.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                  {filteredCheckIns.map((row) => (
+                    <div key={row.id} className="parts-card parts-checkin-row">
+                      <button
+                        type="button"
+                        className="parts-checkin-name"
+                        onClick={() => openPartFromCheckIn(row)}
+                      >
+                        {displayPartTitle(row)}
+                      </button>
+                      <span className="parts-checkin-when">
+                        {formatCheckInWhen(row.check_in_date, row.scanned_at)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -360,7 +325,11 @@ export function PartsPage() {
                   {filteredParts.map((row) => {
                     const isExpanded = expandedParts.has(row.id)
                     return (
-                      <div key={row.id} className="parts-card">
+                      <div
+                        key={row.id}
+                        id={`part-card-${row.id}`}
+                        className={`parts-card${focusedPartId === row.id ? ' parts-card--focus' : ''}`}
+                      >
                         <button
                           type="button"
                           className="parts-card-header"

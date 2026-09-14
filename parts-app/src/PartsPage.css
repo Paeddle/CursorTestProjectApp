@@ -238,6 +238,44 @@
   overflow: hidden;
 }
 
+.parts-checkin-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.7rem;
+}
+
+.parts-checkin-name {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: #7dd3fc;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.parts-checkin-name:hover {
+  color: #bae6fd;
+}
+
+.parts-checkin-when {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.parts-card--focus {
+  outline: 1px solid #38bdf8;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+
 .parts-card-header {
   width: 100%;
   min-width: 0;

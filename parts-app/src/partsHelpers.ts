@@ -85,6 +85,22 @@ export function formatDateTime(iso: string): string {
   }
 }
 
+export function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString(undefined, { timeStyle: 'short' })
+  } catch {
+    return iso
+  }
+}
+
+export function formatCheckInWhen(checkInDate: string, scannedAt: string): string {
+  const date = formatDate(checkInDate)
+  const time = formatTime(scannedAt)
+  if (date === '—' && !scannedAt) return '—'
+  if (!scannedAt) return date
+  return `${date} · ${time}`
+}
+
 export function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim())
 }
