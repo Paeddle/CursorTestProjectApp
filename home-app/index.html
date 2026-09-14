@@ -190,6 +190,10 @@
 
         document.querySelectorAll('.app-link').forEach(function (el) {
           var path = el.getAttribute('data-path') || el.getAttribute('href') || ''
+          if (/^https?:\/\//i.test(path)) {
+            el.textContent = path
+            return
+          }
           el.textContent = window.location.origin + path
         })
 
