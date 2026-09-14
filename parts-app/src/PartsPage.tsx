@@ -15,24 +15,33 @@ import {
   fetchCheckIns,
   fetchParts,
 } from './services/partsService'
-import { PART_FIELD_LABELS, type PartCheckIn, type PartFields, type TrackedPart } from './types'
+import { CATALOG_FIELD_LABELS, PART_FIELD_LABELS, type PartCheckIn, type PartFields, type TrackedPart } from './types'
 import './PartsPage.css'
 
 type WorkspaceTab = 'checkin' | 'parts'
 
-function partsScannerHref(): string {
+type ScannerMode = 'checkin' | 'parts'
+
+function partsScannerHref(mode: ScannerMode): string {
   const configured = import.meta.env.VITE_PARTS_SCANNER_URL?.trim()
-  if (configured) return configured.replace(/\/?$/, '/')
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/parts-scanner/`
-  }
-  return '/parts-scanner/'
+  const base = configured
+    ? configured.replace(/\/?$/, '/')
+    : typeof window !== 'undefined'
+      ? `${window.location.origin}/parts-scanner/`
+      : '/parts-scanner/'
+  return `${base}?mode=${mode}`
 }
 
-function FieldRows({ row }: { row: Partial<PartFields> }) {
+function FieldRows({
+  row,
+  labels,
+}: {
+  row: Partial<PartFields>
+  labels: { key: keyof PartFields; label: string }[]
+}) {
   return (
     <dl className="parts-dl">
-      {PART_FIELD_LABELS.map(({ key, label }) => {
+      {labels.map(({ key, label }) => {
         const value = (row[key] ?? '').trim()
         return (
           <div key={key} className="parts-dl-row">
@@ -186,14 +195,6 @@ export function PartsPage() {
               Parts Tracker
             </a>
           </h1>
-          <a
-            className="parts-scanner-link"
-            href={partsScannerHref()}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Open parts scanner
-          </a>
         </div>
       </header>
 
@@ -253,6 +254,25 @@ export function PartsPage() {
                 {allPartsExpanded ? 'Collapse all' : 'Expand all'}
               </button>
             )}
+            {workspaceTab === 'checkin' ? (
+              <a
+                className="parts-scanner-link"
+                href={partsScannerHref('checkin')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Check-in scanner
+              </a>
+            ) : (
+              <a
+                className="parts-scanner-link"
+                href={partsScannerHref('parts')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Parts scanner
+              </a>
+            )}
           </div>
 
           <div
@@ -268,7 +288,7 @@ export function PartsPage() {
               <div className="parts-empty">
                 {search.trim()
                   ? 'No check-ins match your filter.'
-                  : 'No check-ins yet. Use Parts Scanner to scan an item.'}
+                  : 'No check-ins yet. Use Check-in scanner to scan an item.'}
               </div>
             ) : (
               <div className="parts-list-scroll">
@@ -297,7 +317,7 @@ export function PartsPage() {
                         </button>
                         {isExpanded && (
                           <div className="parts-card-body">
-                            <FieldRows row={row} />
+                            <FieldRows row={row} labels={PART_FIELD_LABELS} />
                             <div className="parts-card-footer">
                               <span className="parts-muted">Scanned {formatDateTime(row.scanned_at)}</span>
                               <button
@@ -332,14 +352,13 @@ export function PartsPage() {
               <div className="parts-empty">
                 {search.trim()
                   ? 'No parts match your filter.'
-                  : 'No parts in the catalog yet. New scans are added when the UPC or IPN is not already stored.'}
+                  : 'No parts in the catalog yet. Use Parts scanner to add an item.'}
               </div>
             ) : (
               <div className="parts-list-scroll">
                 <div className="parts-list">
                   {filteredParts.map((row) => {
                     const isExpanded = expandedParts.has(row.id)
-                    const checkInCount = checkIns.filter((c) => c.part_id === row.id).length
                     return (
                       <div key={row.id} className="parts-card">
                         <button
@@ -350,21 +369,12 @@ export function PartsPage() {
                         >
                           <span className="parts-card-title-block">
                             <span className="parts-card-title">{displayPartTitle(row)}</span>
-                            <span className="parts-card-meta-sep" aria-hidden>
-                              ·
-                            </span>
-                            <span className="parts-card-meta">
-                              {displayPartMeta(row)}
-                              {checkInCount > 0
-                                ? ` · ${checkInCount} check-in${checkInCount === 1 ? '' : 's'}`
-                                : ''}
-                            </span>
                           </span>
                           <span className="parts-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                         </button>
                         {isExpanded && (
                           <div className="parts-card-body">
-                            <FieldRows row={row} />
+                            <FieldRows row={row} labels={CATALOG_FIELD_LABELS} />
                             <div className="parts-card-footer">
                               <span className="parts-muted">Added {formatDateTime(row.created_at)}</span>
                               <button

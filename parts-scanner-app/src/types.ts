@@ -44,3 +44,5 @@ export const PART_FIELD_LABELS: { key: keyof PartFields; label: string }[] = [
   { key: 'po', label: 'PO' },
   { key: 'link', label: 'Link' },
 ]
+
+export const CATALOG_FIELD_LABELS = PART_FIELD_LABELS.filter(({ key }) => key !== 'po')

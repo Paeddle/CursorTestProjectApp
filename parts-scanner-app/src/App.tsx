@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import BarcodeScanner from './components/BarcodeScanner'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { displayPartTitle, fieldsFromRecord, todayLocalDate } from './partsHelpers'
 import { findExistingPart, insertCheckIn, insertPartIfMissing } from './services/partsService'
-import { EMPTY_PART_FIELDS, PART_FIELD_LABELS, type PartFields } from './types'
+import {
+  CATALOG_FIELD_LABELS,
+  EMPTY_PART_FIELDS,
+  PART_FIELD_LABELS,
+  type PartFields,
+} from './types'
 import './App.css'
+
+type ScannerMode = 'checkin' | 'parts'
 
 function stripScanPrefixes(raw: string): string {
   return raw.trim().replace(/^(URL|URI)\s*:\s*/i, '').trim()
@@ -25,7 +32,20 @@ function extractBarcode(value: string): string {
   return raw
 }
 
+function readScannerMode(): ScannerMode {
+  if (typeof window === 'undefined') return 'checkin'
+  return new URLSearchParams(window.location.search).get('mode') === 'parts' ? 'parts' : 'checkin'
+}
+
 export default function App() {
+  const mode = useMemo(readScannerMode, [])
+  const isCatalog = mode === 'parts'
+  const fieldLabels = isCatalog ? CATALOG_FIELD_LABELS : PART_FIELD_LABELS
+  const title = isCatalog ? 'Parts Scanner' : 'Check-In Scanner'
+  const subtitle = isCatalog
+    ? 'Scan to add a part to the inventory catalog.'
+    : 'Scan with the camera or a Bluetooth scanner, then save the check-in.'
+
   const [showScanner, setShowScanner] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [fields, setFields] = useState<PartFields>(EMPTY_PART_FIELDS)
@@ -113,6 +133,30 @@ export default function App() {
     setSubmitting(true)
     setStatus(null)
     try {
+      if (isCatalog) {
+        const existing = await findExistingPart(fields)
+        if (existing) {
+          setStatus({
+            type: 'success',
+            message: `Already in catalog: ${displayPartTitle(existing)}`,
+          })
+          resetForm()
+          return
+        }
+        const hasCatalogData = CATALOG_FIELD_LABELS.some(({ key }) => fields[key].trim().length > 0)
+        if (!hasCatalogData) {
+          setStatus({ type: 'error', message: 'Enter at least one field to add a part.' })
+          return
+        }
+        const part = await insertPartIfMissing({ ...fields, po: '' })
+        setStatus({
+          type: 'success',
+          message: `Added to catalog: ${displayPartTitle(part)}`,
+        })
+        resetForm()
+        return
+      }
+
       let partId: string | null = null
       const hasCatalogData = Object.values(fields).some((v) => v.trim().length > 0)
       if (hasCatalogData) {
@@ -133,7 +177,7 @@ export default function App() {
     } catch (err) {
       setStatus({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Could not save check-in.',
+        message: err instanceof Error ? err.message : 'Could not save.',
       })
     } finally {
       setSubmitting(false)
@@ -146,7 +190,7 @@ export default function App() {
     try {
       const existing = await findExistingPart(fields)
       if (existing) {
-        setFields(fieldsFromRecord(existing))
+        setFields({ ...fieldsFromRecord(existing), po: isCatalog ? '' : fieldsFromRecord(existing).po })
         setExistingTitle(displayPartTitle(existing))
       }
     } catch {
@@ -162,7 +206,7 @@ export default function App() {
         <header className="app-header">
           <h1>
             <a href="/" className="home-title-link">
-              Parts Scanner
+              {title}
             </a>
           </h1>
         </header>
@@ -184,10 +228,10 @@ export default function App() {
       <header className="app-header">
         <h1>
           <a href="/" className="home-title-link">
-            Parts Scanner
+            {title}
           </a>
         </h1>
-        <p className="app-subtitle">Scan with the camera or a Bluetooth scanner, then save the check-in.</p>
+        <p className="app-subtitle">{subtitle}</p>
       </header>
 
       {status && <div className={`status status-${status.type}`}>{status.message}</div>}
@@ -223,24 +267,30 @@ export default function App() {
               <div className="last-scan-panel" role="status">
                 <strong>Existing part</strong>
                 <p className="last-scan-panel-main">{existingTitle}</p>
-                <p className="last-scan-panel-meta">Catalog fields were filled in. You can still edit this check-in.</p>
+                <p className="last-scan-panel-meta">
+                  {isCatalog
+                    ? 'This part is already in the catalog. Saving will not create a duplicate.'
+                    : 'Catalog fields were filled in. You can still edit this check-in.'}
+                </p>
               </div>
             )}
 
-            <div className="form-field">
-              <label className="label" htmlFor="check-in-date">
-                Check-in date
-              </label>
-              <input
-                id="check-in-date"
-                type="date"
-                className="input"
-                value={checkInDate}
-                onChange={(e) => setCheckInDate(e.target.value)}
-              />
-            </div>
+            {!isCatalog && (
+              <div className="form-field">
+                <label className="label" htmlFor="check-in-date">
+                  Check-in date
+                </label>
+                <input
+                  id="check-in-date"
+                  type="date"
+                  className="input"
+                  value={checkInDate}
+                  onChange={(e) => setCheckInDate(e.target.value)}
+                />
+              </div>
+            )}
 
-            {PART_FIELD_LABELS.map(({ key, label }) => (
+            {fieldLabels.map(({ key, label }) => (
               <div className="form-field" key={key}>
                 <label className="label" htmlFor={`field-${key}`}>
                   {label}
@@ -282,7 +332,7 @@ export default function App() {
                 Scan another
               </button>
               <button type="submit" className="btn btn-primary" disabled={submitting || lookupLoading}>
-                {submitting ? 'Saving…' : 'Save check-in'}
+                {submitting ? 'Saving…' : isCatalog ? 'Save part' : 'Save check-in'}
               </button>
             </div>
           </form>
