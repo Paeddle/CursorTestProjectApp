@@ -39,13 +39,16 @@ function extractBarcode(value: string): string {
 
 function readScannerMode(): ScannerMode {
   if (typeof window === 'undefined') return 'checkin'
-  return new URLSearchParams(window.location.search).get('mode') === 'parts' ? 'parts' : 'checkin'
+  const path = window.location.pathname.replace(/\/+$/, '').toLowerCase()
+  if (path.endsWith('/parts') || path.endsWith('/catalog')) return 'parts'
+  const mode = new URLSearchParams(window.location.search).get('mode')
+  if (mode === 'parts' || mode === 'catalog') return 'parts'
+  return 'checkin'
 }
 
 function catalogScannerHref(upc?: string): string {
-  if (typeof window === 'undefined') return '/parts-scanner/?mode=parts'
-  const url = new URL(`${window.location.origin}${window.location.pathname}`)
-  url.searchParams.set('mode', 'parts')
+  if (typeof window === 'undefined') return '/parts-scanner/parts/'
+  const url = new URL(`${window.location.origin}/parts-scanner/parts/`)
   if (upc?.trim()) url.searchParams.set('upc', upc.trim())
   return url.toString()
 }
@@ -65,7 +68,7 @@ export default function App() {
     : 'Scan a barcode or search a part name to check it in.'
 
   const [showScanner, setShowScanner] = useState(false)
-  const [formOpen, setFormOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(() => readScannerMode() !== 'parts')
   const [fields, setFields] = useState<PartFields>(EMPTY_PART_FIELDS)
   const [checkInAt, setCheckInAt] = useState(() => new Date())
   const [selectedPart, setSelectedPart] = useState<TrackedPart | null>(null)
@@ -76,6 +79,10 @@ export default function App() {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const nameWrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    document.title = title
+  }, [title])
 
   useEffect(() => {
     if (isCatalog || !supabase) return
@@ -156,7 +163,7 @@ export default function App() {
     setFields(EMPTY_PART_FIELDS)
     setCheckInAt(new Date())
     setSelectedPart(null)
-    setFormOpen(false)
+    setFormOpen(isCatalog ? false : true)
     setManualBarcode('')
     setNameFocused(false)
   }
@@ -386,6 +393,13 @@ export default function App() {
           </form>
         ) : (
           <form onSubmit={handleSave} className="section form-section">
+            <button
+              type="button"
+              className="btn btn-primary btn-full scan-now-btn"
+              onClick={() => setShowScanner(true)}
+            >
+              Scan barcode
+            </button>
             {lookupLoading && <p className="box-meta-loading">Looking up this part…</p>}
 
             <div className="form-field">
@@ -406,6 +420,7 @@ export default function App() {
                 onBlur={() => void lookupUpc(fields.upc_code)}
                 placeholder="Scan or type UPC"
                 autoComplete="off"
+                autoFocus
               />
             </div>
 

@@ -243,6 +243,10 @@
   width: 100%;
 }
 
+.scan-now-btn {
+  margin-bottom: 1rem;
+}
+
 .manual-scan {
   margin-top: 1.25rem;
   display: flex;

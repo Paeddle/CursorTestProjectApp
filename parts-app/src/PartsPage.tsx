@@ -29,7 +29,7 @@ function partsScannerHref(mode: ScannerMode): string {
     : typeof window !== 'undefined'
       ? `${window.location.origin}/parts-scanner/`
       : '/parts-scanner/'
-  return `${base}?mode=${mode}`
+  return mode === 'parts' ? `${base}parts/` : base
 }
 
 function FieldRows({
