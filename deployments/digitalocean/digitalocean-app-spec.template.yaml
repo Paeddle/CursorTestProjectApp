@@ -1,5 +1,14 @@
 name: __APP_NAME__
 region: __REGION__
+# Keep custom domains in this spec. Updating the app without them
+# drops TLS for shswebapp.site and causes SSL_ERROR_NO_CYPHER_OVERLAP.
+domains:
+  - domain: www.shswebapp.site
+    type: PRIMARY
+    zone: shswebapp.site
+  - domain: shswebapp.site
+    type: ALIAS
+    zone: shswebapp.site
 # Home nav at /; reorder at /reorder; wire tracker at /wire; wire scanner at /wire-scanner.
 # Parts tracker at /parts; parts scanner at /parts-scanner.
 # Warehouse catalog remains at /warehouse-catalog but is not linked from the home page.
