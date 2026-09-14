@@ -7,6 +7,8 @@ Lists (after unlock):
 - Reorder → `/reorder/`
 - Wire Tracker → `/wire/`
 - Wire Box Scanner → `/wire-scanner/`
+- Parts Tracker → `/parts/`
+- Parts Scanner → `/parts-scanner/`
 - InvenTree (separate system) → `http://24.199.120.238/web/login`
 
 Password is client-side only (shared `localStorage` key across same-origin apps). Shown on the page for now.

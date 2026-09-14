@@ -1,6 +1,7 @@
 name: __APP_NAME__
 region: __REGION__
 # Home nav at /; reorder at /reorder; wire tracker at /wire; wire scanner at /wire-scanner.
+# Parts tracker at /parts; parts scanner at /parts-scanner.
 # Warehouse catalog remains at /warehouse-catalog but is not linked from the home page.
 static_sites:
   - name: home
@@ -78,6 +79,48 @@ static_sites:
     catchall_document: index.html
     routes:
       - path: /wire-scanner
+    envs:
+      - key: VITE_SUPABASE_URL
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_URL__"
+      - key: VITE_SUPABASE_ANON_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_ANON_KEY__"
+  - name: parts-tracker
+    github:
+      repo: __GITHUB_REPO__
+      branch: __GITHUB_BRANCH__
+      deploy_on_push: true
+    environment_slug: node-js
+    source_dir: parts-app
+    output_dir: dist
+    build_command: npm install && npm run build
+    catchall_document: index.html
+    routes:
+      - path: /parts
+    envs:
+      - key: VITE_SUPABASE_URL
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_URL__"
+      - key: VITE_SUPABASE_ANON_KEY
+        scope: BUILD_TIME
+        type: SECRET
+        value: "__VITE_SUPABASE_ANON_KEY__"
+  - name: parts-scanner
+    github:
+      repo: __GITHUB_REPO__
+      branch: __GITHUB_BRANCH__
+      deploy_on_push: true
+    environment_slug: node-js
+    source_dir: parts-scanner-app
+    output_dir: dist
+    build_command: npm install && npm run build
+    catchall_document: index.html
+    routes:
+      - path: /parts-scanner
     envs:
       - key: VITE_SUPABASE_URL
         scope: BUILD_TIME
