@@ -4,7 +4,18 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.join(__dirname, 'dist')
-const staticFiles = ['index.html', 'styles.css', 'auth.js', 'bug-reports.js', 'config.js']
+const staticFiles = [
+  'index.html',
+  'styles.css',
+  'auth.js',
+  'bug-reports.js',
+  'config.js',
+  'favicon.png',
+  'favicon-32.png',
+  'apple-touch-icon.png',
+  'icon-192.png',
+  'site.webmanifest',
+]
 
 fs.mkdirSync(distDir, { recursive: true })
 
