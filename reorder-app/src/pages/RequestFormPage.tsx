@@ -75,7 +75,7 @@ export default function RequestFormPage() {
   }, [])
 
   useEffect(() => {
-    const fromRoute = routeIpn ? decodeURIComponent(routeIpn).trim() : ''
+    const fromRoute = routeIpn ? ipnFromScannedValue(decodeURIComponent(routeIpn)) : ''
     const fromUrl = fromRoute || ipnFromLocation()
     if (fromUrl) {
       setIpnInput(fromUrl)

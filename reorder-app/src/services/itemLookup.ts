@@ -43,8 +43,17 @@ export function ipnFromScannedValue(raw: string): string {
       const last = lastPathSegment(url.pathname)
       if (last) return last
     } catch {
-      /* fall through */
+      /* ignore parse errors */
     }
+    const rMatch = trimmed.match(/\/r\/([^/?#\s]+)\/?$/i)
+    if (rMatch?.[1]) {
+      try {
+        return decodeURIComponent(rMatch[1])
+      } catch {
+        return rMatch[1]
+      }
+    }
+    return ''
   }
 
   const rMatch = trimmed.match(/\/r\/([^/?#\s]+)\/?$/i)
@@ -56,7 +65,10 @@ export function ipnFromScannedValue(raw: string): string {
     }
   }
 
-  return normalizeIpn(trimmed)
+  const normalized = normalizeIpn(trimmed)
+  if (RESERVED_PATHS.has(normalized.toLowerCase())) return ''
+  if (/^https?:\/\//i.test(normalized)) return ''
+  return normalized
 }
 
 export async function fetchPartByIpn(ipn: string): Promise<InventreePartRecord | null> {
