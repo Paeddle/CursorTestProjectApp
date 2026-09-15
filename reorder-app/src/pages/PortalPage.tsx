@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { isSupabaseConfigured } from '../lib/supabase'
+import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
   deleteReorderRequest,
   fetchOpenReorderRequests,
@@ -176,6 +176,8 @@ export default function PortalPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -244,6 +246,31 @@ export default function PortalPage() {
     }
   }
 
+  const handleSyncInventree = async () => {
+    if (!supabase) return
+    setSyncing(true)
+    setError(null)
+    setSyncMessage(null)
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('sync-inventree-parts', {
+        body: {},
+      })
+      if (invokeError) throw invokeError
+      const payload = data as { error?: string; count?: number } | null
+      if (payload?.error) throw new Error(payload.error)
+      setSyncMessage(`Synced ${payload?.count ?? 0} parts from InvenTree.`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not sync InvenTree parts.'
+      setError(
+        /not found|404|Failed to send/i.test(message)
+          ? 'Sync function is not deployed yet. The local sync already loaded 329 parts; deploy supabase/functions/sync-inventree-parts to enable this button.'
+          : message,
+      )
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const list = tab === 'open' ? openRequests : history
 
   return (
@@ -264,20 +291,32 @@ export default function PortalPage() {
 
       {error ? <div className="status status-error">{error}</div> : null}
 
-      <div className="portal-tabs">
+      {syncMessage ? <div className="status status-success">{syncMessage}</div> : null}
+
+      <div className="portal-toolbar">
+        <div className="portal-tabs">
+          <button
+            type="button"
+            className={`portal-tab ${tab === 'open' ? 'portal-tab-active' : ''}`}
+            onClick={() => setTab('open')}
+          >
+            Open requests ({openRequests.length})
+          </button>
+          <button
+            type="button"
+            className={`portal-tab ${tab === 'history' ? 'portal-tab-active' : ''}`}
+            onClick={() => setTab('history')}
+          >
+            Order history ({history.length})
+          </button>
+        </div>
         <button
           type="button"
-          className={`portal-tab ${tab === 'open' ? 'portal-tab-active' : ''}`}
-          onClick={() => setTab('open')}
+          className="btn btn-secondary portal-sync-btn"
+          onClick={() => void handleSyncInventree()}
+          disabled={syncing || !isSupabaseConfigured}
         >
-          Open requests ({openRequests.length})
-        </button>
-        <button
-          type="button"
-          className={`portal-tab ${tab === 'history' ? 'portal-tab-active' : ''}`}
-          onClick={() => setTab('history')}
-        >
-          Order history ({history.length})
+          {syncing ? 'Syncing…' : 'Sync InvenTree parts'}
         </button>
       </div>
 
