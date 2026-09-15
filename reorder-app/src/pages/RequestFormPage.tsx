@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
-import { fetchPartByIpn, ipnFromLocation } from '../services/itemLookup'
+import { fetchPartByIpn, ipnFromLocation, ipnFromScannedValue } from '../services/itemLookup'
 import { submitReorderRequest } from '../services/reorderService'
 import type { InventreePartRecord } from '../types'
 import '../App.css'
@@ -31,7 +31,8 @@ export default function RequestFormPage() {
   const [notes, setNotes] = useState('')
 
   const lookupIpn = useCallback(async (ipn: string) => {
-    const trimmed = ipn.trim()
+    const trimmed = ipnFromScannedValue(ipn)
+    if (trimmed !== ipn.trim()) setIpnInput(trimmed)
     if (!trimmed) {
       setPart(null)
       setLookupDone(false)
@@ -94,7 +95,7 @@ export default function RequestFormPage() {
     }
 
     const name = requestedBy.trim()
-    if (!name) {
+    if (!part && !name) {
       setStatus({ type: 'error', message: 'Enter your name.' })
       return
     }
@@ -123,9 +124,9 @@ export default function RequestFormPage() {
         barcode_hash: part?.barcode_hash ?? null,
         link: part?.link ?? null,
         quantity: qty,
-        job: job.trim() || null,
-        requested_by: name,
-        notes: notes.trim() || null,
+        job: part ? null : job.trim() || null,
+        requested_by: part ? null : name,
+        notes: part ? null : notes.trim() || null,
       })
       setSubmittedId(result.id)
     } catch (err) {
@@ -199,8 +200,25 @@ export default function RequestFormPage() {
                 placeholder="Scan tag or type IPN"
                 value={ipnInput}
                 onChange={(e) => {
-                  setIpnInput(e.target.value)
+                  const next = e.target.value
                   setLookupDone(false)
+                  const extracted = ipnFromScannedValue(next)
+                  const completeUrl =
+                    /^https?:\/\/\S+\/r\/[^/\s]+\/?$/i.test(next.trim()) ||
+                    /\/reorder\/r\/[^/\s]+\/?$/i.test(next.trim())
+                  if (completeUrl && extracted && extracted !== next.trim()) {
+                    setIpnInput(extracted)
+                    void lookupIpn(extracted)
+                    return
+                  }
+                  setIpnInput(next)
+                }}
+                onBlur={() => {
+                  const extracted = ipnFromScannedValue(ipnInput)
+                  if (extracted && extracted !== ipnInput.trim()) {
+                    setIpnInput(extracted)
+                    void lookupIpn(extracted)
+                  }
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -256,21 +274,23 @@ export default function RequestFormPage() {
           <section className="section">
             <h2 className="section-title">Request details</h2>
 
-            <div className="field">
-              <label className="label" htmlFor="requestedBy">
-                Your name *
-              </label>
-              <input
-                id="requestedBy"
-                type="text"
-                className="input"
-                placeholder="Required"
-                value={requestedBy}
-                onChange={(e) => setRequestedBy(e.target.value)}
-                required
-                autoComplete="name"
-              />
-            </div>
+            {!part ? (
+              <div className="field">
+                <label className="label" htmlFor="requestedBy">
+                  Your name *
+                </label>
+                <input
+                  id="requestedBy"
+                  type="text"
+                  className="input"
+                  placeholder="Required"
+                  value={requestedBy}
+                  onChange={(e) => setRequestedBy(e.target.value)}
+                  required
+                  autoComplete="name"
+                />
+              </div>
+            ) : null}
 
             <div className="field">
               <label className="label" htmlFor="quantity">
@@ -289,34 +309,36 @@ export default function RequestFormPage() {
             </div>
           </section>
 
-          <section className="section">
-            <div className="field">
-              <label className="label" htmlFor="job">
-                Job / project
-              </label>
-              <input
-                id="job"
-                type="text"
-                className="input"
-                placeholder="Optional"
-                value={job}
-                onChange={(e) => setJob(e.target.value)}
-              />
-            </div>
+          {!part ? (
+            <section className="section">
+              <div className="field">
+                <label className="label" htmlFor="job">
+                  Job / project
+                </label>
+                <input
+                  id="job"
+                  type="text"
+                  className="input"
+                  placeholder="Optional"
+                  value={job}
+                  onChange={(e) => setJob(e.target.value)}
+                />
+              </div>
 
-            <div className="field">
-              <label className="label" htmlFor="notes">
-                Notes
-              </label>
-              <textarea
-                id="notes"
-                className="textarea"
-                placeholder="Urgency, alternate part, etc."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-          </section>
+              <div className="field">
+                <label className="label" htmlFor="notes">
+                  Notes
+                </label>
+                <textarea
+                  id="notes"
+                  className="textarea"
+                  placeholder="Urgency, alternate part, etc."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+            </section>
+          ) : null}
 
           <button type="submit" className="btn btn-primary" disabled={submitting}>
             {submitting ? 'Submitting…' : 'Submit re-order request'}

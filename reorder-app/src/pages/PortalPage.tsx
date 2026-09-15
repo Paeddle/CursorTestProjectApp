@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isSupabaseConfigured } from '../lib/supabase'
 import {
+  deleteReorderRequest,
   fetchOpenReorderRequests,
   fetchOrderHistory,
   setReorderOrdered,
@@ -21,14 +22,18 @@ function formatWhen(value: string | null): string {
 function RequestCard({
   request,
   showActions,
+  canDelete,
   onOrderedChange,
   onReceived,
+  onDelete,
   busy,
 }: {
   request: ReorderRequestRecord
   showActions: boolean
+  canDelete: boolean
   onOrderedChange: (id: string, ordered: boolean) => void
   onReceived: (id: string) => void
+  onDelete: (id: string) => void
   busy: string | null
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -141,6 +146,23 @@ function RequestCard({
               {rowBusy ? <span className="portal-saving">Saving…</span> : null}
             </div>
           ) : null}
+
+          {canDelete ? (
+            <div className="portal-actions">
+              <button
+                type="button"
+                className="portal-delete"
+                disabled={rowBusy}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete(request.id)
+                }}
+              >
+                Delete
+              </button>
+              {rowBusy ? <span className="portal-saving">Deleting…</span> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>
@@ -204,6 +226,24 @@ export default function PortalPage() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this order history row? This cannot be undone.')) return
+    setBusyId(id)
+    setError(null)
+    try {
+      await deleteReorderRequest(id)
+      setHistory((prev) => prev.filter((row) => row.id !== id))
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not delete. Run supabase/alter-reorder-requests-inventree-columns.sql in Supabase if delete is blocked.',
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const list = tab === 'open' ? openRequests : history
 
   return (
@@ -254,8 +294,10 @@ export default function PortalPage() {
                 key={request.id}
                 request={request}
                 showActions={tab === 'open'}
+                canDelete={tab === 'history'}
                 onOrderedChange={(id, ordered) => void handleOrderedChange(id, ordered)}
                 onReceived={(id) => void handleReceived(id)}
+                onDelete={(id) => void handleDelete(id)}
                 busy={busyId}
               />
             ))

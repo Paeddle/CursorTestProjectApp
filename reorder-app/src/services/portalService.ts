@@ -53,3 +53,9 @@ export async function setReorderReceived(id: string): Promise<void> {
 
   if (error) throw new Error(error.message)
 }
+
+export async function deleteReorderRequest(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured')
+  const { error } = await supabase.from(TABLE).delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}

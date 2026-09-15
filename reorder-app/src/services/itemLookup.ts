@@ -7,9 +7,61 @@ function normalizeIpn(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+const RESERVED_PATHS = new Set(['reorder', 'portal', 'r', 'index.html', ''])
+
+function lastPathSegment(pathname: string): string {
+  const segments = pathname.replace(/\/+$/, '').split('/').filter(Boolean)
+  const last = segments[segments.length - 1] ?? ''
+  if (!last || RESERVED_PATHS.has(last.toLowerCase())) return ''
+  try {
+    return decodeURIComponent(last.trim())
+  } catch {
+    return last.trim()
+  }
+}
+
+/** Pull the IPN off a typed/scanned value, including full reorder URLs from a barcode scanner. */
+export function ipnFromScannedValue(raw: string): string {
+  let trimmed = raw.trim().replace(/^(URL|URI)\s*:\s*/i, '').trim()
+  if (!trimmed) return ''
+
+  const looksLikeUrl =
+    /^https?:\/\//i.test(trimmed) ||
+    /(?:www\.)?(?:shswebapp\.site|ondigitalocean\.app)/i.test(trimmed) ||
+    /\/reorder\//i.test(trimmed)
+
+  if (looksLikeUrl) {
+    const href = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed.replace(/^\/\//, '')}`
+    try {
+      const url = new URL(href.split(/\s+/)[0])
+      const fromQuery = url.searchParams.get('ipn') ?? url.searchParams.get('sku') ?? url.searchParams.get('s')
+      if (fromQuery?.trim()) return decodeURIComponent(fromQuery.trim())
+      const rMatch = url.pathname.match(/\/r\/([^/]+)\/?$/i)
+      if (rMatch?.[1]) return decodeURIComponent(rMatch[1])
+      const last = lastPathSegment(url.pathname)
+      if (last) return last
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const rMatch = trimmed.match(/\/r\/([^/?#\s]+)\/?$/i)
+  if (rMatch?.[1]) {
+    try {
+      return decodeURIComponent(rMatch[1])
+    } catch {
+      return rMatch[1]
+    }
+  }
+
+  return normalizeIpn(trimmed)
+}
+
 export async function fetchPartByIpn(ipn: string): Promise<InventreePartRecord | null> {
   if (!supabase) return null
-  const trimmed = normalizeIpn(ipn)
+  const trimmed = normalizeIpn(ipnFromScannedValue(ipn))
   if (!trimmed) return null
 
   const select =
@@ -41,21 +93,9 @@ export async function fetchPartByIpn(ipn: string): Promise<InventreePartRecord |
   return null
 }
 
-/** Read IPN from URL: /r/IPN, /IPN, ?ipn=IPN, ?sku=IPN, or ?s=IPN */
+/** Read IPN from the page URL or a scanned reorder URL in the address bar. */
 export function ipnFromLocation(): string {
-  const params = new URLSearchParams(window.location.search)
-  const fromQuery = params.get('ipn') ?? params.get('sku') ?? params.get('s') ?? ''
-  if (fromQuery.trim()) return decodeURIComponent(fromQuery.trim())
-
-  const match = window.location.pathname.match(/\/r\/(.+)$/i)
-  if (match?.[1]) return decodeURIComponent(match[1].replace(/\/+$/, '').trim())
-
-  const segments = window.location.pathname.replace(/\/+$/, '').split('/').filter(Boolean)
-  const last = segments[segments.length - 1] ?? ''
-  const reserved = new Set(['reorder', 'portal', 'r', 'index.html'])
-  if (last && !reserved.has(last.toLowerCase())) return decodeURIComponent(last.trim())
-
-  return ''
+  return ipnFromScannedValue(window.location.href)
 }
 
 export function reorderUrlForIpn(baseUrl: string, ipn: string): string {

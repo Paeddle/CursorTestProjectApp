@@ -11,7 +11,9 @@
     "print-agent": "node scripts/dymo-print-agent.mjs",
     "print:agent": "node scripts/dymo-print-agent.mjs",
     "dymo-probe": "node scripts/dymo-probe-paper.mjs",
-    "deploy:do": "powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1"
+    "deploy:do": "powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1",
+    "inventree:sync": "node scripts/sync-inventree-parts.mjs",
+    "inventree:import-csv": "node scripts/import-inventree-parts.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",

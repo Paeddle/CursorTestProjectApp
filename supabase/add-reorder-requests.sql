@@ -54,7 +54,7 @@ create policy "Allow anonymous insert on reorder_requests"
   on public.reorder_requests for insert to anon
   with check (true);
 
-drop policy if exists "Allow anonymous update on reorder_requests" on public.reorder_requests;
-create policy "Allow anonymous update on reorder_requests"
-  on public.reorder_requests for update to anon
-  using (true) with check (true);
+drop policy if exists "Allow anonymous delete on reorder_requests" on public.reorder_requests;
+create policy "Allow anonymous delete on reorder_requests"
+  on public.reorder_requests for delete to anon
+  using (true);

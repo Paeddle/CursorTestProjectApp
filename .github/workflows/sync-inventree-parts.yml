@@ -1,0 +1,40 @@
+# Pull InvenTree parts into Supabase inventree_parts.
+# Secrets (Settings → Secrets and variables → Actions):
+#   VITE_SUPABASE_URL
+#   VITE_SUPABASE_ANON_KEY
+#   INVENTREE_BASE_URL     e.g. https://inventree.yourcompany.com
+#   INVENTREE_API_TOKEN    InvenTree user API token
+#
+# After secrets exist, this runs hourly and can be started from Actions → Sync InvenTree parts.
+
+name: Sync InvenTree parts
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: inventree-sync
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install client
+        run: npm install @supabase/supabase-js
+      - name: Sync parts
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          INVENTREE_BASE_URL: ${{ secrets.INVENTREE_BASE_URL }}
+          INVENTREE_API_TOKEN: ${{ secrets.INVENTREE_API_TOKEN }}
+        run: node scripts/sync-inventree-parts.mjs

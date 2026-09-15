@@ -97,3 +97,8 @@ create index if not exists idx_reorder_requests_ipn on public.reorder_requests (
 comment on column public.reorder_requests.ipn is 'InvenTree IPN / internal part number.';
 comment on column public.reorder_requests.category_name is 'InvenTree category name.';
 comment on column public.reorder_requests.link is 'Product / purchase URL.';
+
+drop policy if exists "Allow anonymous delete on reorder_requests" on public.reorder_requests;
+create policy "Allow anonymous delete on reorder_requests"
+  on public.reorder_requests for delete to anon
+  using (true);

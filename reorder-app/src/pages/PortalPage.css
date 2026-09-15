@@ -197,6 +197,26 @@
   color: #64748b;
 }
 
+.portal-delete {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.portal-delete:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.portal-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 720px) {
   .portal-row-when {
     display: none;
