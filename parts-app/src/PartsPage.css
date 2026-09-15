@@ -305,6 +305,7 @@
 .parts-checkin-docs {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.35rem 0.65rem;
   margin-top: 0.15rem;
 }
@@ -313,6 +314,36 @@
   font-size: 0.78rem;
   font-weight: 600;
   color: #7dd3fc;
+}
+
+.parts-checkin-doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.parts-doc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.parts-doc-btn:hover:not(:disabled) {
+  background: #334155;
+}
+
+.parts-doc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .parts-card--focus {

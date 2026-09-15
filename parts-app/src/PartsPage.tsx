@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import DocumentScanner from './components/DocumentScanner'
 import { isSupabaseConfigured } from './lib/supabase'
+import { cropDocumentToBlob } from './lib/documentScanner'
 import {
   checkInMatchesQuery,
   checkInQuantity,
@@ -13,6 +15,7 @@ import {
   trimField,
 } from './partsHelpers'
 import {
+  addCheckInDocuments,
   deleteCheckIn,
   deletePart,
   fetchCheckIns,
@@ -75,6 +78,8 @@ export function PartsPage() {
   const [expandedParts, setExpandedParts] = useState<Set<string>>(new Set())
   const [focusedPartId, setFocusedPartId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [docBusyId, setDocBusyId] = useState<string | null>(null)
+  const [scanForId, setScanForId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) return
@@ -148,6 +153,50 @@ export function PartsPage() {
     } else {
       setExpandedParts(new Set(filteredParts.map((r) => r.id)))
     }
+  }
+
+  const attachDocuments = async (checkInId: string, files: { blob: Blob; name: string }[]) => {
+    if (files.length === 0) return
+    setDocBusyId(checkInId)
+    setError(null)
+    try {
+      const updated = await addCheckInDocuments(checkInId, files)
+      setCheckIns((prev) => prev.map((row) => (row.id === checkInId ? updated : row)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add document.')
+    } finally {
+      setDocBusyId(null)
+    }
+  }
+
+  const handleCheckInFiles = async (checkInId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    const prepared: { blob: Blob; name: string }[] = []
+    for (const file of files) {
+      let blob: Blob = file
+      let name = file.name || `document_${Date.now()}.jpg`
+      if (file.type.startsWith('image/')) {
+        try {
+          const cropped = await cropDocumentToBlob(file)
+          if (cropped) {
+            blob = cropped
+            name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
+          }
+        } catch {
+          blob = file
+        }
+      }
+      prepared.push({ blob, name })
+    }
+    await attachDocuments(checkInId, prepared)
+  }
+
+  const handleCheckInScan = (blob: Blob) => {
+    const checkInId = scanForId
+    setScanForId(null)
+    if (!checkInId) return
+    void attachDocuments(checkInId, [{ blob, name: `scan_${Date.now()}.jpg` }])
   }
 
   const handleDeleteCheckIn = async (id: string) => {
@@ -325,21 +374,41 @@ export function PartsPage() {
                           <span className="parts-checkin-po-label">Qty</span>
                           <span>{checkInQuantity(row)}</span>
                         </div>
-                        {parseCheckInDocuments(row.documents).length > 0 ? (
-                          <div className="parts-checkin-docs">
-                            {parseCheckInDocuments(row.documents).map((doc, index) => (
-                              <a
-                                key={`${doc.url}-${index}`}
-                                className="parts-checkin-doc-link"
-                                href={doc.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {doc.name || `Document ${index + 1}`}
-                              </a>
-                            ))}
+                        <div className="parts-checkin-docs">
+                          {parseCheckInDocuments(row.documents).map((doc, index) => (
+                            <a
+                              key={`${doc.url}-${index}`}
+                              className="parts-checkin-doc-link"
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {doc.name || `Document ${index + 1}`}
+                            </a>
+                          ))}
+                          <div className="parts-checkin-doc-actions">
+                            <label className="parts-doc-btn">
+                              Add file
+                              <input
+                                type="file"
+                                hidden
+                                multiple
+                                accept="image/*,application/pdf"
+                                disabled={docBusyId === row.id}
+                                onChange={(e) => void handleCheckInFiles(row.id, e)}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="parts-doc-btn"
+                              disabled={docBusyId === row.id}
+                              onClick={() => setScanForId(row.id)}
+                            >
+                              Scan
+                            </button>
+                            {docBusyId === row.id ? <span className="parts-muted">Saving…</span> : null}
                           </div>
-                        ) : null}
+                        </div>
                       </div>
                       <div className="parts-checkin-side">
                         <span className="parts-checkin-when">
@@ -423,6 +492,9 @@ export function PartsPage() {
           </div>
         </div>
       </section>
+      {scanForId ? (
+        <DocumentScanner onCapture={handleCheckInScan} onClose={() => setScanForId(null)} />
+      ) : null}
     </div>
   )
 }

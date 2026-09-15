@@ -5,7 +5,7 @@ import {
   nullableFields,
   parseCheckInDocuments,
 } from '../partsHelpers'
-import type { PartCheckIn, PartFields, TrackedPart } from '../types'
+import type { CheckInDocument, PartCheckIn, PartFields, TrackedPart } from '../types'
 
 function requireClient() {
   if (!supabase) throw new Error('Supabase is not configured.')
@@ -22,10 +22,7 @@ export async function fetchCheckIns(): Promise<PartCheckIn[]> {
     .select('*')
     .order('scanned_at', { ascending: false })
   if (error) throw new Error(error.message)
-  return (data ?? []).map((row) => ({
-    ...(row as PartCheckIn),
-    documents: parseCheckInDocuments((row as PartCheckIn).documents),
-  }))
+  return (data ?? []).map((row) => asCheckIn(row as PartCheckIn))
 }
 
 export async function fetchParts(): Promise<TrackedPart[]> {
@@ -84,6 +81,80 @@ export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPa
     throw new Error(error.message)
   }
   return data as TrackedPart
+}
+
+const DOCUMENT_BUCKETS = ['checkin-documents', 'po-documents', 'inventory-images']
+
+function asCheckIn(row: PartCheckIn): PartCheckIn {
+  return {
+    ...row,
+    documents: parseCheckInDocuments(row.documents),
+  }
+}
+
+export async function uploadCheckInFile(
+  checkInId: string,
+  blob: Blob,
+  fileName: string,
+): Promise<CheckInDocument> {
+  const client = requireClient()
+  const safeName = fileName.replace(/[^\w.\-]+/g, '_').replace(/^_+|_+$/g, '') || 'document.jpg'
+  const ext = safeName.includes('.') ? safeName.split('.').pop() : blob.type.includes('png') ? 'png' : 'jpg'
+  const path = `${checkInId}/${Date.now()}_${safeName.replace(/\.[^.]+$/, '')}.${ext}`
+  let lastError = 'Could not upload document.'
+  for (const bucket of DOCUMENT_BUCKETS) {
+    const { error } = await client.storage.from(bucket).upload(path, blob, {
+      upsert: false,
+      contentType: blob.type || 'image/jpeg',
+    })
+    if (!error) {
+      const { data } = client.storage.from(bucket).getPublicUrl(path)
+      return { name: fileName, url: data.publicUrl }
+    }
+    lastError = error.message
+  }
+  throw new Error(
+    `${lastError} Run supabase/add-part-checkin-documents.sql in the Supabase SQL Editor if the check-in documents bucket is missing.`,
+  )
+}
+
+export async function addCheckInDocuments(
+  checkInId: string,
+  files: { blob: Blob; name: string }[],
+): Promise<PartCheckIn> {
+  if (files.length === 0) {
+    const { data, error } = await requireClient().from('part_checkins').select('*').eq('id', checkInId).single()
+    if (error) throw new Error(error.message)
+    return asCheckIn(data as PartCheckIn)
+  }
+
+  const client = requireClient()
+  const { data: existingRow, error: loadError } = await client
+    .from('part_checkins')
+    .select('*')
+    .eq('id', checkInId)
+    .single()
+  if (loadError) throw new Error(loadError.message)
+
+  const uploaded: CheckInDocument[] = []
+  for (const file of files) {
+    uploaded.push(await uploadCheckInFile(checkInId, file.blob, file.name))
+  }
+  const documents = [...parseCheckInDocuments((existingRow as PartCheckIn).documents), ...uploaded]
+  const { data, error } = await client
+    .from('part_checkins')
+    .update({ documents })
+    .eq('id', checkInId)
+    .select('*')
+    .single()
+  if (error) {
+    throw new Error(
+      /documents|schema cache|column/i.test(error.message)
+        ? 'Documents column is missing. Run supabase/add-part-checkin-documents.sql in the Supabase SQL Editor.'
+        : error.message,
+    )
+  }
+  return asCheckIn(data as PartCheckIn)
 }
 
 export async function insertCheckIn(
