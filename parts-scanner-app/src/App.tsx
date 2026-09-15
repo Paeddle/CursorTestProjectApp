@@ -97,10 +97,12 @@ function partsTrackerHref(): string {
 }
 
 function partSearchHaystack(part: TrackedPart): string {
-  return [part.part_name, part.upc_code, part.ipn, part.manufacturer, part.vendor]
+  return [part.part_name, part.upc_code, part.ipn, part.manufacturer, part.vendor, part.description]
     .map((v) => (v ?? '').toLowerCase())
     .join(' ')
 }
+
+const SUGGEST_FIELDS: (keyof PartFields)[] = ['upc_code', 'ipn', 'part_name', 'manufacturer', 'vendor']
 
 export default function App() {
   const mode = useMemo(readScannerMode, [])
@@ -119,12 +121,11 @@ export default function App() {
   const [checkInAt, setCheckInAt] = useState(() => new Date())
   const [selectedPart, setSelectedPart] = useState<TrackedPart | null>(null)
   const [catalog, setCatalog] = useState<TrackedPart[]>([])
-  const [nameFocused, setNameFocused] = useState(false)
+  const [suggestField, setSuggestField] = useState<keyof PartFields | null>(null)
   const [lookupLoading, setLookupLoading] = useState(false)
   const [manualBarcode, setManualBarcode] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const nameWrapRef = useRef<HTMLDivElement>(null)
   const openingCatalogRef = useRef(false)
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export default function App() {
   }, [title])
 
   useEffect(() => {
-    if (isCatalog || !supabase) return
+    if (!supabase) return
     let cancelled = false
     fetchParts()
       .then((rows) => {
@@ -144,11 +145,12 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [isCatalog])
+  }, [])
 
   useEffect(() => {
     const onDocDown = (event: MouseEvent) => {
-      if (!nameWrapRef.current?.contains(event.target as Node)) setNameFocused(false)
+      const target = event.target as HTMLElement | null
+      if (!target?.closest('.parts-suggest-wrap')) setSuggestField(null)
     }
     document.addEventListener('mousedown', onDocDown)
     return () => document.removeEventListener('mousedown', onDocDown)
@@ -223,7 +225,7 @@ export default function App() {
 
   const setField = (key: keyof PartFields, value: string) => {
     setFields((prev) => ({ ...prev, [key]: value }))
-    if (key === 'upc_code' || key === 'part_name') setSelectedPart(null)
+    if (key === 'upc_code' || key === 'ipn' || key === 'part_name') setSelectedPart(null)
   }
 
   const resetForm = () => {
@@ -237,7 +239,7 @@ export default function App() {
     setSelectedPart(null)
     setFormOpen(isCatalog ? false : true)
     setManualBarcode('')
-    setNameFocused(false)
+    setSuggestField(null)
   }
 
   const addPendingDocument = useCallback((blob: Blob, name: string) => {
@@ -295,40 +297,67 @@ export default function App() {
     }
   }
 
-  const lookupUpc = async (upc: string) => {
+  const lookupFromCatalog = async () => {
     if (!supabase || lookupLoading) return
-    const code = upc.trim()
-    if (!code) {
-      setSelectedPart(null)
-      return
-    }
+    if (!fields.upc_code.trim() && !fields.ipn.trim()) return
     setLookupLoading(true)
     try {
-      const existing = await findExistingPart({ ...EMPTY_PART_FIELDS, upc_code: code })
-      if (existing) applyMatchedPart(existing, code)
-      else setSelectedPart(null)
+      const existing = await findExistingPart(fields)
+      if (existing) applyMatchedPart(existing, fields.upc_code.trim() || undefined)
     } catch {
-      setSelectedPart(null)
+      /* keep typed values */
     } finally {
       setLookupLoading(false)
     }
   }
 
-  const nameSuggestions = useMemo(() => {
-    const q = fields.part_name.trim().toLowerCase()
-    if (!q) return []
-    return catalog
-      .filter((part) => partSearchHaystack(part).includes(q))
-      .slice(0, 20)
-  }, [catalog, fields.part_name])
+  const catalogSuggestions = useMemo(() => {
+    if (!suggestField) return []
+    const q = fields[suggestField].trim().toLowerCase()
+    if (q.length < 1) return []
+    return catalog.filter((part) => partSearchHaystack(part).includes(q)).slice(0, 20)
+  }, [catalog, fields, suggestField])
 
   const nameQuery = fields.part_name.trim()
   const showAddPartCta =
     !isCatalog &&
     formOpen &&
     !selectedPart &&
-    (fields.upc_code.trim().length > 0 || nameQuery.length > 0) &&
-    nameSuggestions.length === 0
+    (fields.upc_code.trim().length > 0 || fields.ipn.trim().length > 0 || nameQuery.length > 0) &&
+    catalog
+      .filter((part) =>
+        partSearchHaystack(part).includes(
+          (fields.upc_code || fields.ipn || fields.part_name).trim().toLowerCase(),
+        ),
+      ).length === 0
+
+  const pickSuggestion = (part: TrackedPart) => {
+    applyMatchedPart(part)
+    setSuggestField(null)
+  }
+
+  const suggestList = (field: keyof PartFields) =>
+    suggestField === field && catalogSuggestions.length > 0 ? (
+      <ul id={`${field}-suggestions`} className="suggest-list" role="listbox">
+        {catalogSuggestions.map((part) => (
+          <li key={part.id}>
+            <button
+              type="button"
+              className="suggest-item"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pickSuggestion(part)}
+            >
+              <span className="suggest-item-title">{displayPartTitle(part)}</span>
+              <span className="suggest-item-meta">
+                {[part.ipn ? `IPN ${part.ipn}` : '', part.upc_code ? `UPC ${part.upc_code}` : '']
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null
 
   const openCatalogScanner = () => {
     if (openingCatalogRef.current) return
@@ -482,7 +511,7 @@ export default function App() {
             )}
 
             {PART_FIELD_LABELS.map(({ key, label }) => (
-              <div className="form-field" key={key}>
+              <div className={`form-field${SUGGEST_FIELDS.includes(key) ? ' parts-suggest-wrap' : ''}`} key={key}>
                 <label className="label" htmlFor={`field-${key}`}>
                   {label}
                 </label>
@@ -502,17 +531,28 @@ export default function App() {
                     className="input"
                     value={fields[key]}
                     onChange={(e) => setField(key, e.target.value)}
-                    onBlur={key === 'upc_code' || key === 'ipn' ? () => void lookupUpc(fields.upc_code) : undefined}
+                    onFocus={() => {
+                      if (SUGGEST_FIELDS.includes(key)) setSuggestField(key)
+                    }}
+                    onBlur={key === 'upc_code' || key === 'ipn' ? () => void lookupFromCatalog() : undefined}
                     placeholder={
                       key === 'upc_code'
                         ? 'Scan or type UPC'
-                        : key === 'po'
-                          ? 'Purchase order number'
-                          : undefined
+                        : key === 'ipn'
+                          ? 'Type IPN to search catalog'
+                          : key === 'po'
+                            ? 'Purchase order number'
+                            : SUGGEST_FIELDS.includes(key)
+                              ? 'Start typing to search the catalog'
+                              : undefined
                     }
                     autoComplete="off"
+                    role={SUGGEST_FIELDS.includes(key) ? 'combobox' : undefined}
+                    aria-expanded={suggestField === key && catalogSuggestions.length > 0}
+                    aria-controls={SUGGEST_FIELDS.includes(key) ? `${key}-suggestions` : undefined}
                   />
                 )}
+                {SUGGEST_FIELDS.includes(key) ? suggestList(key) : null}
               </div>
             ))}
 
@@ -627,7 +667,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="form-field">
+            <div className="form-field parts-suggest-wrap">
               <label className="label" htmlFor="field-upc_code">
                 UPC code
               </label>
@@ -637,14 +677,40 @@ export default function App() {
                 className="input"
                 value={fields.upc_code}
                 onChange={(e) => setField('upc_code', e.target.value)}
-                onBlur={() => void lookupUpc(fields.upc_code)}
+                onFocus={() => setSuggestField('upc_code')}
+                onBlur={() => void lookupFromCatalog()}
                 placeholder="Scan or type UPC"
                 autoComplete="off"
                 autoFocus
+                role="combobox"
+                aria-expanded={suggestField === 'upc_code' && catalogSuggestions.length > 0}
+                aria-controls="upc_code-suggestions"
               />
+              {suggestList('upc_code')}
             </div>
 
-            <div className="form-field" ref={nameWrapRef}>
+            <div className="form-field parts-suggest-wrap">
+              <label className="label" htmlFor="field-ipn">
+                IPN
+              </label>
+              <input
+                id="field-ipn"
+                type="text"
+                className="input"
+                value={fields.ipn}
+                onChange={(e) => setField('ipn', e.target.value)}
+                onFocus={() => setSuggestField('ipn')}
+                onBlur={() => void lookupFromCatalog()}
+                placeholder="Type IPN to search catalog"
+                autoComplete="off"
+                role="combobox"
+                aria-expanded={suggestField === 'ipn' && catalogSuggestions.length > 0}
+                aria-controls="ipn-suggestions"
+              />
+              {suggestList('ipn')}
+            </div>
+
+            <div className="form-field parts-suggest-wrap">
               <label className="label" htmlFor="field-part_name">
                 Part name
               </label>
@@ -654,33 +720,14 @@ export default function App() {
                 className="input"
                 value={fields.part_name}
                 onChange={(e) => setField('part_name', e.target.value)}
-                onFocus={() => setNameFocused(true)}
+                onFocus={() => setSuggestField('part_name')}
                 placeholder="Start typing to search the catalog"
                 autoComplete="off"
                 role="combobox"
-                aria-expanded={nameFocused && nameSuggestions.length > 0}
-                aria-controls="part-name-suggestions"
+                aria-expanded={suggestField === 'part_name' && catalogSuggestions.length > 0}
+                aria-controls="part_name-suggestions"
               />
-              {nameFocused && nameSuggestions.length > 0 && (
-                <ul id="part-name-suggestions" className="suggest-list" role="listbox">
-                  {nameSuggestions.map((part) => (
-                    <li key={part.id}>
-                      <button
-                        type="button"
-                        className="suggest-item"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          applyMatchedPart(part)
-                          setNameFocused(false)
-                        }}
-                      >
-                        <span className="suggest-item-title">{displayPartTitle(part)}</span>
-                        {part.upc_code ? <span className="suggest-item-meta">UPC {part.upc_code}</span> : null}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {suggestList('part_name')}
             </div>
 
             <div className="form-field">
@@ -731,8 +778,8 @@ export default function App() {
             {showAddPartCta && (
               <div className="missing-part-panel" role="status">
                 <p>
-                  {fields.upc_code.trim() || fields.part_name.trim()
-                    ? 'This UPC or part name is not in the catalog yet.'
+                  {fields.upc_code.trim() || fields.ipn.trim() || fields.part_name.trim()
+                    ? 'This UPC, IPN, or part name is not in the catalog yet.'
                     : 'Choose a catalog part to check in.'}
                 </p>
                 <button

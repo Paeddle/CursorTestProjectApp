@@ -6,6 +6,7 @@ import {
   checkInMatchesQuery,
   checkInQuantity,
   displayPartTitle,
+  fieldsFromRecord,
   formatCheckInWhen,
   formatDateTime,
   isHttpUrl,
@@ -20,8 +21,16 @@ import {
   deletePart,
   fetchCheckIns,
   fetchParts,
+  updateCheckIn,
 } from './services/partsService'
-import { CATALOG_FIELD_LABELS, type PartCheckIn, type PartFields, type TrackedPart } from './types'
+import {
+  CATALOG_FIELD_LABELS,
+  EMPTY_PART_FIELDS,
+  PART_FIELD_LABELS,
+  type PartCheckIn,
+  type PartFields,
+  type TrackedPart,
+} from './types'
 import './PartsPage.css'
 
 type WorkspaceTab = 'checkin' | 'parts'
@@ -80,6 +89,10 @@ export function PartsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [docBusyId, setDocBusyId] = useState<string | null>(null)
   const [scanForId, setScanForId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editFields, setEditFields] = useState<PartFields>(EMPTY_PART_FIELDS)
+  const [editQty, setEditQty] = useState('1')
+  const [editSaving, setEditSaving] = useState(false)
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) return
@@ -197,6 +210,39 @@ export function PartsPage() {
     setScanForId(null)
     if (!checkInId) return
     void attachDocuments(checkInId, [{ blob, name: `scan_${Date.now()}.jpg` }])
+  }
+
+  const startEdit = (row: PartCheckIn) => {
+    setEditingId(row.id)
+    setEditFields(fieldsFromRecord(row))
+    setEditQty(String(checkInQuantity(row)))
+    setError(null)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditFields(EMPTY_PART_FIELDS)
+    setEditQty('1')
+  }
+
+  const saveEdit = async () => {
+    if (!editingId) return
+    const qty = Number.parseInt(editQty, 10)
+    if (!Number.isFinite(qty) || qty < 1) {
+      setError('Quantity must be at least 1.')
+      return
+    }
+    setEditSaving(true)
+    setError(null)
+    try {
+      const updated = await updateCheckIn(editingId, editFields, qty)
+      setCheckIns((prev) => prev.map((row) => (row.id === editingId ? updated : row)))
+      cancelEdit()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save check-in.')
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   const handleDeleteCheckIn = async (id: string) => {
@@ -350,8 +396,11 @@ export function PartsPage() {
             ) : (
               <div className="parts-list-scroll">
                 <div className="parts-list">
-                  {filteredCheckIns.map((row) => (
-                    <div key={row.id} className="parts-card parts-checkin-row">
+                  {filteredCheckIns.map((row) => {
+                    const isEditing = editingId === row.id
+                    const docs = parseCheckInDocuments(row.documents)
+                    return (
+                    <div key={row.id} className={`parts-card parts-checkin-row${isEditing ? ' parts-checkin-row-editing' : ''}`}>
                       <div className="parts-checkin-main">
                         <button
                           type="button"
@@ -360,71 +409,159 @@ export function PartsPage() {
                         >
                           {displayPartTitle(row)}
                         </button>
-                        <div className="parts-checkin-po">
-                          <span className="parts-checkin-po-label">PO</span>
-                          <span>{row.po?.trim() || '—'}</span>
-                        </div>
-                        {row.description?.trim() ? (
-                          <div className="parts-checkin-po">
-                            <span className="parts-checkin-po-label">Description</span>
-                            <span>{row.description.trim()}</span>
-                          </div>
-                        ) : null}
-                        <div className="parts-checkin-po">
-                          <span className="parts-checkin-po-label">Qty</span>
-                          <span>{checkInQuantity(row)}</span>
-                        </div>
-                        <div className="parts-checkin-docs">
-                          {parseCheckInDocuments(row.documents).map((doc, index) => (
-                            <a
-                              key={`${doc.url}-${index}`}
-                              className="parts-checkin-doc-link"
-                              href={doc.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {doc.name || `Document ${index + 1}`}
-                            </a>
-                          ))}
-                          <div className="parts-checkin-doc-actions">
-                            <label className="parts-doc-btn">
-                              Add file
+                        {!isEditing ? (
+                          <>
+                            <div className="parts-checkin-po">
+                              <span className="parts-checkin-po-label">PO</span>
+                              <span>{row.po?.trim() || '—'}</span>
+                            </div>
+                            {row.description?.trim() ? (
+                              <div className="parts-checkin-po">
+                                <span className="parts-checkin-po-label">Description</span>
+                                <span>{row.description.trim()}</span>
+                              </div>
+                            ) : null}
+                            <div className="parts-checkin-po">
+                              <span className="parts-checkin-po-label">Qty</span>
+                              <span>{checkInQuantity(row)}</span>
+                            </div>
+                            {docs.length > 0 ? (
+                              <div className="parts-checkin-docs">
+                                {docs.map((doc, index) => (
+                                  <a
+                                    key={`${doc.url}-${index}`}
+                                    className="parts-checkin-doc-link"
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {doc.name || `Document ${index + 1}`}
+                                  </a>
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <form
+                            className="parts-checkin-edit"
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              void saveEdit()
+                            }}
+                          >
+                            {PART_FIELD_LABELS.map(({ key, label }) => (
+                              <div className="parts-edit-field" key={key}>
+                                <label className="parts-checkin-po-label" htmlFor={`edit-${row.id}-${key}`}>
+                                  {label}
+                                </label>
+                                {key === 'description' ? (
+                                  <textarea
+                                    id={`edit-${row.id}-${key}`}
+                                    className="parts-edit-input"
+                                    rows={3}
+                                    value={editFields[key]}
+                                    onChange={(e) => setEditFields((prev) => ({ ...prev, [key]: e.target.value }))}
+                                  />
+                                ) : (
+                                  <input
+                                    id={`edit-${row.id}-${key}`}
+                                    type="text"
+                                    className="parts-edit-input"
+                                    value={editFields[key]}
+                                    onChange={(e) => setEditFields((prev) => ({ ...prev, [key]: e.target.value }))}
+                                    autoComplete="off"
+                                  />
+                                )}
+                              </div>
+                            ))}
+                            <div className="parts-edit-field parts-edit-qty">
+                              <label className="parts-checkin-po-label" htmlFor={`edit-${row.id}-qty`}>
+                                Qty
+                              </label>
                               <input
-                                type="file"
-                                hidden
-                                multiple
-                                accept="image/*,application/pdf"
-                                disabled={docBusyId === row.id}
-                                onChange={(e) => void handleCheckInFiles(row.id, e)}
+                                id={`edit-${row.id}-qty`}
+                                type="number"
+                                min={1}
+                                step={1}
+                                className="parts-edit-input"
+                                value={editQty}
+                                onChange={(e) => setEditQty(e.target.value)}
                               />
-                            </label>
-                            <button
-                              type="button"
-                              className="parts-doc-btn"
-                              disabled={docBusyId === row.id}
-                              onClick={() => setScanForId(row.id)}
-                            >
-                              Scan
-                            </button>
-                            {docBusyId === row.id ? <span className="parts-muted">Saving…</span> : null}
-                          </div>
-                        </div>
+                            </div>
+                            <div className="parts-edit-field">
+                              <span className="parts-checkin-po-label">Documents</span>
+                              <div className="parts-checkin-docs">
+                                {docs.map((doc, index) => (
+                                  <a
+                                    key={`${doc.url}-${index}`}
+                                    className="parts-checkin-doc-link"
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {doc.name || `Document ${index + 1}`}
+                                  </a>
+                                ))}
+                                <div className="parts-checkin-doc-actions">
+                                  <label className="parts-doc-btn">
+                                    Add file
+                                    <input
+                                      type="file"
+                                      hidden
+                                      multiple
+                                      accept="image/*,application/pdf"
+                                      disabled={docBusyId === row.id}
+                                      onChange={(e) => void handleCheckInFiles(row.id, e)}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className="parts-doc-btn"
+                                    disabled={docBusyId === row.id}
+                                    onClick={() => setScanForId(row.id)}
+                                  >
+                                    Scan
+                                  </button>
+                                  {docBusyId === row.id ? <span className="parts-muted">Saving…</span> : null}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="parts-edit-actions">
+                              <button type="submit" className="parts-toolbar-btn" disabled={editSaving}>
+                                {editSaving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button type="button" className="parts-doc-btn" onClick={cancelEdit} disabled={editSaving}>
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        )}
                       </div>
                       <div className="parts-checkin-side">
                         <span className="parts-checkin-when">
                           {formatCheckInWhen(row.check_in_date, row.scanned_at)}
                         </span>
+                        {!isEditing ? (
+                          <button
+                            type="button"
+                            className="parts-edit-btn"
+                            onClick={() => startEdit(row)}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="parts-delete"
-                          disabled={deletingId === row.id}
+                          disabled={deletingId === row.id || isEditing}
                           onClick={() => void handleDeleteCheckIn(row.id)}
                         >
                           Delete
                         </button>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

@@ -157,6 +157,33 @@ export async function addCheckInDocuments(
   return asCheckIn(data as PartCheckIn)
 }
 
+export async function updateCheckIn(
+  id: string,
+  fields: PartFields,
+  quantity: number,
+): Promise<PartCheckIn> {
+  const client = requireClient()
+  const qty = Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity) : 1
+  const matched = await findExistingPart(fields).catch(() => null)
+  const { data: existing } = await client.from('part_checkins').select('part_id').eq('id', id).maybeSingle()
+  const payload = {
+    ...nullableFields(fields),
+    quantity: qty,
+    part_id: matched?.id ?? (existing as { part_id?: string | null } | null)?.part_id ?? null,
+  }
+  const first = await client.from('part_checkins').update(payload).eq('id', id).select('*').single()
+  if (first.error) {
+    if (!/quantity|schema cache|column/i.test(first.error.message)) {
+      throw new Error(first.error.message)
+    }
+    const { quantity: _ignored, ...withoutQty } = payload
+    const fallback = await client.from('part_checkins').update(withoutQty).eq('id', id).select('*').single()
+    if (fallback.error) throw new Error(fallback.error.message)
+    return asCheckIn(fallback.data as PartCheckIn)
+  }
+  return asCheckIn(first.data as PartCheckIn)
+}
+
 export async function insertCheckIn(
   fields: PartFields,
   checkInDate: string,
