@@ -47,13 +47,19 @@ function readScannerMode(): ScannerMode {
   return 'checkin'
 }
 
-function catalogScannerHref(fields?: { upc?: string; po?: string; partName?: string }): string {
+function catalogScannerHref(fields?: {
+  upc?: string
+  po?: string
+  partName?: string
+  description?: string
+}): string {
   if (typeof window === 'undefined') return '?mode=parts'
   const url = new URL(window.location.href)
   url.searchParams.set('mode', 'parts')
   const upc = fields?.upc?.trim()
   const po = fields?.po?.trim()
   const partName = fields?.partName?.trim()
+  const description = fields?.description?.trim()
   if (upc) url.searchParams.set('upc', upc)
   else url.searchParams.delete('upc')
   url.searchParams.delete('code')
@@ -62,7 +68,16 @@ function catalogScannerHref(fields?: { upc?: string; po?: string; partName?: str
   else url.searchParams.delete('po')
   if (partName) url.searchParams.set('name', partName)
   else url.searchParams.delete('name')
+  if (description) url.searchParams.set('description', description)
+  else url.searchParams.delete('description')
   return url.toString()
+}
+
+function partsTrackerHref(): string {
+  const configured = import.meta.env.VITE_PARTS_TRACKER_URL?.trim()
+  if (configured) return configured.replace(/\/?$/, '/')
+  if (typeof window === 'undefined') return '/parts/'
+  return new URL('/parts/', window.location.origin).toString()
 }
 
 function partSearchHaystack(part: TrackedPart): string {
@@ -126,10 +141,11 @@ export default function App() {
       ...fieldsFromRecord(part),
       upc_code: part.upc_code || upcFallback || prev.upc_code,
       po: prev.po,
+      description: prev.description.trim() || fieldsFromRecord(part).description,
     }))
   }
 
-  const applyBarcode = useCallback(async (raw: string, extras?: Partial<Pick<PartFields, 'po' | 'part_name'>>) => {
+  const applyBarcode = useCallback(async (raw: string, extras?: Partial<Pick<PartFields, 'po' | 'part_name' | 'description'>>) => {
     const barcode = extractBarcode(raw)
     if (!barcode) return
     setShowScanner(false)
@@ -142,6 +158,7 @@ export default function App() {
       upc_code: barcode,
       po: extras?.po?.trim() ?? '',
       part_name: extras?.part_name?.trim() ?? '',
+      description: extras?.description?.trim() ?? '',
     }
     setFields(next)
     setSelectedPart(null)
@@ -173,12 +190,13 @@ export default function App() {
     const extras = {
       po: params.get('po') || '',
       part_name: params.get('name') || params.get('part_name') || '',
+      description: params.get('description') || params.get('desc') || '',
     }
     if (upc) {
       void applyBarcode(upc, extras)
       return
     }
-    if (extras.po || extras.part_name) {
+    if (extras.po || extras.part_name || extras.description) {
       setFormOpen(true)
       setFields((prev) => ({ ...prev, ...extras }))
     }
@@ -252,6 +270,7 @@ export default function App() {
         upc: fields.upc_code,
         po: fields.po,
         partName: fields.part_name,
+        description: fields.description,
       }),
     )
   }
@@ -270,13 +289,10 @@ export default function App() {
             upc_code: fields.upc_code.trim() || existing.upc_code,
             part_name: fields.part_name.trim() || existing.part_name,
             po: fields.po.trim(),
+            description: fields.description.trim() || existing.description,
           }
           await insertCheckIn(snapshot, todayLocalDate(), existing.id)
-          setStatus({
-            type: 'success',
-            message: `Already in catalog. Checked in: ${displayPartTitle(snapshot)}`,
-          })
-          resetForm()
+          window.location.assign(partsTrackerHref())
           return
         }
         const hasCatalogData = CATALOG_FIELD_LABELS.some(({ key }) => fields[key].trim().length > 0)
@@ -288,13 +304,10 @@ export default function App() {
         const snapshot = {
           ...fieldsFromRecord(part),
           po: fields.po.trim(),
+          description: fields.description.trim() || part.description,
         }
         await insertCheckIn(snapshot, todayLocalDate(), part.id)
-        setStatus({
-          type: 'success',
-          message: `Added to catalog and checked in: ${displayPartTitle(part)}`,
-        })
-        resetForm()
+        window.location.assign(partsTrackerHref())
         return
       }
 
@@ -311,6 +324,7 @@ export default function App() {
         upc_code: fields.upc_code.trim() || selectedPart.upc_code,
         part_name: fields.part_name.trim() || selectedPart.part_name,
         po: fields.po.trim(),
+        description: fields.description.trim() || selectedPart.description,
       }
       await insertCheckIn(snapshot, todayLocalDate(), selectedPart.id)
       setStatus({
@@ -536,6 +550,21 @@ export default function App() {
                   ))}
                 </ul>
               )}
+            </div>
+
+            <div className="form-field">
+              <label className="label" htmlFor="field-description">
+                Description
+              </label>
+              <textarea
+                id="field-description"
+                className="input textarea"
+                rows={3}
+                value={fields.description}
+                onChange={(e) => setField('description', e.target.value)}
+                placeholder="Optional notes for this check-in"
+                autoComplete="off"
+              />
             </div>
 
             {showAddPartCta && (

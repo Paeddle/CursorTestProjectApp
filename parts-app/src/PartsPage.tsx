@@ -313,6 +313,12 @@ export function PartsPage() {
                           <span className="parts-checkin-po-label">PO</span>
                           <span>{row.po?.trim() || '—'}</span>
                         </div>
+                        {row.description?.trim() ? (
+                          <div className="parts-checkin-po">
+                            <span className="parts-checkin-po-label">Description</span>
+                            <span>{row.description.trim()}</span>
+                          </div>
+                        ) : null}
                       </div>
                       <div className="parts-checkin-side">
                         <span className="parts-checkin-when">
