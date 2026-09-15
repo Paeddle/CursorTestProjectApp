@@ -7,8 +7,9 @@ export default function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
       <Routes>
         <Route path="/" element={<RequestFormPage />} />
-        <Route path="/r/:ipn" element={<RequestFormPage />} />
         <Route path="/portal" element={<PortalPage />} />
+        <Route path="/r/:ipn" element={<RequestFormPage />} />
+        <Route path="/:ipn" element={<RequestFormPage />} />
       </Routes>
     </BrowserRouter>
   )

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { fetchPartByIpn, ipnFromLocation } from '../services/itemLookup'
 import { submitReorderRequest } from '../services/reorderService'
@@ -16,6 +16,7 @@ function quantityFromPart(part: InventreePartRecord | null): string {
 }
 
 export default function RequestFormPage() {
+  const { ipn: routeIpn } = useParams<{ ipn?: string }>()
   const [ipnInput, setIpnInput] = useState('')
   const [part, setPart] = useState<InventreePartRecord | null>(null)
   const [lookupDone, setLookupDone] = useState(false)
@@ -73,12 +74,13 @@ export default function RequestFormPage() {
   }, [])
 
   useEffect(() => {
-    const fromUrl = ipnFromLocation()
+    const fromRoute = routeIpn ? decodeURIComponent(routeIpn).trim() : ''
+    const fromUrl = fromRoute || ipnFromLocation()
     if (fromUrl) {
       setIpnInput(fromUrl)
       void lookupIpn(fromUrl)
     }
-  }, [lookupIpn])
+  }, [lookupIpn, routeIpn])
 
   const handleLookup = () => {
     void lookupIpn(ipnInput)
@@ -216,7 +218,7 @@ export default function RequestFormPage() {
                 {loadingPart ? '…' : 'Look up'}
               </button>
             </div>
-            <p className="hint">Tag QR codes open this form with the IPN pre-filled from InvenTree.</p>
+            <p className="hint">Scan a pink re-order tag to open this form with the part filled in from InvenTree.</p>
           </section>
 
           {part ? (

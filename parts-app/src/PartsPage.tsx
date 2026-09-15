@@ -11,6 +11,7 @@ import {
   trimField,
 } from './partsHelpers'
 import {
+  deleteCheckIn,
   deletePart,
   fetchCheckIns,
   fetchParts,
@@ -144,6 +145,19 @@ export function PartsPage() {
       setExpandedParts(new Set())
     } else {
       setExpandedParts(new Set(filteredParts.map((r) => r.id)))
+    }
+  }
+
+  const handleDeleteCheckIn = async (id: string) => {
+    if (!window.confirm('Delete this check-in? This cannot be undone.')) return
+    setDeletingId(id)
+    try {
+      await deleteCheckIn(id)
+      setCheckIns((prev) => prev.filter((r) => r.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete check-in.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -300,9 +314,19 @@ export function PartsPage() {
                           <span>{row.po?.trim() || '—'}</span>
                         </div>
                       </div>
-                      <span className="parts-checkin-when">
-                        {formatCheckInWhen(row.check_in_date, row.scanned_at)}
-                      </span>
+                      <div className="parts-checkin-side">
+                        <span className="parts-checkin-when">
+                          {formatCheckInWhen(row.check_in_date, row.scanned_at)}
+                        </span>
+                        <button
+                          type="button"
+                          className="parts-delete"
+                          disabled={deletingId === row.id}
+                          onClick={() => void handleDeleteCheckIn(row.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -41,14 +41,19 @@ export async function fetchPartByIpn(ipn: string): Promise<InventreePartRecord |
   return null
 }
 
-/** Read IPN from URL: /r/IPN, ?ipn=IPN, ?sku=IPN, or ?s=IPN */
+/** Read IPN from URL: /r/IPN, /IPN, ?ipn=IPN, ?sku=IPN, or ?s=IPN */
 export function ipnFromLocation(): string {
   const params = new URLSearchParams(window.location.search)
   const fromQuery = params.get('ipn') ?? params.get('sku') ?? params.get('s') ?? ''
   if (fromQuery.trim()) return decodeURIComponent(fromQuery.trim())
 
   const match = window.location.pathname.match(/\/r\/(.+)$/i)
-  if (match?.[1]) return decodeURIComponent(match[1].trim())
+  if (match?.[1]) return decodeURIComponent(match[1].replace(/\/+$/, '').trim())
+
+  const segments = window.location.pathname.replace(/\/+$/, '').split('/').filter(Boolean)
+  const last = segments[segments.length - 1] ?? ''
+  const reserved = new Set(['reorder', 'portal', 'r', 'index.html'])
+  if (last && !reserved.has(last.toLowerCase())) return decodeURIComponent(last.trim())
 
   return ''
 }

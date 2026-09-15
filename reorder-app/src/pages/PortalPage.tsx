@@ -191,7 +191,7 @@ export default function PortalPage() {
   const list = tab === 'open' ? openRequests : history
 
   return (
-    <div className="portal app-wide">
+    <div className="app portal app-wide">
       <header className="app-header">
         <h1><a href="/" className="home-title-link">Re-order Portal</a></h1>
         <p className="app-subtitle">Track open requests and order history</p>
