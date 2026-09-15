@@ -169,7 +169,11 @@ export default function RequestFormPage() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1><a href="/" className="home-title-link">Re-order Request</a></h1>
+        <h1>
+          <Link to="/" className="home-title-link">
+            Re-order Request
+          </Link>
+        </h1>
         <p className="app-subtitle">Scan a tag or enter an IPN to re-order stock</p>
         <Link to="/portal" className="nav-link">
           Open request portal →
