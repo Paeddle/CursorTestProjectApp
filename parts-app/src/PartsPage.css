@@ -259,7 +259,7 @@
   background: transparent;
   padding: 0;
   margin: 0;
-  color: #7dd3fc;
+  color: #f8fafc;
   font-size: 0.9rem;
   font-weight: 700;
   text-align: left;
@@ -269,7 +269,7 @@
 }
 
 .parts-checkin-name:hover {
-  color: #bae6fd;
+  color: #cbd5e1;
 }
 
 .parts-checkin-po {
