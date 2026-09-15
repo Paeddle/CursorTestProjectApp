@@ -2,10 +2,10 @@
 # Secrets (Settings → Secrets and variables → Actions):
 #   VITE_SUPABASE_URL
 #   VITE_SUPABASE_ANON_KEY
-#   INVENTREE_BASE_URL     e.g. https://inventree.yourcompany.com
+#   INVENTREE_BASE_URL     e.g. http://24.199.120.238
 #   INVENTREE_API_TOKEN    InvenTree user API token
 #
-# After secrets exist, this runs hourly and can be started from Actions → Sync InvenTree parts.
+# After secrets exist: Actions → Sync InvenTree parts → Run workflow.
 
 name: Sync InvenTree parts
 
@@ -25,10 +25,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
+
       - name: Check secrets
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -37,17 +38,19 @@ jobs:
           INVENTREE_API_TOKEN: ${{ secrets.INVENTREE_API_TOKEN }}
         run: |
           missing=0
-          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY INVENTREE_BASE_URL INVENTREE_API_TOKEN; do
-            eval "val=\${$name}"
-            if [ -z "$val" ]; then
-              echo "::error::$name is empty. Add it under Settings → Secrets and variables → Actions."
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then exit 1; fi
+          if [ -z "${VITE_SUPABASE_URL}" ]; then echo "::error::VITE_SUPABASE_URL is empty"; missing=1; fi
+          if [ -z "${VITE_SUPABASE_ANON_KEY}" ]; then echo "::error::VITE_SUPABASE_ANON_KEY is empty"; missing=1; fi
+          if [ -z "${INVENTREE_BASE_URL}" ]; then echo "::error::INVENTREE_BASE_URL is empty"; missing=1; fi
+          if [ -z "${INVENTREE_API_TOKEN}" ]; then echo "::error::INVENTREE_API_TOKEN is empty"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Add the missing names under Settings → Secrets and variables → Actions, then run this workflow again."
+            exit 1
+          fi
           echo "All four secrets are present."
+
       - name: Install client
-        run: npm install @supabase/supabase-js
+        run: npm install @supabase/supabase-js --no-fund --no-audit
+
       - name: Sync parts
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

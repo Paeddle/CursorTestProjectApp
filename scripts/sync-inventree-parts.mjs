@@ -75,7 +75,15 @@ async function fetchAllParts(baseUrl, token) {
   let next = `${baseUrl.replace(/\/$/, '')}/api/part/?limit=100&category_detail=true`
 
   while (next) {
-    const res = await fetch(next, { headers })
+    let res
+    try {
+      res = await fetch(next, { headers })
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err)
+      throw new Error(
+        `Could not reach InvenTree at ${baseUrl} (${why}). From GitHub Actions the server must allow inbound HTTP on port 80.`,
+      )
+    }
     if (!res.ok) {
       const body = await res.text()
       throw new Error(`InvenTree ${res.status}: ${body.slice(0, 400)}`)
