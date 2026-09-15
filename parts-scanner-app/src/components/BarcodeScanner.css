@@ -1,10 +1,16 @@
 .qr-scanner-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100dvh;
+  max-height: 100dvh;
   background: #0f172a;
   z-index: 100;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .qr-scanner-header {
@@ -12,7 +18,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem;
+  padding: calc(0.75rem + env(safe-area-inset-top, 0px)) 1rem 0.75rem;
   border-bottom: 1px solid #334155;
   flex-shrink: 0;
 }
@@ -78,22 +84,42 @@
 }
 
 #qr-reader {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
 }
 
 #qr-reader__scan_region {
+  flex: 1;
+  min-height: 0;
   width: 100%;
   height: 100%;
+  position: relative;
+  overflow: hidden;
   background: #000;
 }
 
-/*
- * Important: do not set object-fit or force both width+height on `video`.
- * html5-qrcode maps qrRegion using videoWidth/clientWidth; letterboxing breaks alignment.
- */
+#qr-reader__dashboard,
+#qr-reader__dashboard_section,
+#qr-reader__header_message {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
 
-/* Square aiming guide only — decoding uses the full frame (phone Camera–style). */
+#qr-reader video,
+#qr-reader__scan_region video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center center !important;
+}
+
 .qr-scanner-reticle {
   position: absolute;
   inset: 0;
@@ -102,6 +128,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .qr-scanner-reticle-square {
