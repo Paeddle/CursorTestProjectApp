@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
@@ -13,6 +13,29 @@ import '../App.css'
 import './PortalPage.css'
 
 type PortalTab = 'open' | 'history'
+type PortalSort = 'date-desc' | 'date-asc' | 'name-asc' | 'name-desc'
+
+function requestTitle(request: ReorderRequestRecord): string {
+  return request.name ?? request.ipn ?? 'Unknown part'
+}
+
+function compareNames(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function sortRequests(rows: ReorderRequestRecord[], sort: PortalSort): ReorderRequestRecord[] {
+  const copy = [...rows]
+  copy.sort((a, b) => {
+    if (sort === 'date-desc' || sort === 'date-asc') {
+      const aTime = new Date(a.created_at).getTime()
+      const bTime = new Date(b.created_at).getTime()
+      return sort === 'date-desc' ? bTime - aTime : aTime - bTime
+    }
+    const byName = compareNames(requestTitle(a), requestTitle(b))
+    return sort === 'name-asc' ? byName : -byName
+  })
+  return copy
+}
 
 function formatWhen(value: string | null): string {
   if (!value) return '—'
@@ -40,7 +63,7 @@ function RequestCard({
   const isOrdered = request.status === 'ordered' || request.status === 'received'
   const isReceived = request.status === 'received'
   const rowBusy = busy === request.id
-  const title = request.name ?? request.ipn ?? 'Unknown part'
+  const title = requestTitle(request)
 
   return (
     <article className={`portal-row${expanded ? ' portal-row-open' : ''}`}>
@@ -178,6 +201,7 @@ export default function PortalPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [sort, setSort] = useState<PortalSort>('date-desc')
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -271,7 +295,10 @@ export default function PortalPage() {
     }
   }
 
-  const list = tab === 'open' ? openRequests : history
+  const list = useMemo(
+    () => sortRequests(tab === 'open' ? openRequests : history, sort),
+    [history, openRequests, sort, tab],
+  )
 
   return (
     <div className="app portal app-wide">
@@ -310,6 +337,19 @@ export default function PortalPage() {
             Order history ({history.length})
           </button>
         </div>
+        <label className="portal-sort">
+          <span>Sort</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as PortalSort)}
+            aria-label="Sort requests"
+          >
+            <option value="date-desc">Date (newest)</option>
+            <option value="date-asc">Date (oldest)</option>
+            <option value="name-asc">Name (A–Z, numeric)</option>
+            <option value="name-desc">Name (Z–A, numeric)</option>
+          </select>
+        </label>
         <button
           type="button"
           className="btn btn-secondary portal-sync-btn"
@@ -321,26 +361,28 @@ export default function PortalPage() {
       </div>
 
       <main className="portal-main">
-        {loading ? <p className="portal-empty">Loading…</p> : null}
-        {!loading && list.length === 0 ? (
-          <p className="portal-empty">
-            {tab === 'open' ? 'No open re-order requests.' : 'No completed orders yet.'}
-          </p>
-        ) : null}
-        {!loading
-          ? list.map((request) => (
-              <RequestCard
-                key={request.id}
-                request={request}
-                showActions={tab === 'open'}
-                canDelete={tab === 'history'}
-                onOrderedChange={(id, ordered) => void handleOrderedChange(id, ordered)}
-                onReceived={(id) => void handleReceived(id)}
-                onDelete={(id) => void handleDelete(id)}
-                busy={busyId}
-              />
-            ))
-          : null}
+        <div className="portal-list">
+          {loading ? <p className="portal-empty">Loading…</p> : null}
+          {!loading && list.length === 0 ? (
+            <p className="portal-empty">
+              {tab === 'open' ? 'No open re-order requests.' : 'No completed orders yet.'}
+            </p>
+          ) : null}
+          {!loading
+            ? list.map((request) => (
+                <RequestCard
+                  key={request.id}
+                  request={request}
+                  showActions={tab === 'open'}
+                  canDelete={tab === 'history'}
+                  onOrderedChange={(id, ordered) => void handleOrderedChange(id, ordered)}
+                  onReceived={(id) => void handleReceived(id)}
+                  onDelete={(id) => void handleDelete(id)}
+                  busy={busyId}
+                />
+              ))
+            : null}
+        </div>
       </main>
     </div>
   )
