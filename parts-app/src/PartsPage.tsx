@@ -34,6 +34,28 @@ import {
 import './PartsPage.css'
 
 type WorkspaceTab = 'checkin' | 'parts'
+type CheckInSort = 'date-desc' | 'po-asc' | 'po-desc'
+
+function comparePo(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function sortCheckIns(rows: PartCheckIn[], sort: CheckInSort): PartCheckIn[] {
+  const copy = [...rows]
+  copy.sort((a, b) => {
+    if (sort === 'date-desc') {
+      return new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime()
+    }
+    const aPo = (a.po ?? '').trim()
+    const bPo = (b.po ?? '').trim()
+    if (!aPo && !bPo) return 0
+    if (!aPo) return 1
+    if (!bPo) return -1
+    const byPo = comparePo(aPo, bPo)
+    return sort === 'po-asc' ? byPo : -byPo
+  })
+  return copy
+}
 
 type ScannerMode = 'checkin' | 'parts'
 
@@ -93,6 +115,7 @@ export function PartsPage() {
   const [editFields, setEditFields] = useState<PartFields>(EMPTY_PART_FIELDS)
   const [editQty, setEditQty] = useState('1')
   const [editSaving, setEditSaving] = useState(false)
+  const [checkInSort, setCheckInSort] = useState<CheckInSort>('date-desc')
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) return
@@ -114,8 +137,11 @@ export function PartsPage() {
   }, [load])
 
   const filteredCheckIns = useMemo(
-    () => checkIns.filter((row) => checkInMatchesQuery(row, search)),
-    [checkIns, search],
+    () => sortCheckIns(
+      checkIns.filter((row) => checkInMatchesQuery(row, search)),
+      checkInSort,
+    ),
+    [checkInSort, checkIns, search],
   )
   const filteredParts = useMemo(
     () => parts.filter((row) => partMatchesQuery(row, search)),
@@ -352,6 +378,20 @@ export function PartsPage() {
             <button type="button" className="parts-toolbar-btn" onClick={() => void load()} disabled={loading}>
               Refresh
             </button>
+            {workspaceTab === 'checkin' ? (
+              <label className="parts-sort">
+                <span>Sort</span>
+                <select
+                  value={checkInSort}
+                  onChange={(e) => setCheckInSort(e.target.value as CheckInSort)}
+                  aria-label="Sort check-ins"
+                >
+                  <option value="date-desc">Newest first</option>
+                  <option value="po-asc">PO (A–Z)</option>
+                  <option value="po-desc">PO (Z–A)</option>
+                </select>
+              </label>
+            ) : null}
             {workspaceTab === 'parts' && filteredParts.length > 0 && (
               <button type="button" className="parts-toolbar-btn" onClick={expandAllParts}>
                 {allPartsExpanded ? 'Collapse all' : 'Expand all'}
