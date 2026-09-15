@@ -31,100 +31,116 @@ function RequestCard({
   onReceived: (id: string) => void
   busy: string | null
 }) {
+  const [expanded, setExpanded] = useState(false)
   const isOrdered = request.status === 'ordered' || request.status === 'received'
   const isReceived = request.status === 'received'
   const rowBusy = busy === request.id
+  const title = request.name ?? request.ipn ?? 'Unknown part'
 
   return (
-    <article className="portal-card section">
-      <div className="portal-card-head">
-        <div>
-          <h3 className="portal-card-title">{request.name ?? request.ipn ?? 'Unknown part'}</h3>
-          <p className="portal-card-subtitle">
-            Requested {formatWhen(request.created_at)} · {request.requested_by ?? 'Unknown'}
-          </p>
-        </div>
+    <article className={`portal-row${expanded ? ' portal-row-open' : ''}`}>
+      <button
+        type="button"
+        className="portal-row-header"
+        onClick={() => setExpanded((open) => !open)}
+        aria-expanded={expanded}
+      >
+        <span className="portal-row-title">{title}</span>
+        <span className="portal-row-qty">Qty {request.quantity}</span>
         <span className={`portal-badge portal-badge-${request.status}`}>{request.status}</span>
-      </div>
+        <span className="portal-row-when">{formatWhen(request.created_at)}</span>
+        <span className="portal-row-chevron">{expanded ? '▾' : '▸'}</span>
+      </button>
 
-      <dl className="portal-details">
-        <div className="portal-detail">
-          <dt>IPN</dt>
-          <dd>{request.ipn ?? '—'}</dd>
-        </div>
-        <div className="portal-detail">
-          <dt>Category</dt>
-          <dd>{request.category_name ?? '—'}</dd>
-        </div>
-        <div className="portal-detail">
-          <dt>Quantity</dt>
-          <dd>{request.quantity}</dd>
-        </div>
-        <div className="portal-detail">
-          <dt>Job / project</dt>
-          <dd>{request.job ?? '—'}</dd>
-        </div>
-        <div className="portal-detail">
-          <dt>Notes</dt>
-          <dd>{request.notes ?? '—'}</dd>
-        </div>
-        <div className="portal-detail">
-          <dt>Barcode hash</dt>
-          <dd>{request.barcode_hash ?? '—'}</dd>
-        </div>
-        <div className="portal-detail">
-          <dt>Vendor</dt>
-          <dd>{request.vendor_name ?? '—'}</dd>
-        </div>
-        <div className="portal-detail portal-detail-wide">
-          <dt>Link</dt>
-          <dd>
-            {request.link ? (
-              <a href={request.link} target="_blank" rel="noreferrer">
-                {request.link}
-              </a>
-            ) : (
-              '—'
-            )}
-          </dd>
-        </div>
-        {isReceived ? (
-          <>
+      {expanded ? (
+        <div className="portal-row-body">
+          <dl className="portal-details">
             <div className="portal-detail">
-              <dt>Ordered</dt>
-              <dd>{formatWhen(request.ordered_at)}</dd>
+              <dt>IPN</dt>
+              <dd>{request.ipn ?? '—'}</dd>
             </div>
             <div className="portal-detail">
-              <dt>Received</dt>
-              <dd>{formatWhen(request.received_at)}</dd>
+              <dt>Requested by</dt>
+              <dd>{request.requested_by ?? '—'}</dd>
             </div>
-          </>
-        ) : null}
-      </dl>
+            <div className="portal-detail">
+              <dt>Category</dt>
+              <dd>{request.category_name ?? '—'}</dd>
+            </div>
+            <div className="portal-detail">
+              <dt>Quantity</dt>
+              <dd>{request.quantity}</dd>
+            </div>
+            <div className="portal-detail">
+              <dt>Job / project</dt>
+              <dd>{request.job ?? '—'}</dd>
+            </div>
+            <div className="portal-detail">
+              <dt>Notes</dt>
+              <dd>{request.notes ?? '—'}</dd>
+            </div>
+            <div className="portal-detail">
+              <dt>Barcode hash</dt>
+              <dd>{request.barcode_hash ?? '—'}</dd>
+            </div>
+            <div className="portal-detail">
+              <dt>Vendor</dt>
+              <dd>{request.vendor_name ?? '—'}</dd>
+            </div>
+            <div className="portal-detail portal-detail-wide">
+              <dt>Link</dt>
+              <dd>
+                {request.link ? (
+                  <a href={request.link} target="_blank" rel="noreferrer">
+                    {request.link}
+                  </a>
+                ) : (
+                  '—'
+                )}
+              </dd>
+            </div>
+            {isReceived ? (
+              <>
+                <div className="portal-detail">
+                  <dt>Ordered</dt>
+                  <dd>{formatWhen(request.ordered_at)}</dd>
+                </div>
+                <div className="portal-detail">
+                  <dt>Received</dt>
+                  <dd>{formatWhen(request.received_at)}</dd>
+                </div>
+              </>
+            ) : null}
+          </dl>
 
-      {showActions ? (
-        <div className="portal-actions">
-          <label className="portal-check">
-            <input
-              type="checkbox"
-              checked={isOrdered}
-              disabled={rowBusy || isReceived}
-              onChange={(e) => onOrderedChange(request.id, e.target.checked)}
-            />
-            <span>Part ordered</span>
-          </label>
-          <label className={`portal-check ${!isOrdered ? 'portal-check-disabled' : ''}`}>
-            <input
-              type="checkbox"
-              checked={isReceived}
-              disabled={rowBusy || !isOrdered || isReceived}
-              onChange={() => {
-                if (!isReceived && isOrdered) onReceived(request.id)
-              }}
-            />
-            <span>Part received</span>
-          </label>
-          {rowBusy ? <span className="portal-saving">Saving…</span> : null}
+          {showActions ? (
+            <div className="portal-actions">
+              <label className="portal-check" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={isOrdered}
+                  disabled={rowBusy || isReceived}
+                  onChange={(e) => onOrderedChange(request.id, e.target.checked)}
+                />
+                <span>Part ordered</span>
+              </label>
+              <label
+                className={`portal-check ${!isOrdered ? 'portal-check-disabled' : ''}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={isReceived}
+                  disabled={rowBusy || !isOrdered || isReceived}
+                  onChange={() => {
+                    if (!isReceived && isOrdered) onReceived(request.id)
+                  }}
+                />
+                <span>Part received</span>
+              </label>
+              {rowBusy ? <span className="portal-saving">Saving…</span> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>
