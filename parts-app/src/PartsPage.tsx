@@ -287,13 +287,19 @@ export function PartsPage() {
                 <div className="parts-list">
                   {filteredCheckIns.map((row) => (
                     <div key={row.id} className="parts-card parts-checkin-row">
-                      <button
-                        type="button"
-                        className="parts-checkin-name"
-                        onClick={() => openPartFromCheckIn(row)}
-                      >
-                        {displayPartTitle(row)}
-                      </button>
+                      <div className="parts-checkin-main">
+                        <button
+                          type="button"
+                          className="parts-checkin-name"
+                          onClick={() => openPartFromCheckIn(row)}
+                        >
+                          {displayPartTitle(row)}
+                        </button>
+                        <div className="parts-checkin-po">
+                          <span className="parts-checkin-po-label">PO</span>
+                          <span>{row.po?.trim() || '—'}</span>
+                        </div>
+                      </div>
                       <span className="parts-checkin-when">
                         {formatCheckInWhen(row.check_in_date, row.scanned_at)}
                       </span>

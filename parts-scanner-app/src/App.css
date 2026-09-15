@@ -9,11 +9,19 @@
   margin-bottom: 1.5rem;
 }
 
+.app-subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-align: center;
+}
+
 .app-header h1 {
   font-size: 1.5rem;
   font-weight: 700;
   margin: 0 0 0.25rem 0;
   color: #f1f5f9;
+  text-align: center;
 }
 
 .home-title-link {
@@ -24,12 +32,6 @@
 .home-title-link:hover {
   text-decoration: underline;
   text-underline-offset: 0.12em;
-}
-
-.app-subtitle {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #94a3b8;
 }
 
 .app-main {
@@ -180,12 +182,14 @@
   border-radius: 8px;
   padding: 0.85rem 1rem;
   margin: 0 0 1rem;
+  text-align: center;
 }
 
 .missing-part-panel p {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
   line-height: 1.4;
+  text-align: center;
 }
 
 .missing-part-panel .btn {
@@ -241,6 +245,7 @@
 
 .btn-full {
   width: 100%;
+  text-align: center;
 }
 
 .scan-now-btn {

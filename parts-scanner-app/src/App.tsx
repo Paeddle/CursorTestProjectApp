@@ -11,6 +11,7 @@ import { fetchParts, findExistingPart, insertCheckIn, insertPartIfMissing } from
 import {
   CATALOG_FIELD_LABELS,
   EMPTY_PART_FIELDS,
+  PART_FIELD_LABELS,
   type PartFields,
   type TrackedPart,
 } from './types'
@@ -46,10 +47,21 @@ function readScannerMode(): ScannerMode {
   return 'checkin'
 }
 
-function catalogScannerHref(upc?: string): string {
-  if (typeof window === 'undefined') return '/parts-scanner/parts/'
-  const url = new URL(`${window.location.origin}/parts-scanner/parts/`)
-  if (upc?.trim()) url.searchParams.set('upc', upc.trim())
+function catalogScannerHref(fields?: { upc?: string; po?: string; partName?: string }): string {
+  if (typeof window === 'undefined') return '?mode=parts'
+  const url = new URL(window.location.href)
+  url.searchParams.set('mode', 'parts')
+  const upc = fields?.upc?.trim()
+  const po = fields?.po?.trim()
+  const partName = fields?.partName?.trim()
+  if (upc) url.searchParams.set('upc', upc)
+  else url.searchParams.delete('upc')
+  url.searchParams.delete('code')
+  url.searchParams.delete('barcode')
+  if (po) url.searchParams.set('po', po)
+  else url.searchParams.delete('po')
+  if (partName) url.searchParams.set('name', partName)
+  else url.searchParams.delete('name')
   return url.toString()
 }
 
@@ -64,7 +76,7 @@ export default function App() {
   const isCatalog = mode === 'parts'
   const title = isCatalog ? 'Parts Scanner' : 'Check-In Scanner'
   const subtitle = isCatalog
-    ? 'Scan to add a part to the inventory catalog.'
+    ? 'Scan to add a part to the inventory catalog and check it in.'
     : 'Scan a barcode or search a part name to check it in.'
 
   const [showScanner, setShowScanner] = useState(false)
@@ -79,6 +91,7 @@ export default function App() {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const nameWrapRef = useRef<HTMLDivElement>(null)
+  const openingCatalogRef = useRef(false)
 
   useEffect(() => {
     document.title = title
@@ -109,13 +122,14 @@ export default function App() {
 
   const applyMatchedPart = (part: TrackedPart, upcFallback?: string) => {
     setSelectedPart(part)
-    setFields({
+    setFields((prev) => ({
       ...fieldsFromRecord(part),
-      upc_code: part.upc_code || upcFallback || '',
-    })
+      upc_code: part.upc_code || upcFallback || prev.upc_code,
+      po: prev.po,
+    }))
   }
 
-  const applyBarcode = useCallback(async (raw: string) => {
+  const applyBarcode = useCallback(async (raw: string, extras?: Partial<Pick<PartFields, 'po' | 'part_name'>>) => {
     const barcode = extractBarcode(raw)
     if (!barcode) return
     setShowScanner(false)
@@ -123,7 +137,12 @@ export default function App() {
     setStatus(null)
     setCheckInAt(new Date())
     setLookupLoading(true)
-    const next: PartFields = { ...EMPTY_PART_FIELDS, upc_code: barcode }
+    const next: PartFields = {
+      ...EMPTY_PART_FIELDS,
+      upc_code: barcode,
+      po: extras?.po?.trim() ?? '',
+      part_name: extras?.part_name?.trim() ?? '',
+    }
     setFields(next)
     setSelectedPart(null)
     try {
@@ -151,7 +170,18 @@ export default function App() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const upc = params.get('upc') || params.get('code') || params.get('barcode')
-    if (upc) void applyBarcode(upc)
+    const extras = {
+      po: params.get('po') || '',
+      part_name: params.get('name') || params.get('part_name') || '',
+    }
+    if (upc) {
+      void applyBarcode(upc, extras)
+      return
+    }
+    if (extras.po || extras.part_name) {
+      setFormOpen(true)
+      setFields((prev) => ({ ...prev, ...extras }))
+    }
   }, [applyBarcode])
 
   const setField = (key: keyof PartFields, value: string) => {
@@ -210,10 +240,21 @@ export default function App() {
   const showAddPartCta =
     !isCatalog &&
     formOpen &&
-    !lookupLoading &&
     !selectedPart &&
     (fields.upc_code.trim().length > 0 || nameQuery.length > 0) &&
     nameSuggestions.length === 0
+
+  const openCatalogScanner = () => {
+    if (openingCatalogRef.current) return
+    openingCatalogRef.current = true
+    window.location.assign(
+      catalogScannerHref({
+        upc: fields.upc_code,
+        po: fields.po,
+        partName: fields.part_name,
+      }),
+    )
+  }
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault()
@@ -224,9 +265,16 @@ export default function App() {
       if (isCatalog) {
         const existing = await findExistingPart(fields)
         if (existing) {
+          const snapshot = {
+            ...fieldsFromRecord(existing),
+            upc_code: fields.upc_code.trim() || existing.upc_code,
+            part_name: fields.part_name.trim() || existing.part_name,
+            po: fields.po.trim(),
+          }
+          await insertCheckIn(snapshot, todayLocalDate(), existing.id)
           setStatus({
             type: 'success',
-            message: `Already in catalog: ${displayPartTitle(existing)}`,
+            message: `Already in catalog. Checked in: ${displayPartTitle(snapshot)}`,
           })
           resetForm()
           return
@@ -237,9 +285,14 @@ export default function App() {
           return
         }
         const part = await insertPartIfMissing({ ...fields, po: '' })
+        const snapshot = {
+          ...fieldsFromRecord(part),
+          po: fields.po.trim(),
+        }
+        await insertCheckIn(snapshot, todayLocalDate(), part.id)
         setStatus({
           type: 'success',
-          message: `Added to catalog: ${displayPartTitle(part)}`,
+          message: `Added to catalog and checked in: ${displayPartTitle(part)}`,
         })
         resetForm()
         return
@@ -257,6 +310,7 @@ export default function App() {
         ...fieldsFromRecord(selectedPart),
         upc_code: fields.upc_code.trim() || selectedPart.upc_code,
         part_name: fields.part_name.trim() || selectedPart.part_name,
+        po: fields.po.trim(),
       }
       await insertCheckIn(snapshot, todayLocalDate(), selectedPart.id)
       setStatus({
@@ -341,11 +395,11 @@ export default function App() {
               <div className="last-scan-panel" role="status">
                 <strong>Existing part</strong>
                 <p className="last-scan-panel-main">{displayPartTitle(selectedPart)}</p>
-                <p className="last-scan-panel-meta">This part is already in the catalog. Saving will not create a duplicate.</p>
+                <p className="last-scan-panel-meta">This part is already in the catalog. Saving will check it in without creating a duplicate.</p>
               </div>
             )}
 
-            {CATALOG_FIELD_LABELS.map(({ key, label }) => (
+            {PART_FIELD_LABELS.map(({ key, label }) => (
               <div className="form-field" key={key}>
                 <label className="label" htmlFor={`field-${key}`}>
                   {label}
@@ -367,7 +421,13 @@ export default function App() {
                     value={fields[key]}
                     onChange={(e) => setField(key, e.target.value)}
                     onBlur={key === 'upc_code' || key === 'ipn' ? () => void lookupUpc(fields.upc_code) : undefined}
-                    placeholder={key === 'upc_code' ? 'Scan or type UPC' : undefined}
+                    placeholder={
+                      key === 'upc_code'
+                        ? 'Scan or type UPC'
+                        : key === 'po'
+                          ? 'Purchase order number'
+                          : undefined
+                    }
                     autoComplete="off"
                   />
                 )}
@@ -387,7 +447,7 @@ export default function App() {
                 Scan another
               </button>
               <button type="submit" className="btn btn-primary" disabled={submitting || lookupLoading}>
-                {submitting ? 'Saving…' : 'Save part'}
+                {submitting ? 'Saving…' : 'Save part and Check-In'}
               </button>
             </div>
           </form>
@@ -405,6 +465,21 @@ export default function App() {
             <div className="form-field">
               <span className="label">Check-in date and time</span>
               <div className="readonly-display">{formatDateTime(checkInAt.toISOString())}</div>
+            </div>
+
+            <div className="form-field">
+              <label className="label" htmlFor="field-po">
+                PO
+              </label>
+              <input
+                id="field-po"
+                type="text"
+                className="input"
+                value={fields.po}
+                onChange={(e) => setField('po', e.target.value)}
+                placeholder="Purchase order number"
+                autoComplete="off"
+              />
             </div>
 
             <div className="form-field">
@@ -438,31 +513,27 @@ export default function App() {
                 placeholder="Start typing to search the catalog"
                 autoComplete="off"
                 role="combobox"
-                aria-expanded={nameFocused && fields.part_name.trim().length > 0}
+                aria-expanded={nameFocused && nameSuggestions.length > 0}
                 aria-controls="part-name-suggestions"
               />
-              {nameFocused && fields.part_name.trim().length > 0 && (
+              {nameFocused && nameSuggestions.length > 0 && (
                 <ul id="part-name-suggestions" className="suggest-list" role="listbox">
-                  {nameSuggestions.length === 0 ? (
-                    <li className="suggest-empty">No matching parts in the catalog</li>
-                  ) : (
-                    nameSuggestions.map((part) => (
-                      <li key={part.id}>
-                        <button
-                          type="button"
-                          className="suggest-item"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            applyMatchedPart(part)
-                            setNameFocused(false)
-                          }}
-                        >
-                          <span className="suggest-item-title">{displayPartTitle(part)}</span>
-                          {part.upc_code ? <span className="suggest-item-meta">UPC {part.upc_code}</span> : null}
-                        </button>
-                      </li>
-                    ))
-                  )}
+                  {nameSuggestions.map((part) => (
+                    <li key={part.id}>
+                      <button
+                        type="button"
+                        className="suggest-item"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          applyMatchedPart(part)
+                          setNameFocused(false)
+                        }}
+                      >
+                        <span className="suggest-item-title">{displayPartTitle(part)}</span>
+                        {part.upc_code ? <span className="suggest-item-meta">UPC {part.upc_code}</span> : null}
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -474,9 +545,14 @@ export default function App() {
                     ? 'This UPC or part name is not in the catalog yet.'
                     : 'Choose a catalog part to check in.'}
                 </p>
-                <a className="btn btn-primary btn-full" href={catalogScannerHref(fields.upc_code)}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-full"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={openCatalogScanner}
+                >
                   Add part in Parts Scanner
-                </a>
+                </button>
               </div>
             )}
 

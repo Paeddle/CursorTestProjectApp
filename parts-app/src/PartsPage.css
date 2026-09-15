@@ -240,10 +240,17 @@
 
 .parts-checkin-row {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.45rem 0.7rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.parts-checkin-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .parts-checkin-name {
@@ -263,6 +270,22 @@
 
 .parts-checkin-name:hover {
   color: #bae6fd;
+}
+
+.parts-checkin-po {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+}
+
+.parts-checkin-po-label {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .parts-checkin-when {
