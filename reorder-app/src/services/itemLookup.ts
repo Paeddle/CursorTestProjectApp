@@ -7,7 +7,7 @@ function normalizeIpn(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
-const RESERVED_PATHS = new Set(['reorder', 'portal', 'r', 'index.html', ''])
+const RESERVED_PATHS = new Set(['reorder', 'portal', 'r', 'scan', 'index.html', ''])
 
 function lastPathSegment(pathname: string): string {
   const segments = pathname.replace(/\/+$/, '').split('/').filter(Boolean)

@@ -11,6 +11,7 @@ export function isPublicReorderPath(pathname: string, search = ''): boolean {
   if (segments.length >= 2 && segments[segments.length - 2] === 'r') return true
 
   const last = segments[segments.length - 1]
+  if (last === 'scan') return true
   if (!last || last === 'reorder' || last === 'portal' || last === 'index.html') return false
   return segments.length >= 2
 }

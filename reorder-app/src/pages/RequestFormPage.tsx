@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import QRScanner from '../components/QRScanner'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { fetchPartByIpn, ipnFromLocation, ipnFromScannedValue } from '../services/itemLookup'
 import { submitReorderRequest } from '../services/reorderService'
@@ -17,12 +18,14 @@ function quantityFromPart(part: InventreePartRecord | null): string {
 
 export default function RequestFormPage() {
   const { ipn: routeIpn } = useParams<{ ipn?: string }>()
+  const navigate = useNavigate()
   const [ipnInput, setIpnInput] = useState('')
   const [part, setPart] = useState<InventreePartRecord | null>(null)
   const [lookupDone, setLookupDone] = useState(false)
   const [loadingPart, setLoadingPart] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submittedId, setSubmittedId] = useState<string | null>(null)
+  const [showScanner, setShowScanner] = useState(false)
   const [status, setStatus] = useState<Status>(null)
 
   const [quantity, setQuantity] = useState('1')
@@ -139,7 +142,7 @@ export default function RequestFormPage() {
     }
   }
 
-  const resetForm = () => {
+  const startAnotherScan = () => {
     setSubmittedId(null)
     setIpnInput('')
     setPart(null)
@@ -149,8 +152,27 @@ export default function RequestFormPage() {
     setRequestedBy('')
     setNotes('')
     setStatus(null)
-    window.history.replaceState({}, '', import.meta.env.BASE_URL || '/')
+    setShowScanner(true)
+    navigate('/scan', { replace: true })
   }
+
+  const handleQrScan = useCallback(
+    (value: string) => {
+      const ipn = ipnFromScannedValue(value)
+      setShowScanner(false)
+      if (!ipn) {
+        setStatus({
+          type: 'error',
+          message: 'Could not read an IPN from that QR code. Try another tag.',
+        })
+        return
+      }
+      setIpnInput(ipn)
+      void lookupIpn(ipn)
+      navigate(`/r/${encodeURIComponent(ipn)}`, { replace: true })
+    },
+    [lookupIpn, navigate],
+  )
 
   if (submittedId) {
     return (
@@ -158,7 +180,7 @@ export default function RequestFormPage() {
         <div className="section success-panel">
           <h2>Request submitted</h2>
           <p>Your re-order request was saved. Someone will review it soon.</p>
-          <button type="button" className="btn btn-primary" onClick={resetForm}>
+          <button type="button" className="btn btn-primary" onClick={startAnotherScan}>
             Submit another request
           </button>
         </div>
@@ -168,6 +190,9 @@ export default function RequestFormPage() {
 
   return (
     <div className="app">
+      {showScanner ? (
+        <QRScanner onScan={handleQrScan} onClose={() => setShowScanner(false)} />
+      ) : null}
       <header className="app-header">
         <h1>
           <Link to="/" className="home-title-link">
@@ -197,6 +222,9 @@ export default function RequestFormPage() {
         <form className="app-form" onSubmit={(e) => void handleSubmit(e)}>
           <section className="section">
             <h2 className="section-title">IPN</h2>
+            <button type="button" className="btn btn-primary" onClick={() => setShowScanner(true)}>
+              Scan QR code
+            </button>
             <div className="sku-row">
               <input
                 type="text"

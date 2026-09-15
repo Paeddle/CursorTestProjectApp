@@ -42,6 +42,7 @@ export default function App() {
             </RequireShsUnlock>
           }
         />
+        <Route path="/scan" element={<RequestFormPage />} />
         <Route path="/r/:ipn" element={<RequestFormPage />} />
         <Route path="/:ipn" element={<RequestFormPage />} />
       </Routes>
