@@ -29,6 +29,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Check secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          INVENTREE_BASE_URL: ${{ secrets.INVENTREE_BASE_URL }}
+          INVENTREE_API_TOKEN: ${{ secrets.INVENTREE_API_TOKEN }}
+        run: |
+          missing=0
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY INVENTREE_BASE_URL INVENTREE_API_TOKEN; do
+            eval "val=\${$name}"
+            if [ -z "$val" ]; then
+              echo "::error::$name is empty. Add it under Settings → Secrets and variables → Actions."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+          echo "All four secrets are present."
       - name: Install client
         run: npm install @supabase/supabase-js
       - name: Sync parts
