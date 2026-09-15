@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import BarcodeScanner from './components/BarcodeScanner'
+import DocumentScanner from './components/DocumentScanner'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { cropDocumentToBlob } from './lib/documentScanner'
 import {
   displayPartTitle,
   fieldsFromRecord,
@@ -18,6 +20,20 @@ import {
 import './App.css'
 
 type ScannerMode = 'checkin' | 'parts'
+
+type PendingDocument = {
+  id: string
+  name: string
+  blob: Blob
+  previewUrl: string
+}
+
+function newPendingId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
 
 function stripScanPrefixes(raw: string): string {
   return raw.trim().replace(/^(URL|URI)\s*:\s*/i, '').trim()
@@ -95,8 +111,11 @@ export default function App() {
     : 'Scan a barcode or search a part name to check it in.'
 
   const [showScanner, setShowScanner] = useState(false)
+  const [showDocScanner, setShowDocScanner] = useState(false)
   const [formOpen, setFormOpen] = useState(() => readScannerMode() !== 'parts')
   const [fields, setFields] = useState<PartFields>(EMPTY_PART_FIELDS)
+  const [quantity, setQuantity] = useState('1')
+  const [pendingDocs, setPendingDocs] = useState<PendingDocument[]>([])
   const [checkInAt, setCheckInAt] = useState(() => new Date())
   const [selectedPart, setSelectedPart] = useState<TrackedPart | null>(null)
   const [catalog, setCatalog] = useState<TrackedPart[]>([])
@@ -208,6 +227,11 @@ export default function App() {
   }
 
   const resetForm = () => {
+    setPendingDocs((prev) => {
+      prev.forEach((doc) => URL.revokeObjectURL(doc.previewUrl))
+      return []
+    })
+    setQuantity('1')
     setFields(EMPTY_PART_FIELDS)
     setCheckInAt(new Date())
     setSelectedPart(null)
@@ -215,6 +239,50 @@ export default function App() {
     setManualBarcode('')
     setNameFocused(false)
   }
+
+  const addPendingDocument = useCallback((blob: Blob, name: string) => {
+    const previewUrl = URL.createObjectURL(blob)
+    setPendingDocs((prev) => [...prev, { id: newPendingId(), name, blob, previewUrl }])
+  }, [])
+
+  const removePendingDocument = (id: string) => {
+    setPendingDocs((prev) => {
+      const next = prev.filter((doc) => doc.id !== id)
+      prev.filter((doc) => doc.id === id).forEach((doc) => URL.revokeObjectURL(doc.previewUrl))
+      return next
+    })
+  }
+
+  const handleDocumentCapture = (blob: Blob) => {
+    addPendingDocument(blob, `scan_${Date.now()}.jpg`)
+    setShowDocScanner(false)
+  }
+
+  const handleDocumentFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    for (const file of files) {
+      let blob: Blob = file
+      let name = file.name || `document_${Date.now()}.jpg`
+      if (file.type.startsWith('image/')) {
+        try {
+          const cropped = await cropDocumentToBlob(file)
+          if (cropped) {
+            blob = cropped
+            name = file.name.replace(/\.[^.]+$/, '') + '.jpg'
+          }
+        } catch {
+          blob = file
+        }
+      }
+      addPendingDocument(blob, name)
+    }
+  }
+
+  const checkInExtras = () => ({
+    quantity: Number.parseInt(quantity, 10),
+    files: pendingDocs.map((doc) => ({ blob: doc.blob, name: doc.name })),
+  })
 
   const handleManualSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -291,7 +359,7 @@ export default function App() {
             po: fields.po.trim(),
             description: fields.description.trim() || existing.description,
           }
-          await insertCheckIn(snapshot, todayLocalDate(), existing.id)
+          await insertCheckIn(snapshot, todayLocalDate(), existing.id, checkInExtras())
           window.location.assign(partsTrackerHref())
           return
         }
@@ -306,7 +374,7 @@ export default function App() {
           po: fields.po.trim(),
           description: fields.description.trim() || part.description,
         }
-        await insertCheckIn(snapshot, todayLocalDate(), part.id)
+        await insertCheckIn(snapshot, todayLocalDate(), part.id, checkInExtras())
         window.location.assign(partsTrackerHref())
         return
       }
@@ -326,7 +394,7 @@ export default function App() {
         po: fields.po.trim(),
         description: fields.description.trim() || selectedPart.description,
       }
-      await insertCheckIn(snapshot, todayLocalDate(), selectedPart.id)
+      await insertCheckIn(snapshot, todayLocalDate(), selectedPart.id, checkInExtras())
       setStatus({
         type: 'success',
         message: `Checked in: ${displayPartTitle(snapshot)}`,
@@ -448,6 +516,53 @@ export default function App() {
               </div>
             ))}
 
+            <div className="po-qty-row">
+              <div className="form-field form-field-qty">
+                <label className="label" htmlFor="field-quantity-catalog">
+                  Qty
+                </label>
+                <input
+                  id="field-quantity-catalog"
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="input input-qty"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="form-field">
+              <span className="label">Documents</span>
+              <div className="docs-row">
+                <label className="btn btn-secondary docs-file-btn">
+                  Add file
+                  <input type="file" hidden multiple accept="image/*,application/pdf" onChange={(e) => void handleDocumentFiles(e)} />
+                </label>
+                <button type="button" className="btn btn-primary" onClick={() => setShowDocScanner(true)}>
+                  Scan
+                </button>
+              </div>
+              {pendingDocs.length > 0 ? (
+                <ul className="docs-list">
+                  {pendingDocs.map((doc) => (
+                    <li key={doc.id} className="docs-item">
+                      {doc.blob.type.startsWith('image/') ? (
+                        <img src={doc.previewUrl} alt="" className="docs-thumb" />
+                      ) : null}
+                      <span className="docs-name">{doc.name}</span>
+                      <button type="button" className="docs-remove" onClick={() => removePendingDocument(doc.id)}>
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="hint">Optional packing slip or paperwork for this check-in.</p>
+              )}
+            </div>
+
             <div className="form-actions">
               <button
                 type="button"
@@ -481,19 +596,35 @@ export default function App() {
               <div className="readonly-display">{formatDateTime(checkInAt.toISOString())}</div>
             </div>
 
-            <div className="form-field">
-              <label className="label" htmlFor="field-po">
-                PO
-              </label>
-              <input
-                id="field-po"
-                type="text"
-                className="input"
-                value={fields.po}
-                onChange={(e) => setField('po', e.target.value)}
-                placeholder="Purchase order number"
-                autoComplete="off"
-              />
+            <div className="po-qty-row">
+              <div className="form-field">
+                <label className="label" htmlFor="field-po">
+                  PO
+                </label>
+                <input
+                  id="field-po"
+                  type="text"
+                  className="input"
+                  value={fields.po}
+                  onChange={(e) => setField('po', e.target.value)}
+                  placeholder="Purchase order number"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="form-field form-field-qty">
+                <label className="label" htmlFor="field-quantity">
+                  Qty
+                </label>
+                <input
+                  id="field-quantity"
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="input input-qty"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="form-field">
@@ -567,6 +698,36 @@ export default function App() {
               />
             </div>
 
+            <div className="form-field">
+              <span className="label">Documents</span>
+              <div className="docs-row">
+                <label className="btn btn-secondary docs-file-btn">
+                  Add file
+                  <input type="file" hidden multiple accept="image/*,application/pdf" onChange={(e) => void handleDocumentFiles(e)} />
+                </label>
+                <button type="button" className="btn btn-primary" onClick={() => setShowDocScanner(true)}>
+                  Scan
+                </button>
+              </div>
+              {pendingDocs.length > 0 ? (
+                <ul className="docs-list">
+                  {pendingDocs.map((doc) => (
+                    <li key={doc.id} className="docs-item">
+                      {doc.blob.type.startsWith('image/') ? (
+                        <img src={doc.previewUrl} alt="" className="docs-thumb" />
+                      ) : null}
+                      <span className="docs-name">{doc.name}</span>
+                      <button type="button" className="docs-remove" onClick={() => removePendingDocument(doc.id)}>
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="hint">Optional packing slip or paperwork for this check-in.</p>
+              )}
+            </div>
+
             {showAddPartCta && (
               <div className="missing-part-panel" role="status">
                 <p>
@@ -610,6 +771,9 @@ export default function App() {
       </main>
 
       {showScanner && <BarcodeScanner onScan={handleScan} onClose={() => setShowScanner(false)} />}
+      {showDocScanner && (
+        <DocumentScanner onCapture={handleDocumentCapture} onClose={() => setShowDocScanner(false)} />
+      )}
     </div>
   )
 }

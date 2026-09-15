@@ -302,6 +302,19 @@
   flex-shrink: 0;
 }
 
+.parts-checkin-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.15rem;
+}
+
+.parts-checkin-doc-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
 .parts-card--focus {
   outline: 1px solid #38bdf8;
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);

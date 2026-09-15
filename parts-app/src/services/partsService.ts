@@ -3,6 +3,7 @@ import {
   fieldsFromRecord,
   normalizeLookupKey,
   nullableFields,
+  parseCheckInDocuments,
 } from '../partsHelpers'
 import type { PartCheckIn, PartFields, TrackedPart } from '../types'
 
@@ -21,7 +22,10 @@ export async function fetchCheckIns(): Promise<PartCheckIn[]> {
     .select('*')
     .order('scanned_at', { ascending: false })
   if (error) throw new Error(error.message)
-  return (data ?? []) as PartCheckIn[]
+  return (data ?? []).map((row) => ({
+    ...(row as PartCheckIn),
+    documents: parseCheckInDocuments((row as PartCheckIn).documents),
+  }))
 }
 
 export async function fetchParts(): Promise<TrackedPart[]> {
@@ -102,8 +106,21 @@ export async function insertCheckIn(
 }
 
 export async function deleteCheckIn(id: string): Promise<void> {
-  const { error } = await requireClient().from('part_checkins').delete().eq('id', id)
+  const client = requireClient()
+  const { data } = await client.from('part_checkins').select('documents').eq('id', id).maybeSingle()
+  const documents = parseCheckInDocuments(data?.documents)
+  const { error } = await client.from('part_checkins').delete().eq('id', id)
   if (error) throw new Error(error.message)
+  for (const doc of documents) {
+    try {
+      const u = new URL(doc.url)
+      const m = u.pathname.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
+      if (!m) continue
+      await client.storage.from(decodeURIComponent(m[1])).remove([decodeURIComponent(m[2])])
+    } catch {
+      /* ignore storage cleanup */
+    }
+  }
 }
 
 export async function deletePart(id: string): Promise<void> {

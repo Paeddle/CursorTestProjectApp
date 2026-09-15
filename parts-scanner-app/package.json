@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "html5-qrcode": "^2.3.8",
+    "jscanify": "^1.4.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

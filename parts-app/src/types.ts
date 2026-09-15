@@ -15,12 +15,19 @@ export type TrackedPart = PartFields & {
   updated_at: string
 }
 
+export type CheckInDocument = {
+  name: string
+  url: string
+}
+
 export type PartCheckIn = PartFields & {
   id: string
   part_id: string | null
   check_in_date: string
   scanned_at: string
   created_at: string
+  quantity?: number | null
+  documents?: CheckInDocument[] | null
 }
 
 export const EMPTY_PART_FIELDS: PartFields = {

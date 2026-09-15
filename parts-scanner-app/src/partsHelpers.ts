@@ -1,4 +1,4 @@
-import type { PartCheckIn, PartFields, TrackedPart } from './types'
+import type { CheckInDocument, PartCheckIn, PartFields, TrackedPart } from './types'
 import { EMPTY_PART_FIELDS } from './types'
 
 export function trimField(value: string | null | undefined): string {
@@ -107,10 +107,33 @@ export function matchesQuery(row: Partial<PartFields>, query: string): boolean {
   return hay.includes(q)
 }
 
+export function parseCheckInDocuments(value: unknown): CheckInDocument[] {
+  if (!Array.isArray(value)) return []
+  const out: CheckInDocument[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const rec = item as { name?: unknown; url?: unknown }
+    const url = typeof rec.url === 'string' ? rec.url.trim() : ''
+    if (!url) continue
+    const name = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : 'Document'
+    out.push({ name, url })
+  }
+  return out
+}
+
+export function checkInQuantity(row: Pick<PartCheckIn, 'quantity'>): number {
+  const n = Number(row.quantity)
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
+
 export function checkInMatchesQuery(row: PartCheckIn, query: string): boolean {
   if (matchesQuery(row, query)) return true
   const q = query.trim().toLowerCase()
-  return row.check_in_date.toLowerCase().includes(q)
+  if (row.check_in_date.toLowerCase().includes(q)) return true
+  if (String(checkInQuantity(row)).includes(q)) return true
+  return parseCheckInDocuments(row.documents).some(
+    (doc) => doc.name.toLowerCase().includes(q) || doc.url.toLowerCase().includes(q),
+  )
 }
 
 export function partMatchesQuery(row: TrackedPart, query: string): boolean {

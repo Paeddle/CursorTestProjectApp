@@ -3,8 +3,11 @@ import {
   fieldsFromRecord,
   normalizeLookupKey,
   nullableFields,
+  parseCheckInDocuments,
 } from '../partsHelpers'
-import type { PartCheckIn, PartFields, TrackedPart } from '../types'
+import type { CheckInDocument, PartCheckIn, PartFields, TrackedPart } from '../types'
+
+const DOCUMENT_BUCKETS = ['checkin-documents', 'po-documents', 'inventory-images']
 
 function requireClient() {
   if (!supabase) throw new Error('Supabase is not configured.')
@@ -15,13 +18,38 @@ function escapeIlikeExact(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
+function normalizeQuantity(value: number | string | undefined): number {
+  const n = typeof value === 'string' ? parseInt(value, 10) : value
+  if (!Number.isFinite(n) || (n ?? 0) < 1) return 1
+  return Math.min(99999, Math.round(n as number))
+}
+
+function asCheckIn(row: PartCheckIn): PartCheckIn {
+  return {
+    ...row,
+    quantity: normalizeQuantity(row.quantity ?? 1),
+    documents: parseCheckInDocuments(row.documents),
+  }
+}
+
+function storagePathFromPublicUrl(url: string): { bucket: string; path: string } | null {
+  try {
+    const u = new URL(url)
+    const m = u.pathname.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
+    if (!m) return null
+    return { bucket: decodeURIComponent(m[1]), path: decodeURIComponent(m[2]) }
+  } catch {
+    return null
+  }
+}
+
 export async function fetchCheckIns(): Promise<PartCheckIn[]> {
   const { data, error } = await requireClient()
     .from('part_checkins')
     .select('*')
     .order('scanned_at', { ascending: false })
   if (error) throw new Error(error.message)
-  return (data ?? []) as PartCheckIn[]
+  return (data ?? []).map((row) => asCheckIn(row as PartCheckIn))
 }
 
 export async function fetchParts(): Promise<TrackedPart[]> {
@@ -82,28 +110,97 @@ export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPa
   return data as TrackedPart
 }
 
+export async function uploadCheckInFile(
+  checkInId: string,
+  blob: Blob,
+  fileName: string,
+): Promise<CheckInDocument> {
+  const client = requireClient()
+  const safeName = fileName.replace(/[^\w.\-]+/g, '_').replace(/^_+|_+$/g, '') || 'document.jpg'
+  const ext = safeName.includes('.') ? safeName.split('.').pop() : blob.type.includes('png') ? 'png' : 'jpg'
+  const path = `${checkInId}/${Date.now()}_${safeName.replace(/\.[^.]+$/, '')}.${ext}`
+  let lastError = 'Could not upload document.'
+  for (const bucket of DOCUMENT_BUCKETS) {
+    const { error } = await client.storage.from(bucket).upload(path, blob, {
+      upsert: false,
+      contentType: blob.type || 'image/jpeg',
+    })
+    if (!error) {
+      const { data } = client.storage.from(bucket).getPublicUrl(path)
+      return { name: fileName, url: data.publicUrl }
+    }
+    lastError = error.message
+  }
+  throw new Error(
+    `${lastError} Run supabase/add-part-checkin-documents.sql in the Supabase SQL Editor if the check-in documents bucket is missing.`,
+  )
+}
+
 export async function insertCheckIn(
   fields: PartFields,
   checkInDate: string,
   partId: string | null,
+  extras?: { quantity?: number; files?: { blob: Blob; name: string }[] },
 ): Promise<PartCheckIn> {
-  const payload = {
+  const client = requireClient()
+  const quantity = normalizeQuantity(extras?.quantity ?? 1)
+  const base = {
     ...nullableFields(fields),
     part_id: partId,
     check_in_date: checkInDate || null,
   }
-  const { data, error } = await requireClient()
+  const withQty = { ...base, quantity, documents: [] as CheckInDocument[] }
+
+  let inserted: PartCheckIn
+  const first = await client.from('part_checkins').insert(withQty).select('*').single()
+  if (first.error) {
+    if (!/quantity|documents|schema cache|column/i.test(first.error.message)) {
+      throw new Error(first.error.message)
+    }
+    const fallback = await client.from('part_checkins').insert(base).select('*').single()
+    if (fallback.error) throw new Error(fallback.error.message)
+    inserted = asCheckIn(fallback.data as PartCheckIn)
+    if (extras?.files?.length) {
+      throw new Error(
+        'Check-in saved, but quantity/documents columns are missing. Run supabase/add-part-checkin-documents.sql in the Supabase SQL Editor, then try again.',
+      )
+    }
+    return inserted
+  }
+  inserted = asCheckIn(first.data as PartCheckIn)
+
+  const files = extras?.files ?? []
+  if (files.length === 0) return inserted
+
+  const documents: CheckInDocument[] = []
+  for (const file of files) {
+    documents.push(await uploadCheckInFile(inserted.id, file.blob, file.name))
+  }
+  const updated = await client
     .from('part_checkins')
-    .insert(payload)
+    .update({ documents })
+    .eq('id', inserted.id)
     .select('*')
     .single()
-  if (error) throw new Error(error.message)
-  return data as PartCheckIn
+  if (updated.error) {
+    throw new Error(
+      `Files uploaded, but the check-in record could not be updated: ${updated.error.message}. Run supabase/add-part-checkin-documents.sql.`,
+    )
+  }
+  return asCheckIn(updated.data as PartCheckIn)
 }
 
 export async function deleteCheckIn(id: string): Promise<void> {
-  const { error } = await requireClient().from('part_checkins').delete().eq('id', id)
+  const client = requireClient()
+  const { data } = await client.from('part_checkins').select('documents').eq('id', id).maybeSingle()
+  const documents = parseCheckInDocuments(data?.documents)
+  const { error } = await client.from('part_checkins').delete().eq('id', id)
   if (error) throw new Error(error.message)
+  for (const doc of documents) {
+    const loc = storagePathFromPublicUrl(doc.url)
+    if (!loc) continue
+    await client.storage.from(loc.bucket).remove([loc.path]).catch(() => undefined)
+  }
 }
 
 export async function deletePart(id: string): Promise<void> {

@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { isSupabaseConfigured } from './lib/supabase'
 import {
   checkInMatchesQuery,
+  checkInQuantity,
   displayPartTitle,
   formatCheckInWhen,
   formatDateTime,
   isHttpUrl,
   normalizeLookupKey,
+  parseCheckInDocuments,
   partMatchesQuery,
   trimField,
 } from './partsHelpers'
@@ -317,6 +319,25 @@ export function PartsPage() {
                           <div className="parts-checkin-po">
                             <span className="parts-checkin-po-label">Description</span>
                             <span>{row.description.trim()}</span>
+                          </div>
+                        ) : null}
+                        <div className="parts-checkin-po">
+                          <span className="parts-checkin-po-label">Qty</span>
+                          <span>{checkInQuantity(row)}</span>
+                        </div>
+                        {parseCheckInDocuments(row.documents).length > 0 ? (
+                          <div className="parts-checkin-docs">
+                            {parseCheckInDocuments(row.documents).map((doc, index) => (
+                              <a
+                                key={`${doc.url}-${index}`}
+                                className="parts-checkin-doc-link"
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {doc.name || `Document ${index + 1}`}
+                              </a>
+                            ))}
                           </div>
                         ) : null}
                       </div>
