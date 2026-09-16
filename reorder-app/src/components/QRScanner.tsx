@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { Html5Qrcode, Html5QrcodeCameraScanConfig, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { ensureHtml5QrcodeRobustLiveDecode } from '../html5QrcodeRobustPatch'
 import './QRScanner.css'
@@ -110,7 +111,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const scanDoneRef = useRef(false)
+  const onScanRef = useRef(onScan)
   const [cameraError, setCameraError] = useState<string | null>(null)
+
+  onScanRef.current = onScan
 
   useEffect(() => {
     scanDoneRef.current = false
@@ -124,14 +128,15 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       getContainer: () => containerRef.current,
       detector,
       scanDoneRef,
-      onFound: onScan,
+      onFound: (text) => onScanRef.current(text),
     })
-  }, [cameraError, onScan])
+  }, [cameraError])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
+    let cancelled = false
     setCameraError(null)
     const scanner = new Html5Qrcode(container.id, {
       verbose: false,
@@ -140,9 +145,9 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     scannerRef.current = scanner
 
     const onSuccess = (decodedText: string) => {
-      if (scanDoneRef.current) return
+      if (cancelled || scanDoneRef.current) return
       scanDoneRef.current = true
-      onScan(decodedText.trim())
+      onScanRef.current(decodedText.trim())
     }
     const onError = () => {}
 
@@ -154,6 +159,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
     Html5Qrcode.getCameras()
       .then((cameras) => {
+        if (cancelled) return
         if (!cameras || cameras.length === 0) {
           setCameraError('No cameras found. Allow camera access and try again.')
           return
@@ -173,29 +179,42 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         })
 
         return scanner.start(cameraId, tryHighRes, onSuccess, onError).catch((firstErr: unknown) => {
+          if (cancelled) return
           console.warn('Camera start with high-res constraints failed, retrying with defaults:', firstErr)
-          scanner.clear()
-          return scanner.start(cameraId, buildConfig(), onSuccess, onError)
+          return scanner.start(
+            { facingMode: 'environment' },
+            buildConfig(),
+            onSuccess,
+            onError,
+          )
         })
       })
       .catch((err: unknown) => {
+        if (cancelled) return
         console.error('Camera start failed:', err)
         const msg = err instanceof Error ? err.message : String(err)
         setCameraError(msg || 'Camera access failed. Allow camera permission and try again.')
       })
 
     return () => {
-      scanner
+      cancelled = true
+      const running = scannerRef.current
+      scannerRef.current = null
+      if (!running) return
+      running
         .stop()
-        .then(() => {
-          scanner.clear()
-          scannerRef.current = null
-        })
         .catch(() => {})
+        .finally(() => {
+          try {
+            running.clear()
+          } catch {
+            /* already torn down */
+          }
+        })
     }
-  }, [onScan])
+  }, [])
 
-  return (
+  return createPortal(
     <div className="qr-scanner-overlay">
       <div className="qr-scanner-header">
         <div className="qr-scanner-header-text">
@@ -218,6 +237,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import QRScanner from '../components/QRScanner'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { fetchPartByIpn, ipnFromLocation, ipnFromScannedValue } from '../services/itemLookup'
@@ -8,6 +8,10 @@ import type { InventreePartRecord } from '../types'
 import '../App.css'
 
 type Status = { type: 'success' | 'error' | 'info'; message: string } | null
+
+function isScanPath(pathname: string): boolean {
+  return pathname.replace(/\/+$/, '') === '/scan'
+}
 
 function quantityFromPart(part: InventreePartRecord | null): string {
   if (part?.maximum_stock != null && part.maximum_stock > 0) {
@@ -18,6 +22,7 @@ function quantityFromPart(part: InventreePartRecord | null): string {
 
 export default function RequestFormPage() {
   const { ipn: routeIpn } = useParams<{ ipn?: string }>()
+  const location = useLocation()
   const navigate = useNavigate()
   const [ipnInput, setIpnInput] = useState('')
   const [part, setPart] = useState<InventreePartRecord | null>(null)
@@ -25,7 +30,7 @@ export default function RequestFormPage() {
   const [loadingPart, setLoadingPart] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submittedId, setSubmittedId] = useState<string | null>(null)
-  const [showScanner, setShowScanner] = useState(false)
+  const [showScanner, setShowScanner] = useState(() => isScanPath(location.pathname))
   const [status, setStatus] = useState<Status>(null)
 
   const [quantity, setQuantity] = useState('1')
@@ -76,6 +81,10 @@ export default function RequestFormPage() {
       setLoadingPart(false)
     }
   }, [])
+
+  useEffect(() => {
+    if (isScanPath(location.pathname)) setShowScanner(true)
+  }, [location.pathname])
 
   useEffect(() => {
     const fromRoute = routeIpn ? ipnFromScannedValue(decodeURIComponent(routeIpn)) : ''
@@ -152,7 +161,10 @@ export default function RequestFormPage() {
     setRequestedBy('')
     setNotes('')
     setStatus(null)
-    setShowScanner(true)
+    if (isScanPath(location.pathname)) {
+      setShowScanner(true)
+      return
+    }
     navigate('/scan', { replace: true })
   }
 
