@@ -6,6 +6,7 @@ import { fetchPartByIpn, ipnFromLocation, ipnFromScannedValue } from '../service
 import { submitReorderRequest } from '../services/reorderService'
 import type { InventreePartRecord } from '../types'
 import '../App.css'
+import '../trackerTheme.css'
 
 type Status = { type: 'success' | 'error' | 'info'; message: string } | null
 

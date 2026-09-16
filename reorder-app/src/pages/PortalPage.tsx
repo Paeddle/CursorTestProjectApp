@@ -11,6 +11,7 @@ import {
 import type { ReorderRequestRecord } from '../types'
 import '../App.css'
 import './PortalPage.css'
+import '../trackerTheme.css'
 
 type PortalTab = 'open' | 'history'
 type PortalSort = 'date-desc' | 'date-asc' | 'name-asc' | 'name-desc'
