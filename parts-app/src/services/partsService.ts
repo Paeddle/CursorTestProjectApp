@@ -88,8 +88,8 @@ export async function mergeDtoolsCsv(csvText: string): Promise<{ updated: number
   const incoming = parseDtoolsCsv(csvText)
   if (incoming.length === 0) throw new Error('That CSV has no product rows.')
   const existing = await fetchDtoolsProducts()
+  const updatesById = new Map<string, DtoolsProduct>()
   const toInsert: Partial<DtoolsProduct>[] = []
-  const toUpdate: DtoolsProduct[] = []
   const importedAt = new Date().toISOString()
 
   for (const record of incoming) {
@@ -99,13 +99,16 @@ export async function mergeDtoolsCsv(csvText: string): Promise<{ updated: number
       continue
     }
     const merged = keepScannedBarcodes(found, {
-      ...found,
+      ...(updatesById.get(found.id) ?? found),
       ...record,
       imported_at: importedAt,
+      id: found.id,
+      csv_row: found.csv_row,
     } as DtoolsProduct)
-    toUpdate.push({ ...merged, id: found.id, csv_row: found.csv_row })
+    updatesById.set(found.id, merged)
   }
 
+  const toUpdate = [...updatesById.values()]
   const client = requireClient()
   const batchSize = 80
   for (let i = 0; i < toUpdate.length; i += batchSize) {

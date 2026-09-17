@@ -93,23 +93,23 @@ function matchKey(row) {
 }
 
 function findExistingRow(record, existing, byKey) {
-  const direct = byKey.get(matchKey(record))
-  if (direct) return direct
+  const dtin = String(record.item_dtin ?? '').trim().toLowerCase()
+  if (dtin) {
+    return existing.find((row) => String(row.item_dtin ?? '').trim().toLowerCase() === dtin) ?? null
+  }
   const brand = String(record.brand ?? '').trim().toLowerCase()
+  const model = String(record.model ?? '').trim().toLowerCase()
   const partNumber = String(record.part_number ?? '').trim().toLowerCase()
-  if (brand && partNumber) {
-    const hits = existing.filter(
-      (row) =>
-        String(row.brand ?? '').trim().toLowerCase() === brand &&
-        String(row.part_number ?? '').trim().toLowerCase() === partNumber,
+  if (!brand && !model && !partNumber) return null
+  const hits = existing.filter((row) => {
+    if (String(row.item_dtin ?? '').trim()) return false
+    return (
+      String(row.brand ?? '').trim().toLowerCase() === brand &&
+      String(row.model ?? '').trim().toLowerCase() === model &&
+      String(row.part_number ?? '').trim().toLowerCase() === partNumber
     )
-    if (hits.length === 1) return hits[0]
-  }
-  if (partNumber) {
-    const hits = existing.filter((row) => String(row.part_number ?? '').trim().toLowerCase() === partNumber)
-    if (hits.length === 1) return hits[0]
-  }
-  return null
+  })
+  return hits.length === 1 ? hits[0] : null
 }
 
 function rowToRecord(row, csvRow) {
@@ -172,19 +172,21 @@ async function main() {
   for (const row of existing) byKey.set(matchKey(row), row)
 
   const toInsert = []
-  const toUpdate = []
+  const updatesById = new Map()
   for (const record of incoming) {
     const found = findExistingRow(record, existing, byKey)
     if (!found) {
-    toInsert.push({ ...record, source: 'dtools' })
+      toInsert.push({ ...record, source: 'dtools' })
       continue
     }
-    const merged = { ...record, id: found.id, csv_row: found.csv_row }
+    const previous = updatesById.get(found.id) ?? found
+    const merged = { ...previous, ...record, id: found.id, csv_row: found.csv_row }
     for (const field of BARCODE_FIELDS) {
       if (found[field]) merged[field] = found[field]
     }
-    toUpdate.push(merged)
+    updatesById.set(found.id, merged)
   }
+  const toUpdate = [...updatesById.values()]
 
   console.log(`Matched ${toUpdate.length} existing products, ${toInsert.length} new`)
 

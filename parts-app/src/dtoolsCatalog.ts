@@ -319,27 +319,25 @@ export function findMatchingDtoolsProduct(
   incoming: Pick<DtoolsProduct, 'item_dtin' | 'brand' | 'model' | 'part_number'>,
   existing: DtoolsProduct[],
 ): DtoolsProduct | undefined {
-  const key = dtoolsMatchKey(incoming)
-  const direct = existing.find((row) => dtoolsMatchKey(row) === key)
-  if (direct) return direct
+  const dtin = textField(incoming.item_dtin).toLowerCase()
+  if (dtin) {
+    return existing.find((row) => textField(row.item_dtin).toLowerCase() === dtin)
+  }
 
   const brand = textField(incoming.brand).toLowerCase()
+  const model = textField(incoming.model).toLowerCase()
   const partNumber = textField(incoming.part_number).toLowerCase()
-  if (brand && partNumber) {
-    const byBrandPart = existing.filter(
-      (row) =>
-        textField(row.brand).toLowerCase() === brand &&
-        textField(row.part_number).toLowerCase() === partNumber,
+  if (!brand && !model && !partNumber) return undefined
+
+  const fieldHits = existing.filter((row) => {
+    if (textField(row.item_dtin)) return false
+    return (
+      textField(row.brand).toLowerCase() === brand &&
+      textField(row.model).toLowerCase() === model &&
+      textField(row.part_number).toLowerCase() === partNumber
     )
-    if (byBrandPart.length === 1) return byBrandPart[0]
-  }
-
-  if (partNumber) {
-    const byPart = existing.filter((row) => textField(row.part_number).toLowerCase() === partNumber)
-    if (byPart.length === 1) return byPart[0]
-  }
-
-  return undefined
+  })
+  return fieldHits.length === 1 ? fieldHits[0] : undefined
 }
 
 export function parseCsvRows(text: string): string[][] {
