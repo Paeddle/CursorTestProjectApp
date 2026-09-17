@@ -13,6 +13,8 @@
 
 .app.portal {
   overflow-x: auto;
+  overflow-y: visible;
+  max-width: none;
 }
 
 .app-header {
