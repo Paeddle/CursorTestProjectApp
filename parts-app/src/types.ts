@@ -47,9 +47,11 @@ export const PART_FIELD_LABELS: { key: keyof PartFields; label: string }[] = [
   { key: 'upc_code', label: 'UPC code' },
   { key: 'part_name', label: 'Part name' },
   { key: 'ipn', label: 'IPN' },
-  { key: 'description', label: 'Description' },
+  { key: 'description', label: 'Notes' },
   { key: 'po', label: 'PO' },
   { key: 'link', label: 'Link' },
 ]
 
-export const CATALOG_FIELD_LABELS = PART_FIELD_LABELS.filter(({ key }) => key !== 'po')
+export const CATALOG_FIELD_LABELS = PART_FIELD_LABELS.filter(({ key }) => key !== 'po').map((field) =>
+  field.key === 'description' ? { ...field, label: 'Description' } : field,
+)

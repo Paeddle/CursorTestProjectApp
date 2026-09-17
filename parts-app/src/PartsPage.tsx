@@ -877,7 +877,7 @@ export function PartsPage() {
                             )}
                             {row.description?.trim() ? (
                               <div className="parts-checkin-po">
-                                <span className="parts-checkin-po-label">Description</span>
+                                <span className="parts-checkin-po-label">Notes</span>
                                 <span>{row.description.trim()}</span>
                               </div>
                             ) : null}
@@ -921,6 +921,7 @@ export function PartsPage() {
                                     rows={3}
                                     value={editFields[key]}
                                     onChange={(e) => setEditFields((prev) => ({ ...prev, [key]: e.target.value }))}
+                                    placeholder="Serial number, MAC address, or other notes"
                                   />
                                 ) : (
                                   <input

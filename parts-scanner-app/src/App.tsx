@@ -181,14 +181,14 @@ export default function App() {
     return () => document.removeEventListener('mousedown', onDocDown)
   }, [])
 
-  const applyMatchedPart = (part: TrackedPart, upcFallback?: string) => {
+  const applyMatchedPart = (part: TrackedPart, upcFallback?: string, notes?: string) => {
     const resolved = asDtoolsPart(part, catalog)
     setSelectedPart(resolved)
     setFields((prev) => ({
       ...fieldsFromRecord(resolved),
       upc_code: upcFallback || resolved.upc_code || prev.upc_code,
       po: prev.po,
-      description: prev.description.trim() || fieldsFromRecord(resolved).description,
+      description: notes !== undefined ? notes : prev.description,
     }))
   }
 
@@ -213,17 +213,17 @@ export default function App() {
       if (!supabase) return
       const fromCatalog = preferDtoolsMatch(catalog, barcode)
       if (fromCatalog) {
-        applyMatchedPart(fromCatalog, barcode)
+        applyMatchedPart(fromCatalog, barcode, extras?.description?.trim() ?? '')
         return
       }
       const library = await fetchDtoolsProducts()
       const dtools = findDtoolsInList(library, barcode)
       if (dtools) {
-        applyMatchedPart(mergeCatalog([], [dtools])[0], barcode)
+        applyMatchedPart(mergeCatalog([], [dtools])[0], barcode, extras?.description?.trim() ?? '')
         return
       }
       const existing = await findExistingPart(next)
-      if (existing) applyMatchedPart(existing, barcode)
+      if (existing) applyMatchedPart(existing, barcode, extras?.description?.trim() ?? '')
     } catch (err) {
       setStatus({
         type: 'error',
@@ -491,7 +491,7 @@ export default function App() {
         upc_code: fields.upc_code.trim() || selectedPart.upc_code,
         part_name: fields.part_name.trim() || selectedPart.part_name,
         po: fields.po.trim(),
-        description: fields.description.trim() || selectedPart.description,
+        description: fields.description.trim(),
       }
       const dtoolsId =
         selectedPart.catalogSource === 'dtools'
@@ -823,7 +823,7 @@ export default function App() {
 
             <div className="form-field">
               <label className="label" htmlFor="field-description">
-                Description
+                Notes
               </label>
               <textarea
                 id="field-description"
@@ -831,7 +831,7 @@ export default function App() {
                 rows={3}
                 value={fields.description}
                 onChange={(e) => setField('description', e.target.value)}
-                placeholder="Optional notes for this check-in"
+                placeholder="Serial number, MAC address, or other notes"
                 autoComplete="off"
               />
             </div>
