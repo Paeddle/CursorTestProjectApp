@@ -96,7 +96,7 @@ export async function mergeDtoolsCsv(csvText: string): Promise<{ updated: number
   for (const record of incoming) {
     const found = byKey.get(dtoolsMatchKey(record as DtoolsProduct))
     if (!found) {
-      toInsert.push({ ...record, imported_at: importedAt })
+      toInsert.push({ ...record, imported_at: importedAt, source: 'dtools' })
       continue
     }
     const merged = keepScannedBarcodes(found, {
@@ -118,7 +118,7 @@ export async function mergeDtoolsCsv(csvText: string): Promise<{ updated: number
   let maxRow = existing.reduce((max, row) => Math.max(max, Number(row.csv_row) || 0), 0)
   const inserts = toInsert.map((row) => {
     maxRow += 1
-    return { ...row, csv_row: maxRow, imported_at: importedAt }
+    return { ...row, csv_row: maxRow, imported_at: importedAt, source: 'dtools' }
   })
   for (let i = 0; i < inserts.length; i += batchSize) {
     const batch = inserts.slice(i, i + batchSize)
@@ -131,39 +131,19 @@ export async function mergeDtoolsCsv(csvText: string): Promise<{ updated: number
 
 export async function fillDtoolsUpcFromCheckIn(fields: PartFields, libraryId?: string | null): Promise<void> {
   const upc = normalizeLookupKey(fields.upc_code)
-  if (!upc) return
+  if (!upc || !libraryId) return
   const client = requireClient()
-  let row: { id: string; upc: string | null } | null = null
-  if (libraryId) {
-    const { data, error } = await client
-      .from('dtools_products')
-      .select('id, upc')
-      .eq('id', libraryId)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    row = data as { id: string; upc: string | null } | null
-  }
-  if (!row) {
-    const ipn = normalizeLookupKey(fields.ipn)
-    const brand = (fields.manufacturer ?? '').trim().toLowerCase()
-    if (ipn) {
-      const { data, error } = await client
-        .from('dtools_products')
-        .select('id, upc, brand')
-        .ilike('part_number', escapeIlikeExact(ipn))
-        .limit(8)
-      if (error) throw new Error(error.message)
-      const matches = (data ?? []) as { id: string; upc: string | null; brand: string | null }[]
-      row =
-        (brand
-          ? matches.find((item) => (item.brand ?? '').trim().toLowerCase() === brand) ?? null
-          : null) ?? (matches.length === 1 ? matches[0] : null)
-    }
-  }
+  const { data, error } = await client
+    .from('dtools_products')
+    .select('id, upc')
+    .eq('id', libraryId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  const row = data as { id: string; upc: string | null } | null
   if (!row) return
   if (normalizeLookupKey(row.upc ?? '')) return
-  const { error } = await client.from('dtools_products').update({ upc }).eq('id', row.id)
-  if (error) throw new Error(error.message)
+  const { error: updateError } = await client.from('dtools_products').update({ upc }).eq('id', row.id)
+  if (updateError) throw new Error(updateError.message)
 }
 
 export async function findExistingPart(fields: PartFields): Promise<TrackedPart | null> {
@@ -351,6 +331,18 @@ export async function deleteCheckIn(id: string): Promise<void> {
       /* ignore storage cleanup */
     }
   }
+}
+
+export async function updateTrackedPart(id: string, fields: PartFields): Promise<TrackedPart> {
+  const payload = nullableFields({ ...fields, po: '' })
+  const { data, error } = await requireClient()
+    .from('tracked_parts')
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw new Error(error.message)
+  return data as TrackedPart
 }
 
 export async function deletePart(id: string): Promise<void> {

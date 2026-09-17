@@ -177,39 +177,19 @@ export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPa
 
 export async function fillDtoolsUpcFromCheckIn(fields: PartFields, libraryId?: string | null): Promise<void> {
   const upc = normalizeLookupKey(fields.upc_code)
-  if (!upc) return
+  if (!upc || !libraryId) return
   const client = requireClient()
-  let row: { id: string; upc: string | null } | null = null
-  if (libraryId) {
-    const { data, error } = await client
-      .from('dtools_products')
-      .select('id, upc')
-      .eq('id', libraryId)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    row = data as { id: string; upc: string | null } | null
-  }
-  if (!row) {
-    const ipn = normalizeLookupKey(fields.ipn)
-    const brand = (fields.manufacturer ?? '').trim().toLowerCase()
-    if (ipn) {
-      const { data, error } = await client
-        .from('dtools_products')
-        .select('id, upc, brand')
-        .ilike('part_number', escapeIlikeExact(ipn))
-        .limit(8)
-      if (error) throw new Error(error.message)
-      const matches = (data ?? []) as { id: string; upc: string | null; brand: string | null }[]
-      row =
-        (brand
-          ? matches.find((item) => (item.brand ?? '').trim().toLowerCase() === brand) ?? null
-          : null) ?? (matches.length === 1 ? matches[0] : null)
-    }
-  }
+  const { data, error } = await client
+    .from('dtools_products')
+    .select('id, upc')
+    .eq('id', libraryId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  const row = data as { id: string; upc: string | null } | null
   if (!row) return
   if (normalizeLookupKey(row.upc ?? '')) return
-  const { error } = await client.from('dtools_products').update({ upc }).eq('id', row.id)
-  if (error) throw new Error(error.message)
+  const { error: updateError } = await client.from('dtools_products').update({ upc }).eq('id', row.id)
+  if (updateError) throw new Error(updateError.message)
 }
 
 export async function uploadCheckInFile(

@@ -47,6 +47,7 @@ export type DtoolsProduct = {
   created_date: string | null
   modified_date: string | null
   imported_at: string
+  source?: string | null
 }
 
 export const DTOOLS_FIELD_LABELS: { key: keyof DtoolsProduct; label: string }[] = [
@@ -293,8 +294,9 @@ function csvEscape(value: string): string {
 }
 
 export function dtoolsProductsToCsv(rows: DtoolsProduct[]): string {
+  const library = rows.filter((row) => (row.source ?? 'dtools') !== 'local')
   const header = DTOOLS_CSV_COLUMNS.map((col) => csvEscape(col.header)).join(',')
-  const lines = rows.map((row) =>
+  const lines = library.map((row) =>
     DTOOLS_CSV_COLUMNS.map((col) => csvEscape(textField(row[col.key] as string | null))).join(','),
   )
   return `${[header, ...lines].join('\r\n')}\r\n`

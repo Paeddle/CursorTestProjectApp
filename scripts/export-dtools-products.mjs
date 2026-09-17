@@ -106,7 +106,7 @@ async function main() {
   }
 
   const supabase = createClient(url, key)
-  const rows = await fetchAll(supabase)
+  const rows = (await fetchAll(supabase)).filter((row) => (row.source ?? 'dtools') !== 'local')
   const csvRows = rows.map((row) => {
     const out = {}
     for (const [header, key] of COLUMNS) out[header] = row[key] ?? ''

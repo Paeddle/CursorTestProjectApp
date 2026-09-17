@@ -156,7 +156,7 @@ async function main() {
   for (const record of incoming) {
     const found = byKey.get(matchKey(record))
     if (!found) {
-      toInsert.push(record)
+    toInsert.push({ ...record, source: 'dtools' })
       continue
     }
     const merged = { ...record, id: found.id, csv_row: found.csv_row }

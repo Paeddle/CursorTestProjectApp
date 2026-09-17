@@ -109,7 +109,7 @@ export default function App() {
   const isCatalog = mode === 'parts'
   const title = isCatalog ? 'Parts Scanner' : 'Check-In Scanner'
   const subtitle = isCatalog
-    ? 'Scan to add a part to the inventory catalog and check it in.'
+    ? 'Add a warehouse-only part. This does not go into the D-Tools library.'
     : 'Scan a barcode or search the D-Tools library to check it in.'
 
   const [showScanner, setShowScanner] = useState(false)
@@ -405,7 +405,6 @@ export default function App() {
             description: fields.description.trim() || existing.description,
           }
           await insertCheckIn(snapshot, todayLocalDate(), existing.id, checkInExtras())
-          await fillDtoolsUpcFromCheckIn(snapshot)
           window.location.assign(partsTrackerHref())
           return
         }
@@ -421,7 +420,6 @@ export default function App() {
           description: fields.description.trim() || part.description,
         }
         await insertCheckIn(snapshot, todayLocalDate(), part.id, checkInExtras())
-        await fillDtoolsUpcFromCheckIn(snapshot)
         window.location.assign(partsTrackerHref())
         return
       }
@@ -808,7 +806,7 @@ export default function App() {
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={openCatalogScanner}
                 >
-                  Add part in Parts Scanner
+                Add warehouse part
                 </button>
               </div>
             )}

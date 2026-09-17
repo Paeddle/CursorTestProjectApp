@@ -9,25 +9,31 @@ import {
   displayPartTitle,
   fieldsFromRecord,
   formatCheckInWhen,
+  formatDateTime,
   isHttpUrl,
   parseCheckInDocuments,
+  partMatchesQuery,
   trimField,
 } from './partsHelpers'
 import {
   addCheckInDocuments,
   deleteCheckIn,
+  deletePart,
   fetchCheckIns,
   fetchDtoolsProducts,
-  fillDtoolsUpcFromCheckIn,
+  fetchParts,
   mergeDtoolsCsv,
   updateCheckIn,
   updateDtoolsProduct,
+  updateTrackedPart,
 } from './services/partsService'
 import {
+  CATALOG_FIELD_LABELS,
   EMPTY_PART_FIELDS,
   PART_FIELD_LABELS,
   type PartCheckIn,
   type PartFields,
+  type TrackedPart,
 } from './types'
 import {
   DTOOLS_FIELD_LABELS,
@@ -49,7 +55,7 @@ import {
 } from './dtoolsCatalog'
 import './PartsPage.css'
 
-type WorkspaceTab = 'checkin' | 'parts'
+type WorkspaceTab = 'checkin' | 'parts' | 'other'
 type CheckInSort = 'date-desc' | 'po-asc' | 'po-desc'
 type CheckInView = 'item' | 'po'
 
@@ -162,6 +168,7 @@ export function PartsPage() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('checkin')
   const [checkIns, setCheckIns] = useState<PartCheckIn[]>([])
   const [parts, setParts] = useState<DtoolsProduct[]>([])
+  const [otherParts, setOtherParts] = useState<TrackedPart[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -177,6 +184,9 @@ export function PartsPage() {
   const [editingPartId, setEditingPartId] = useState<string | null>(null)
   const [editPartFields, setEditPartFields] = useState<DtoolsEditFields>(() => emptyDtoolsEditFields())
   const [editPartSaving, setEditPartSaving] = useState(false)
+  const [editingOtherId, setEditingOtherId] = useState<string | null>(null)
+  const [editOtherFields, setEditOtherFields] = useState<PartFields>(EMPTY_PART_FIELDS)
+  const [editOtherSaving, setEditOtherSaving] = useState(false)
   const [libraryBusy, setLibraryBusy] = useState(false)
   const [checkInSort, setCheckInSort] = useState<CheckInSort>('date-desc')
   const [checkInView, setCheckInView] = useState<CheckInView>('item')
@@ -192,9 +202,14 @@ export function PartsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [checkInRows, partRows] = await Promise.all([fetchCheckIns(), fetchDtoolsProducts()])
+      const [checkInRows, partRows, otherRows] = await Promise.all([
+        fetchCheckIns(),
+        fetchDtoolsProducts(),
+        fetchParts(),
+      ])
       setCheckIns(checkInRows)
       setParts(partRows)
+      setOtherParts(otherRows)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load parts data.')
     } finally {
@@ -247,6 +262,10 @@ export function PartsPage() {
       ),
     [filterBrand, filterCategoryChild, filterCategoryRoot, filterSupplier, partSort, parts, search],
   )
+  const filteredOtherParts = useMemo(
+    () => otherParts.filter((row) => partMatchesQuery(row, search)),
+    [otherParts, search],
+  )
 
   const togglePart = (id: string) => {
     setExpandedParts((prev) => {
@@ -261,33 +280,46 @@ export function PartsPage() {
     const upc = trimField(row.upc_code).replace(/\s+/g, '').toLowerCase()
     const ipn = trimField(row.ipn).replace(/\s+/g, '').toLowerCase()
     const name = trimField(row.part_name).toLowerCase()
-    const match =
+    const dtoolsMatch =
       parts.find((p) => upc && textField(p.upc).replace(/\s+/g, '').toLowerCase() === upc) ??
       parts.find((p) => upc && textField(p.ean).replace(/\s+/g, '').toLowerCase() === upc) ??
       parts.find((p) => ipn && textField(p.part_number).replace(/\s+/g, '').toLowerCase() === ipn) ??
       parts.find((p) => name && dtoolsTitle(p).toLowerCase() === name)
+    const otherMatch =
+      otherParts.find((p) => row.part_id && p.id === row.part_id) ??
+      otherParts.find((p) => upc && trimField(p.upc_code).replace(/\s+/g, '').toLowerCase() === upc) ??
+      otherParts.find((p) => ipn && trimField(p.ipn).replace(/\s+/g, '').toLowerCase() === ipn) ??
+      otherParts.find((p) => name && trimField(p.part_name).toLowerCase() === name)
 
-    if (!match) {
-      setError('That check-in is not in the D-Tools library.')
+    if (dtoolsMatch) {
+      setError(null)
+      setSearch('')
+      setFilterBrand('')
+      setFilterSupplier('')
+      setFilterCategoryRoot('')
+      setFilterCategoryChild('')
+      setWorkspaceTab('parts')
+      setExpandedParts(new Set([dtoolsMatch.id]))
+      setFocusedPartId(dtoolsMatch.id)
+      return
+    }
+    if (otherMatch) {
+      setError(null)
+      setSearch('')
+      setWorkspaceTab('other')
+      setExpandedParts(new Set([otherMatch.id]))
+      setFocusedPartId(otherMatch.id)
       return
     }
 
-    setError(null)
-    setSearch('')
-    setFilterBrand('')
-    setFilterSupplier('')
-    setFilterCategoryRoot('')
-    setFilterCategoryChild('')
-    setWorkspaceTab('parts')
-    setExpandedParts(new Set([match.id]))
-    setFocusedPartId(match.id)
+    setError('That check-in is not linked to a D-Tools product or warehouse part.')
   }
 
   useEffect(() => {
-    if (workspaceTab !== 'parts' || !focusedPartId) return
+    if ((workspaceTab !== 'parts' && workspaceTab !== 'other') || !focusedPartId) return
     const el = document.getElementById(`part-card-${focusedPartId}`)
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [workspaceTab, focusedPartId, parts])
+  }, [workspaceTab, focusedPartId, parts, otherParts])
 
   const expandAllParts = () => {
     if (filteredParts.length > 0 && filteredParts.every((r) => expandedParts.has(r.id))) {
@@ -366,7 +398,6 @@ export function PartsPage() {
     try {
       const updated = await updateCheckIn(editingId, editFields, qty)
       setCheckIns((prev) => prev.map((row) => (row.id === editingId ? updated : row)))
-      await fillDtoolsUpcFromCheckIn(editFields)
       cancelEdit()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save check-in.')
@@ -385,6 +416,46 @@ export function PartsPage() {
   const cancelPartEdit = () => {
     setEditingPartId(null)
     setEditPartFields(emptyDtoolsEditFields())
+  }
+
+  const startOtherEdit = (row: TrackedPart) => {
+    setEditingOtherId(row.id)
+    setEditOtherFields(fieldsFromRecord(row))
+    setExpandedParts((prev) => new Set(prev).add(row.id))
+    setError(null)
+  }
+
+  const cancelOtherEdit = () => {
+    setEditingOtherId(null)
+    setEditOtherFields(EMPTY_PART_FIELDS)
+  }
+
+  const saveOtherEdit = async () => {
+    if (!editingOtherId) return
+    setEditOtherSaving(true)
+    setError(null)
+    try {
+      const updated = await updateTrackedPart(editingOtherId, editOtherFields)
+      setOtherParts((prev) => prev.map((row) => (row.id === editingOtherId ? updated : row)))
+      cancelOtherEdit()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save warehouse part.')
+    } finally {
+      setEditOtherSaving(false)
+    }
+  }
+
+  const handleDeleteOtherPart = async (id: string) => {
+    if (!window.confirm('Delete this warehouse-only part? Check-in history is kept.')) return
+    setDeletingId(id)
+    try {
+      await deletePart(id)
+      setOtherParts((prev) => prev.filter((row) => row.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete part.')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const savePartEdit = async () => {
@@ -501,7 +572,18 @@ export function PartsPage() {
               className={`parts-sheet-tab${workspaceTab === 'parts' ? ' active' : ''}`}
               onClick={() => setWorkspaceTab('parts')}
             >
-              Parts{parts.length ? ` (${parts.length})` : ''}
+              D-Tools{parts.length ? ` (${parts.length})` : ''}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="parts-tab-other"
+              aria-controls="parts-panel-other"
+              aria-selected={workspaceTab === 'other'}
+              className={`parts-sheet-tab${workspaceTab === 'other' ? ' active' : ''}`}
+              onClick={() => setWorkspaceTab('other')}
+            >
+              Other parts{otherParts.length ? ` (${otherParts.length})` : ''}
             </button>
           </div>
         </div>
@@ -516,7 +598,9 @@ export function PartsPage() {
               placeholder={
                 workspaceTab === 'checkin'
                   ? 'Filter check-ins by name, UPC, IPN, PO…'
-                  : 'Filter D-Tools library by brand, model, part number, UPC…'
+                  : workspaceTab === 'other'
+                    ? 'Filter warehouse-only parts by name, UPC, IPN…'
+                    : 'Filter D-Tools library by brand, model, part number, UPC…'
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -671,6 +755,15 @@ export function PartsPage() {
               >
                 Check-in scanner
               </a>
+            ) : workspaceTab === 'other' ? (
+              <a
+                className="parts-scanner-link"
+                href={partsScannerHref('parts')}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Add warehouse part
+              </a>
             ) : (
               <>
                 <button
@@ -695,14 +788,6 @@ export function PartsPage() {
                     }}
                   />
                 </label>
-                <a
-                  className="parts-scanner-link"
-                  href={partsScannerHref('parts')}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Parts scanner
-                </a>
               </>
             )}
           </div>
@@ -1023,6 +1108,126 @@ export function PartsPage() {
                                     onClick={() => startPartEdit(row)}
                                   >
                                     Edit
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="parts-panel-other"
+            aria-labelledby="parts-tab-other"
+            hidden={workspaceTab !== 'other'}
+            className="parts-sheet-panel"
+          >
+            {loading ? (
+              <div className="parts-loading">Loading warehouse parts…</div>
+            ) : filteredOtherParts.length === 0 ? (
+              <div className="parts-empty">
+                {search.trim()
+                  ? 'No warehouse-only parts match your filter.'
+                  : 'No warehouse-only parts yet. Use Add warehouse part for items that are not in D-Tools.'}
+              </div>
+            ) : (
+              <div className="parts-list-scroll">
+                <div className="parts-list">
+                  {filteredOtherParts.map((row) => {
+                    const isExpanded = expandedParts.has(row.id)
+                    const isEditing = editingOtherId === row.id
+                    return (
+                      <div
+                        key={row.id}
+                        id={`part-card-${row.id}`}
+                        className={`parts-card${focusedPartId === row.id ? ' parts-card--focus' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className="parts-card-header"
+                          onClick={() => togglePart(row.id)}
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="parts-card-title-block">
+                            <span className="parts-card-title">{displayPartTitle(row)}</span>
+                          </span>
+                          <span className="parts-card-chevron">{isExpanded ? '▾' : '▸'}</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="parts-card-body">
+                            {isEditing ? (
+                              <form
+                                className="parts-checkin-edit"
+                                onSubmit={(e) => {
+                                  e.preventDefault()
+                                  void saveOtherEdit()
+                                }}
+                              >
+                                {CATALOG_FIELD_LABELS.map(({ key, label }) => (
+                                  <div className="parts-edit-field" key={key}>
+                                    <label className="parts-checkin-po-label" htmlFor={`other-edit-${row.id}-${key}`}>
+                                      {label}
+                                    </label>
+                                    {key === 'description' ? (
+                                      <textarea
+                                        id={`other-edit-${row.id}-${key}`}
+                                        className="parts-edit-input"
+                                        rows={3}
+                                        value={editOtherFields[key]}
+                                        onChange={(e) =>
+                                          setEditOtherFields((prev) => ({ ...prev, [key]: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      <input
+                                        id={`other-edit-${row.id}-${key}`}
+                                        type="text"
+                                        className="parts-edit-input"
+                                        value={editOtherFields[key]}
+                                        onChange={(e) =>
+                                          setEditOtherFields((prev) => ({ ...prev, [key]: e.target.value }))
+                                        }
+                                        autoComplete="off"
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                                <div className="parts-edit-actions">
+                                  <button type="submit" className="parts-toolbar-btn" disabled={editOtherSaving}>
+                                    {editOtherSaving ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="parts-doc-btn"
+                                    onClick={cancelOtherEdit}
+                                    disabled={editOtherSaving}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <FieldRows row={row} labels={CATALOG_FIELD_LABELS} />
+                                <div className="parts-card-footer">
+                                  <span className="parts-muted">Added {formatDateTime(row.created_at)}</span>
+                                  <button type="button" className="parts-edit-btn" onClick={() => startOtherEdit(row)}>
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="parts-delete"
+                                    disabled={deletingId === row.id}
+                                    onClick={() => void handleDeleteOtherPart(row.id)}
+                                  >
+                                    Delete
                                   </button>
                                 </div>
                               </>
