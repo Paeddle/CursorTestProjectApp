@@ -582,14 +582,12 @@ export default function App() {
         ) : isCatalog ? (
           <form onSubmit={handleSave} className="section form-section">
             {lookupLoading && <p className="box-meta-loading">Looking up this part…</p>}
-            {selectedPart && !lookupLoading && (
+            {selectedPart && !lookupLoading && selectedPart.catalogSource === 'shs' && (
               <div className="last-scan-panel" role="status">
                 <strong>Existing part</strong>
                 <p className="last-scan-panel-main">{displayPartTitle(selectedPart)}</p>
                 <p className="last-scan-panel-meta">
-                  {selectedPart.catalogSource === 'shs'
-                    ? 'This part is in the SHSWebApp warehouse catalog (not D-Tools). Saving will check it in without creating a duplicate.'
-                    : 'This part is in the D-Tools catalog. Saving will check it in without creating a duplicate.'}
+                  This part is in the SHSWebApp warehouse catalog (not D-Tools). Saving will check it in without creating a duplicate.
                 </p>
               </div>
             )}
@@ -714,25 +712,15 @@ export default function App() {
               Scan barcode
             </button>
             {lookupLoading && <p className="box-meta-loading">Looking up this part…</p>}
-            {selectedPart && !lookupLoading && (
-              <div className={`last-scan-panel${willAttachUpcToDtools ? ' last-scan-panel-upc' : ''}`} role="status">
-                <strong>
-                  {willAttachUpcToDtools
-                    ? 'UPC will be saved to D-Tools'
-                    : selectedPart.catalogSource === 'shs'
-                      ? 'SHSWebApp part'
-                      : 'D-Tools part'}
-                </strong>
+            {willAttachUpcToDtools && !lookupLoading ? (
+              <div className="last-scan-panel last-scan-panel-upc" role="status">
+                <strong>UPC will be saved to D-Tools</strong>
                 <p className="last-scan-panel-main">{displayPartTitle(selectedPart)}</p>
                 <p className="last-scan-panel-meta">
-                  {willAttachUpcToDtools
-                    ? `This D-Tools part has no UPC yet. Checking it in will add ${fields.upc_code.trim()} to the D-Tools library.`
-                    : selectedPart.catalogSource === 'shs'
-                      ? 'This part is warehouse-only. Checking it in will not change the D-Tools library.'
-                      : 'This part is in the D-Tools catalog. Saving will check it in without creating a duplicate.'}
+                  Checking in will add {fields.upc_code.trim()} to this D-Tools part.
                 </p>
               </div>
-            )}
+            ) : null}
 
             <div className="form-field">
               <span className="label">Check-in date and time</span>
@@ -790,9 +778,6 @@ export default function App() {
                 aria-controls="upc_code-suggestions"
               />
               {suggestList('upc_code')}
-              {willAttachUpcToDtools ? (
-                <p className="hint">Checking in will save this UPC onto the selected D-Tools part.</p>
-              ) : null}
             </div>
 
             <div className="form-field parts-suggest-wrap">
