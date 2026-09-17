@@ -8,29 +8,31 @@ import {
   displayPartTitle,
   fieldsFromRecord,
   formatCheckInWhen,
-  formatDateTime,
   isHttpUrl,
-  normalizeLookupKey,
   parseCheckInDocuments,
-  partMatchesQuery,
   trimField,
 } from './partsHelpers'
 import {
   addCheckInDocuments,
   deleteCheckIn,
-  deletePart,
   fetchCheckIns,
-  fetchParts,
+  fetchDtoolsProducts,
   updateCheckIn,
 } from './services/partsService'
 import {
-  CATALOG_FIELD_LABELS,
   EMPTY_PART_FIELDS,
   PART_FIELD_LABELS,
   type PartCheckIn,
   type PartFields,
-  type TrackedPart,
 } from './types'
+import {
+  DTOOLS_FIELD_LABELS,
+  dtoolsMatchesQuery,
+  dtoolsMeta,
+  dtoolsTitle,
+  textField,
+  type DtoolsProduct,
+} from './dtoolsCatalog'
 import './PartsPage.css'
 
 type WorkspaceTab = 'checkin' | 'parts'
@@ -99,10 +101,35 @@ function FieldRows({
   )
 }
 
+function DtoolsFieldRows({ row }: { row: DtoolsProduct }) {
+  return (
+    <dl className="parts-dl">
+      {DTOOLS_FIELD_LABELS.map(({ key, label }) => {
+        const value = textField(row[key] as string | null)
+        const isLink = key === 'image_url'
+        return (
+          <div key={key} className="parts-dl-row">
+            <dt>{label}</dt>
+            <dd>
+              {isLink && value && isHttpUrl(value) ? (
+                <a href={value} target="_blank" rel="noopener noreferrer">
+                  {value}
+                </a>
+              ) : (
+                value || '—'
+              )}
+            </dd>
+          </div>
+        )
+      })}
+    </dl>
+  )
+}
+
 export function PartsPage() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('checkin')
   const [checkIns, setCheckIns] = useState<PartCheckIn[]>([])
-  const [parts, setParts] = useState<TrackedPart[]>([])
+  const [parts, setParts] = useState<DtoolsProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -122,7 +149,7 @@ export function PartsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [checkInRows, partRows] = await Promise.all([fetchCheckIns(), fetchParts()])
+      const [checkInRows, partRows] = await Promise.all([fetchCheckIns(), fetchDtoolsProducts()])
       setCheckIns(checkInRows)
       setParts(partRows)
     } catch (err) {
@@ -144,7 +171,7 @@ export function PartsPage() {
     [checkInSort, checkIns, search],
   )
   const filteredParts = useMemo(
-    () => parts.filter((row) => partMatchesQuery(row, search)),
+    () => parts.filter((row) => dtoolsMatchesQuery(row, search)),
     [parts, search],
   )
 
@@ -158,18 +185,17 @@ export function PartsPage() {
   }
 
   const openPartFromCheckIn = (row: PartCheckIn) => {
-    const byId = row.part_id ? parts.find((p) => p.id === row.part_id) : undefined
-    const upc = normalizeLookupKey(row.upc_code)
-    const ipn = normalizeLookupKey(row.ipn)
+    const upc = trimField(row.upc_code).replace(/\s+/g, '').toLowerCase()
+    const ipn = trimField(row.ipn).replace(/\s+/g, '').toLowerCase()
     const name = trimField(row.part_name).toLowerCase()
     const match =
-      byId ??
-      parts.find((p) => upc && normalizeLookupKey(p.upc_code) === upc) ??
-      parts.find((p) => ipn && normalizeLookupKey(p.ipn) === ipn) ??
-      parts.find((p) => name && trimField(p.part_name).toLowerCase() === name)
+      parts.find((p) => upc && textField(p.upc).replace(/\s+/g, '').toLowerCase() === upc) ??
+      parts.find((p) => upc && textField(p.ean).replace(/\s+/g, '').toLowerCase() === upc) ??
+      parts.find((p) => ipn && textField(p.part_number).replace(/\s+/g, '').toLowerCase() === ipn) ??
+      parts.find((p) => name && dtoolsTitle(p).toLowerCase() === name)
 
     if (!match) {
-      setError('That check-in is not linked to a part in the catalog yet.')
+      setError('That check-in is not in the D-Tools library.')
       return
     }
 
@@ -284,19 +310,6 @@ export function PartsPage() {
     }
   }
 
-  const handleDeletePart = async (id: string) => {
-    if (!window.confirm('Delete this part from the catalog? Check-in history is kept.')) return
-    setDeletingId(id)
-    try {
-      await deletePart(id)
-      setParts((prev) => prev.filter((r) => r.id !== id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete part.')
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
   if (!isSupabaseConfigured) {
     return (
       <div className="parts-page">
@@ -355,7 +368,7 @@ export function PartsPage() {
               className={`parts-sheet-tab${workspaceTab === 'parts' ? ' active' : ''}`}
               onClick={() => setWorkspaceTab('parts')}
             >
-              Parts
+              Parts{parts.length ? ` (${parts.length})` : ''}
             </button>
           </div>
         </div>
@@ -370,7 +383,7 @@ export function PartsPage() {
               placeholder={
                 workspaceTab === 'checkin'
                   ? 'Filter check-ins by name, UPC, IPN, PO…'
-                  : 'Filter parts by name, UPC, IPN, vendor…'
+                  : 'Filter D-Tools library by brand, model, part number, UPC…'
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -392,7 +405,7 @@ export function PartsPage() {
                 </select>
               </label>
             ) : null}
-            {workspaceTab === 'parts' && filteredParts.length > 0 && (
+            {workspaceTab === 'parts' && filteredParts.length > 0 && filteredParts.length <= 80 && (
               <button type="button" className="parts-toolbar-btn" onClick={expandAllParts}>
                 {allPartsExpanded ? 'Collapse all' : 'Expand all'}
               </button>
@@ -619,8 +632,8 @@ export function PartsPage() {
             ) : filteredParts.length === 0 ? (
               <div className="parts-empty">
                 {search.trim()
-                  ? 'No parts match your filter.'
-                  : 'No parts in the catalog yet. Use Parts scanner to add an item.'}
+                  ? 'No D-Tools products match your filter.'
+                  : 'No D-Tools products loaded yet. Import CSVFiles/Products.csv with npm run dtools:import-csv.'}
               </div>
             ) : (
               <div className="parts-list-scroll">
@@ -640,24 +653,16 @@ export function PartsPage() {
                           aria-expanded={isExpanded}
                         >
                           <span className="parts-card-title-block">
-                            <span className="parts-card-title">{displayPartTitle(row)}</span>
+                            <span className="parts-card-title">{dtoolsTitle(row)}</span>
+                            {dtoolsMeta(row) ? (
+                              <span className="parts-card-meta">{dtoolsMeta(row)}</span>
+                            ) : null}
                           </span>
                           <span className="parts-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                         </button>
                         {isExpanded && (
                           <div className="parts-card-body">
-                            <FieldRows row={row} labels={CATALOG_FIELD_LABELS} />
-                            <div className="parts-card-footer">
-                              <span className="parts-muted">Added {formatDateTime(row.created_at)}</span>
-                              <button
-                                type="button"
-                                className="parts-delete"
-                                disabled={deletingId === row.id}
-                                onClick={() => void handleDeletePart(row.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                            <DtoolsFieldRows row={row} />
                           </div>
                         )}
                       </div>

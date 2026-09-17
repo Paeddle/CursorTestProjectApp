@@ -5,6 +5,7 @@ import {
   nullableFields,
   parseCheckInDocuments,
 } from '../partsHelpers'
+import type { DtoolsProduct } from '../dtoolsCatalog'
 import type { CheckInDocument, PartCheckIn, PartFields, TrackedPart } from '../types'
 
 function requireClient() {
@@ -25,6 +26,24 @@ export async function fetchCheckIns(): Promise<PartCheckIn[]> {
   return (data ?? []).map((row) => asCheckIn(row as PartCheckIn))
 }
 
+async function fetchAllRows<T>(table: string, orderColumn: string): Promise<T[]> {
+  const client = requireClient()
+  const pageSize = 1000
+  const rows: T[] = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await client
+      .from(table)
+      .select('*')
+      .order(orderColumn, { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw new Error(error.message)
+    const batch = (data ?? []) as T[]
+    rows.push(...batch)
+    if (batch.length < pageSize) break
+  }
+  return rows
+}
+
 export async function fetchParts(): Promise<TrackedPart[]> {
   const { data, error } = await requireClient()
     .from('tracked_parts')
@@ -32,6 +51,18 @@ export async function fetchParts(): Promise<TrackedPart[]> {
     .order('updated_at', { ascending: false })
   if (error) throw new Error(error.message)
   return (data ?? []) as TrackedPart[]
+}
+
+export async function fetchDtoolsProducts(): Promise<DtoolsProduct[]> {
+  try {
+    return await fetchAllRows<DtoolsProduct>('dtools_products', 'csv_row')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (/dtools_products|schema cache|relation/i.test(message)) {
+      throw new Error('D-Tools library table is missing. Run supabase/add-dtools-products.sql.')
+    }
+    throw err
+  }
 }
 
 export async function findExistingPart(fields: PartFields): Promise<TrackedPart | null> {

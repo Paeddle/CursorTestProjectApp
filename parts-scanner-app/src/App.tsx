@@ -9,7 +9,7 @@ import {
   formatDateTime,
   todayLocalDate,
 } from './partsHelpers'
-import { fetchParts, findExistingPart, insertCheckIn, insertPartIfMissing } from './services/partsService'
+import { fetchDtoolsProducts, fetchParts, findDtoolsInList, findExistingPart, insertCheckIn, insertPartIfMissing, mergeCatalog } from './services/partsService'
 import {
   CATALOG_FIELD_LABELS,
   EMPTY_PART_FIELDS,
@@ -110,7 +110,7 @@ export default function App() {
   const title = isCatalog ? 'Parts Scanner' : 'Check-In Scanner'
   const subtitle = isCatalog
     ? 'Scan to add a part to the inventory catalog and check it in.'
-    : 'Scan a barcode or search a part name to check it in.'
+    : 'Scan a barcode or search the D-Tools library to check it in.'
 
   const [showScanner, setShowScanner] = useState(false)
   const [showDocScanner, setShowDocScanner] = useState(false)
@@ -135,9 +135,9 @@ export default function App() {
   useEffect(() => {
     if (!supabase) return
     let cancelled = false
-    fetchParts()
-      .then((rows) => {
-        if (!cancelled) setCatalog(rows)
+    Promise.all([fetchParts(), fetchDtoolsProducts()])
+      .then(([tracked, library]) => {
+        if (!cancelled) setCatalog(mergeCatalog(tracked, library))
       })
       .catch(() => {
         if (!cancelled) setCatalog([])
@@ -186,7 +186,13 @@ export default function App() {
     try {
       if (!supabase) return
       const existing = await findExistingPart(next)
-      if (existing) applyMatchedPart(existing, barcode)
+      if (existing) {
+        applyMatchedPart(existing, barcode)
+        return
+      }
+      const library = await fetchDtoolsProducts()
+      const dtools = findDtoolsInList(library, barcode)
+      if (dtools) applyMatchedPart(mergeCatalog([], [dtools])[0], barcode)
     } catch (err) {
       setStatus({
         type: 'error',
@@ -304,6 +310,16 @@ export default function App() {
     try {
       const existing = await findExistingPart(fields)
       if (existing) applyMatchedPart(existing, fields.upc_code.trim() || undefined)
+      else {
+        const q = (fields.upc_code || fields.ipn).trim()
+        const hit = catalog.find((part) => {
+          const upc = (part.upc_code ?? '').replace(/\s+/g, '').toLowerCase()
+          const ipn = (part.ipn ?? '').replace(/\s+/g, '').toLowerCase()
+          const key = q.replace(/\s+/g, '').toLowerCase()
+          return Boolean(key) && (upc === key || ipn === key)
+        })
+        if (hit) applyMatchedPart(hit, fields.upc_code.trim() || undefined)
+      }
     } catch {
       /* keep typed values */
     } finally {
@@ -423,7 +439,8 @@ export default function App() {
         po: fields.po.trim(),
         description: fields.description.trim() || selectedPart.description,
       }
-      await insertCheckIn(snapshot, todayLocalDate(), selectedPart.id, checkInExtras())
+      const stored = await insertPartIfMissing({ ...snapshot, po: '' })
+      await insertCheckIn(snapshot, todayLocalDate(), stored.id, checkInExtras())
       setStatus({
         type: 'success',
         message: `Checked in: ${displayPartTitle(snapshot)}`,
