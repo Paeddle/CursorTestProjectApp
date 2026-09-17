@@ -177,8 +177,80 @@
   max-width: 16rem;
 }
 
-.parts-filter-select {
+.parts-date-input {
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color-scheme: dark;
   min-width: 9.5rem;
+}
+
+.parts-view-toggle {
+  display: inline-flex;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.parts-view-toggle button {
+  appearance: none;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.parts-view-toggle button + button {
+  border-left: 1px solid #475569;
+}
+
+.parts-view-toggle button:hover {
+  color: #e2e8f0;
+  background: #1e293b;
+}
+
+.parts-view-toggle button.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.parts-po-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.45rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #152033;
+}
+
+.parts-po-group-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+  padding: 0.15rem 0.25rem 0.35rem;
+}
+
+.parts-po-group-title {
+  font-size: 0.92rem;
+  font-weight: 750;
+  color: #f8fafc;
+}
+
+.parts-po-group-meta {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 .parts-toolbar-btn {

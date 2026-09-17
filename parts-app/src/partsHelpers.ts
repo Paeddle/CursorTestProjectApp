@@ -142,6 +142,10 @@ export function checkInQuantity(row: Pick<PartCheckIn, 'quantity'>): number {
   return Number.isFinite(n) && n > 0 ? n : 1
 }
 
+export function checkInDateKey(value: string | null | undefined): string {
+  return (value ?? '').slice(0, 10)
+}
+
 export function checkInMatchesQuery(row: PartCheckIn, query: string): boolean {
   if (matchesQuery(row, query)) return true
   const q = query.trim().toLowerCase()
