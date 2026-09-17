@@ -19,6 +19,7 @@ import {
   fetchCheckIns,
   fetchDtoolsProducts,
   updateCheckIn,
+  updateDtoolsProduct,
 } from './services/partsService'
 import {
   EMPTY_PART_FIELDS,
@@ -28,14 +29,18 @@ import {
 } from './types'
 import {
   DTOOLS_FIELD_LABELS,
+  DTOOLS_LONG_FIELDS,
   categorySegments,
   dtoolsMatchesQuery,
   dtoolsMeta,
+  dtoolsToEditFields,
   dtoolsTitle,
+  emptyDtoolsEditFields,
   matchesCategory,
   sortDtoolsProducts,
   textField,
   uniqueSorted,
+  type DtoolsEditFields,
   type DtoolsProduct,
   type DtoolsSort,
 } from './dtoolsCatalog'
@@ -166,6 +171,9 @@ export function PartsPage() {
   const [editFields, setEditFields] = useState<PartFields>(EMPTY_PART_FIELDS)
   const [editQty, setEditQty] = useState('1')
   const [editSaving, setEditSaving] = useState(false)
+  const [editingPartId, setEditingPartId] = useState<string | null>(null)
+  const [editPartFields, setEditPartFields] = useState<DtoolsEditFields>(() => emptyDtoolsEditFields())
+  const [editPartSaving, setEditPartSaving] = useState(false)
   const [checkInSort, setCheckInSort] = useState<CheckInSort>('date-desc')
   const [checkInView, setCheckInView] = useState<CheckInView>('item')
   const [checkInDate, setCheckInDate] = useState('')
@@ -359,6 +367,33 @@ export function PartsPage() {
       setError(err instanceof Error ? err.message : 'Could not save check-in.')
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  const startPartEdit = (row: DtoolsProduct) => {
+    setEditingPartId(row.id)
+    setEditPartFields(dtoolsToEditFields(row))
+    setExpandedParts((prev) => new Set(prev).add(row.id))
+    setError(null)
+  }
+
+  const cancelPartEdit = () => {
+    setEditingPartId(null)
+    setEditPartFields(emptyDtoolsEditFields())
+  }
+
+  const savePartEdit = async () => {
+    if (!editingPartId) return
+    setEditPartSaving(true)
+    setError(null)
+    try {
+      const updated = await updateDtoolsProduct(editingPartId, editPartFields)
+      setParts((prev) => prev.map((row) => (row.id === editingPartId ? updated : row)))
+      cancelPartEdit()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save part.')
+    } finally {
+      setEditPartSaving(false)
     }
   }
 
@@ -870,7 +905,71 @@ export function PartsPage() {
                         </button>
                         {isExpanded && (
                           <div className="parts-card-body">
-                            <DtoolsFieldRows row={row} />
+                            {editingPartId === row.id ? (
+                              <form
+                                className="parts-checkin-edit"
+                                onSubmit={(e) => {
+                                  e.preventDefault()
+                                  void savePartEdit()
+                                }}
+                              >
+                                {DTOOLS_FIELD_LABELS.map(({ key, label }) => (
+                                  <div className="parts-edit-field" key={key}>
+                                    <label className="parts-checkin-po-label" htmlFor={`part-edit-${row.id}-${key}`}>
+                                      {label}
+                                    </label>
+                                    {DTOOLS_LONG_FIELDS.has(key) ? (
+                                      <textarea
+                                        id={`part-edit-${row.id}-${key}`}
+                                        className="parts-edit-input"
+                                        rows={key === 'description' ? 4 : 2}
+                                        value={editPartFields[key]}
+                                        onChange={(e) =>
+                                          setEditPartFields((prev) => ({ ...prev, [key]: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      <input
+                                        id={`part-edit-${row.id}-${key}`}
+                                        type="text"
+                                        className="parts-edit-input"
+                                        value={editPartFields[key]}
+                                        onChange={(e) =>
+                                          setEditPartFields((prev) => ({ ...prev, [key]: e.target.value }))
+                                        }
+                                        autoComplete="off"
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                                <div className="parts-edit-actions">
+                                  <button type="submit" className="parts-toolbar-btn" disabled={editPartSaving}>
+                                    {editPartSaving ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="parts-doc-btn"
+                                    onClick={cancelPartEdit}
+                                    disabled={editPartSaving}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <DtoolsFieldRows row={row} />
+                                <div className="parts-card-footer">
+                                  <button
+                                    type="button"
+                                    className="parts-edit-btn"
+                                    onClick={() => startPartEdit(row)}
+                                  >
+                                    Edit
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>

@@ -101,6 +101,41 @@ export function textField(value: string | null | undefined): string {
   return (value ?? '').trim()
 }
 
+export type DtoolsEditKey = (typeof DTOOLS_FIELD_LABELS)[number]['key']
+
+export type DtoolsEditFields = Record<DtoolsEditKey, string>
+
+export const DTOOLS_LONG_FIELDS = new Set<DtoolsEditKey>([
+  'short_description',
+  'description',
+  'keywords',
+  'inherited_labor_items',
+  'inherited_accessories',
+])
+
+export function emptyDtoolsEditFields(): DtoolsEditFields {
+  const out = {} as DtoolsEditFields
+  for (const { key } of DTOOLS_FIELD_LABELS) out[key] = ''
+  return out
+}
+
+export function dtoolsToEditFields(row: DtoolsProduct): DtoolsEditFields {
+  const out = emptyDtoolsEditFields()
+  for (const { key } of DTOOLS_FIELD_LABELS) {
+    out[key] = textField(row[key] as string | null)
+  }
+  return out
+}
+
+export function dtoolsEditPayload(fields: DtoolsEditFields): Record<DtoolsEditKey, string | null> {
+  const payload = {} as Record<DtoolsEditKey, string | null>
+  for (const { key } of DTOOLS_FIELD_LABELS) {
+    const value = fields[key].trim()
+    payload[key] = value || null
+  }
+  return payload
+}
+
 export function dtoolsTitle(row: DtoolsProduct): string {
   return (
     textField(row.short_description) ||

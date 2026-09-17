@@ -5,7 +5,7 @@ import {
   nullableFields,
   parseCheckInDocuments,
 } from '../partsHelpers'
-import type { DtoolsProduct } from '../dtoolsCatalog'
+import { dtoolsEditPayload, type DtoolsEditFields, type DtoolsProduct } from '../dtoolsCatalog'
 import type { CheckInDocument, PartCheckIn, PartFields, TrackedPart } from '../types'
 
 function requireClient() {
@@ -63,6 +63,18 @@ export async function fetchDtoolsProducts(): Promise<DtoolsProduct[]> {
     }
     throw err
   }
+}
+
+export async function updateDtoolsProduct(id: string, fields: DtoolsEditFields): Promise<DtoolsProduct> {
+  const payload = dtoolsEditPayload(fields)
+  const { data, error } = await requireClient()
+    .from('dtools_products')
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw new Error(error.message)
+  return data as DtoolsProduct
 }
 
 export async function findExistingPart(fields: PartFields): Promise<TrackedPart | null> {
