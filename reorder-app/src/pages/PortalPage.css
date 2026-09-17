@@ -44,15 +44,15 @@
   gap: 0.4rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #475569;
+  color: #94a3b8;
 }
 
 .portal-sort select {
   padding: 0.45rem 0.55rem;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #0f172a;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
   font-size: 0.85rem;
   font-weight: 500;
 }
@@ -61,18 +61,18 @@
   flex: 1;
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #475569;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #cbd5e1;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
 }
 
 .portal-tab-active {
-  background: #0d9488;
-  border-color: #0d9488;
-  color: #fff;
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ecfdf5;
 }
 
 .portal-main {
@@ -90,21 +90,21 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0.4rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #334155;
   border-radius: 12px;
-  background: #f8fafc;
-  box-shadow: inset 0 1px 2px rgb(15 23 42 / 4%);
+  background: #111827;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%);
 }
 
 .portal-empty {
   text-align: center;
-  color: #64748b;
+  color: #94a3b8;
   padding: 2rem 1rem;
 }
 
 .portal-row {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: 6px;
   overflow: hidden;
 }
@@ -125,7 +125,7 @@
 }
 
 .portal-row-header:hover {
-  background: #f8fafc;
+  background: #0f172a;
 }
 
 .portal-row-title {
@@ -133,7 +133,7 @@
   min-width: 0;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #e2e8f0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -143,24 +143,24 @@
   flex-shrink: 0;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #475569;
+  color: #cbd5e1;
 }
 
 .portal-row-when {
   flex-shrink: 0;
-  color: #64748b;
+  color: #94a3b8;
   font-size: 0.78rem;
 }
 
 .portal-row-chevron {
   flex-shrink: 0;
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .portal-row-body {
   padding: 0.15rem 0.7rem 0.7rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #334155;
 }
 
 .portal-badge {
@@ -175,18 +175,18 @@
 }
 
 .portal-badge-pending {
-  background: #fef3c7;
-  color: #92400e;
+  background: #422006;
+  color: #fcd34d;
 }
 
 .portal-badge-ordered {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #1e3a5f;
+  color: #93c5fd;
 }
 
 .portal-badge-received {
-  background: #d1fae5;
-  color: #047857;
+  background: #064e3b;
+  color: #6ee7b7;
 }
 
 .portal-details {
@@ -207,18 +207,18 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .portal-detail dd {
   margin: 0.1rem 0 0 0;
   font-size: 0.85rem;
-  color: #0f172a;
+  color: #e2e8f0;
   word-break: break-word;
 }
 
 .portal-detail dd a {
-  color: #0d9488;
+  color: #5eead4;
 }
 
 .portal-actions {
@@ -228,7 +228,7 @@
   gap: 0.85rem;
   margin-top: 0.75rem;
   padding-top: 0.65rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #334155;
 }
 
 .portal-check {
@@ -237,14 +237,14 @@
   gap: 0.45rem;
   font-size: 0.85rem;
   font-weight: 500;
-  color: #334155;
+  color: #cbd5e1;
   cursor: pointer;
 }
 
 .portal-check input {
   width: 1.05rem;
   height: 1.05rem;
-  accent-color: #0d9488;
+  accent-color: #0f766e;
   cursor: pointer;
 }
 
@@ -254,22 +254,22 @@
 
 .portal-saving {
   font-size: 0.8rem;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .portal-reopen {
   padding: 0.25rem 0.55rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #0f766e;
-  background: #f0fdfa;
-  border: 1px solid #99f6e4;
+  color: #99f6e4;
+  background: #134e4a;
+  border: 1px solid #0f766e;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .portal-reopen:hover:not(:disabled) {
-  background: #ccfbf1;
+  background: #115e59;
 }
 
 .portal-reopen:disabled {
@@ -281,15 +281,15 @@
   padding: 0.25rem 0.55rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  color: #fecaca;
+  background: #7f1d1d;
+  border: 1px solid #991b1b;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .portal-delete:hover:not(:disabled) {
-  background: #fee2e2;
+  background: #991b1b;
 }
 
 .portal-delete:disabled {
