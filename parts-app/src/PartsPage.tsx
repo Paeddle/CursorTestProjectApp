@@ -659,19 +659,29 @@ export function PartsPage() {
             ) : null}
             {workspaceTab === 'parts' ? (
               <>
-                <label className="parts-sort">
-                  <span>Database</span>
-                  <select
-                    className="parts-filter-select"
-                    value={sourceFilter}
-                    onChange={(e) => setSourceFilter(e.target.value as 'all' | 'dtools' | 'shs')}
-                    aria-label="Filter by database"
+                <div className="parts-view-toggle" role="group" aria-label="Filter by database">
+                  <button
+                    type="button"
+                    className={sourceFilter === 'all' ? 'active' : ''}
+                    onClick={() => setSourceFilter('all')}
                   >
-                    <option value="all">All</option>
-                    <option value="dtools">D-Tools</option>
-                    <option value="shs">SHSWebApp</option>
-                  </select>
-                </label>
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    className={sourceFilter === 'dtools' ? 'active' : ''}
+                    onClick={() => setSourceFilter('dtools')}
+                  >
+                    D-Tools
+                  </button>
+                  <button
+                    type="button"
+                    className={sourceFilter === 'shs' ? 'active' : ''}
+                    onClick={() => setSourceFilter('shs')}
+                  >
+                    SHSWebApp
+                  </button>
+                </div>
                 <label className="parts-sort">
                   <span>Sort</span>
                   <select
