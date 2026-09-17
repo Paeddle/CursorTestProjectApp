@@ -1,24 +1,23 @@
 export type PortalDesk = 'warehouse' | 'purchasing'
 
-function categoryTokens(category: string | null | undefined): string[] {
+function normalizeCategory(category: string | null | undefined): string {
   return (category ?? '')
     .toLowerCase()
-    .split(/[/>\\|]+/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+    .replace(/[_/\\|]+/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-function isPurchasingToken(token: string): boolean {
-  return (
-    token === 'inventory' ||
-    token === 'security' ||
-    token.startsWith('inventory ') ||
-    token.startsWith('security ')
-  )
+function isNonInventory(normalized: string): boolean {
+  return normalized.includes('non inventory') || normalized.includes('noninventory')
 }
 
 export function isPurchasingCategory(category: string | null | undefined): boolean {
-  return categoryTokens(category).some(isPurchasingToken)
+  const normalized = normalizeCategory(category)
+  if (!normalized || isNonInventory(normalized)) return false
+  if (!/\binventory\b/.test(normalized)) return false
+  return normalized.includes('security') || /\bstock\b/.test(normalized)
 }
 
 export function portalDeskForCategory(category: string | null | undefined): PortalDesk {
