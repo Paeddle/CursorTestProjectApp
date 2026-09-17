@@ -27,11 +27,16 @@ import {
 } from './types'
 import {
   DTOOLS_FIELD_LABELS,
+  categorySegments,
   dtoolsMatchesQuery,
   dtoolsMeta,
   dtoolsTitle,
+  matchesCategory,
+  sortDtoolsProducts,
   textField,
+  uniqueSorted,
   type DtoolsProduct,
+  type DtoolsSort,
 } from './dtoolsCatalog'
 import './PartsPage.css'
 
@@ -143,6 +148,11 @@ export function PartsPage() {
   const [editQty, setEditQty] = useState('1')
   const [editSaving, setEditSaving] = useState(false)
   const [checkInSort, setCheckInSort] = useState<CheckInSort>('date-desc')
+  const [partSort, setPartSort] = useState<DtoolsSort>('name')
+  const [filterBrand, setFilterBrand] = useState('')
+  const [filterSupplier, setFilterSupplier] = useState('')
+  const [filterCategoryRoot, setFilterCategoryRoot] = useState('')
+  const [filterCategoryChild, setFilterCategoryChild] = useState('')
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) return
@@ -170,9 +180,34 @@ export function PartsPage() {
     ),
     [checkInSort, checkIns, search],
   )
+  const brandOptions = useMemo(() => uniqueSorted(parts.map((row) => row.brand)), [parts])
+  const supplierOptions = useMemo(() => uniqueSorted(parts.map((row) => row.supplier)), [parts])
+  const categoryRoots = useMemo(
+    () => uniqueSorted(parts.map((row) => categorySegments(row.category)[0])),
+    [parts],
+  )
+  const categoryChildren = useMemo(
+    () =>
+      uniqueSorted(
+        parts
+          .filter((row) => categorySegments(row.category)[0] === filterCategoryRoot)
+          .map((row) => categorySegments(row.category)[1]),
+      ),
+    [filterCategoryRoot, parts],
+  )
+
   const filteredParts = useMemo(
-    () => parts.filter((row) => dtoolsMatchesQuery(row, search)),
-    [parts, search],
+    () =>
+      sortDtoolsProducts(
+        parts.filter((row) => {
+          if (filterBrand && textField(row.brand) !== filterBrand) return false
+          if (filterSupplier && textField(row.supplier) !== filterSupplier) return false
+          if (!matchesCategory(row, filterCategoryRoot, filterCategoryChild)) return false
+          return dtoolsMatchesQuery(row, search)
+        }),
+        partSort,
+      ),
+    [filterBrand, filterCategoryChild, filterCategoryRoot, filterSupplier, partSort, parts, search],
   )
 
   const togglePart = (id: string) => {
@@ -201,6 +236,10 @@ export function PartsPage() {
 
     setError(null)
     setSearch('')
+    setFilterBrand('')
+    setFilterSupplier('')
+    setFilterCategoryRoot('')
+    setFilterCategoryChild('')
     setWorkspaceTab('parts')
     setExpandedParts(new Set([match.id]))
     setFocusedPartId(match.id)
@@ -404,6 +443,92 @@ export function PartsPage() {
                   <option value="po-desc">PO (Z–A)</option>
                 </select>
               </label>
+            ) : null}
+            {workspaceTab === 'parts' ? (
+              <>
+                <label className="parts-sort">
+                  <span>Sort</span>
+                  <select
+                    value={partSort}
+                    onChange={(e) => setPartSort(e.target.value as DtoolsSort)}
+                    aria-label="Sort parts"
+                  >
+                    <option value="name">Name</option>
+                    <option value="brand">Brand</option>
+                    <option value="supplier">Supplier</option>
+                    <option value="part_number">Part number</option>
+                  </select>
+                </label>
+                <label className="parts-sort">
+                  <span>Brand</span>
+                  <select
+                    className="parts-filter-select"
+                    value={filterBrand}
+                    onChange={(e) => setFilterBrand(e.target.value)}
+                    aria-label="Filter by brand"
+                  >
+                    <option value="">All brands</option>
+                    {brandOptions.map((brand) => (
+                      <option key={brand} value={brand}>
+                        {brand}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="parts-sort">
+                  <span>Supplier</span>
+                  <select
+                    className="parts-filter-select"
+                    value={filterSupplier}
+                    onChange={(e) => setFilterSupplier(e.target.value)}
+                    aria-label="Filter by supplier"
+                  >
+                    <option value="">All suppliers</option>
+                    {supplierOptions.map((supplier) => (
+                      <option key={supplier} value={supplier}>
+                        {supplier}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="parts-sort">
+                  <span>Category</span>
+                  <select
+                    className="parts-filter-select"
+                    value={filterCategoryRoot}
+                    onChange={(e) => {
+                      setFilterCategoryRoot(e.target.value)
+                      setFilterCategoryChild('')
+                    }}
+                    aria-label="Filter by category"
+                  >
+                    <option value="">All categories</option>
+                    {categoryRoots.map((root) => (
+                      <option key={root} value={root}>
+                        {root}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {filterCategoryRoot && categoryChildren.length > 0 ? (
+                  <label className="parts-sort">
+                    <span>{filterCategoryRoot}</span>
+                    <select
+                      className="parts-filter-select"
+                      value={filterCategoryChild}
+                      onChange={(e) => setFilterCategoryChild(e.target.value)}
+                      aria-label={`Filter ${filterCategoryRoot} subcategories`}
+                    >
+                      <option value="">All {filterCategoryRoot}</option>
+                      {categoryChildren.map((child) => (
+                        <option key={child} value={child}>
+                          {child}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </>
             ) : null}
             {workspaceTab === 'parts' && filteredParts.length > 0 && filteredParts.length <= 80 && (
               <button type="button" className="parts-toolbar-btn" onClick={expandAllParts}>

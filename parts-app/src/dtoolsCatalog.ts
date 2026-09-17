@@ -126,6 +126,56 @@ export function dtoolsMatchesQuery(row: DtoolsProduct, query: string): boolean {
   return DTOOLS_FIELD_LABELS.some(({ key }) => textField(row[key] as string | null).toLowerCase().includes(q))
 }
 
+export function uniqueSorted(values: (string | null | undefined)[]): string[] {
+  const set = new Set<string>()
+  for (const value of values) {
+    const trimmed = textField(value)
+    if (trimmed) set.add(trimmed)
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+}
+
+export function categorySegments(category: string | null | undefined): string[] {
+  return textField(category)
+    .split('>')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+export function matchesCategory(
+  row: DtoolsProduct,
+  root: string,
+  child: string,
+): boolean {
+  if (!root) return true
+  const segments = categorySegments(row.category)
+  if (segments[0] !== root) return false
+  if (!child) return true
+  return segments[1] === child
+}
+
+export type DtoolsSort = 'name' | 'brand' | 'supplier' | 'part_number'
+
+function compareText(a: string, b: string): number {
+  const left = a.trim()
+  const right = b.trim()
+  if (!left && !right) return 0
+  if (!left) return 1
+  if (!right) return -1
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+export function sortDtoolsProducts(rows: DtoolsProduct[], sort: DtoolsSort): DtoolsProduct[] {
+  const copy = [...rows]
+  copy.sort((a, b) => {
+    if (sort === 'name') return compareText(dtoolsTitle(a), dtoolsTitle(b))
+    if (sort === 'brand') return compareText(textField(a.brand), textField(b.brand))
+    if (sort === 'supplier') return compareText(textField(a.supplier), textField(b.supplier))
+    return compareText(textField(a.part_number), textField(b.part_number))
+  })
+  return copy
+}
+
 export function dtoolsToPartFields(row: DtoolsProduct): {
   manufacturer: string
   vendor: string
