@@ -363,7 +363,12 @@ export default function App() {
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pickSuggestion(part)}
             >
-              <span className="suggest-item-title">{displayPartTitle(part)}</span>
+              <span className="suggest-item-title">
+                {displayPartTitle(part)}
+                <span className={`suggest-source suggest-source-${part.catalogSource === 'shs' ? 'shs' : 'dtools'}`}>
+                  {part.catalogSource === 'shs' ? 'SHSWebApp' : 'D-Tools'}
+                </span>
+              </span>
               <span className="suggest-item-meta">
                 {[part.ipn ? `IPN ${part.ipn}` : '', part.upc_code ? `UPC ${part.upc_code}` : '']
                   .filter(Boolean)
@@ -524,7 +529,11 @@ export default function App() {
               <div className="last-scan-panel" role="status">
                 <strong>Existing part</strong>
                 <p className="last-scan-panel-main">{displayPartTitle(selectedPart)}</p>
-                <p className="last-scan-panel-meta">This part is already in the catalog. Saving will check it in without creating a duplicate.</p>
+                <p className="last-scan-panel-meta">
+                  {selectedPart.catalogSource === 'shs'
+                    ? 'This part is in the SHSWebApp warehouse catalog (not D-Tools). Saving will check it in without creating a duplicate.'
+                    : 'This part is in the D-Tools catalog. Saving will check it in without creating a duplicate.'}
+                </p>
               </div>
             )}
 

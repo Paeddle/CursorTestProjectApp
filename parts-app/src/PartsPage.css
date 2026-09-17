@@ -482,9 +482,42 @@
   flex: 1;
 }
 
+.parts-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  min-width: 0;
+  width: 100%;
+}
+
 .parts-card-title {
   font-weight: 700;
   color: #f8fafc;
+}
+
+.parts-source-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.parts-source-badge-dtools {
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.55);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+
+.parts-source-badge-shs {
+  color: #bfdbfe;
+  background: rgba(30, 64, 175, 0.5);
+  border: 1px solid rgba(96, 165, 250, 0.4);
 }
 
 .parts-card-meta {

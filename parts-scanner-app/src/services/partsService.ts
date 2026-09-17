@@ -97,6 +97,7 @@ export function dtoolsAsTrackedPart(row: DtoolsProduct): TrackedPart {
     id: row.id,
     created_at: row.imported_at,
     updated_at: row.imported_at,
+    catalogSource: 'dtools',
   }
 }
 
@@ -111,7 +112,7 @@ export function mergeCatalog(tracked: TrackedPart[], library: DtoolsProduct[]): 
     if (ipn && seenIpn.has(ipn)) return false
     return true
   })
-  return [...mapped, ...extras]
+  return [...mapped, ...extras.map((p) => ({ ...p, catalogSource: 'shs' as const }))]
 }
 
 export function findDtoolsInList(library: DtoolsProduct[], barcode: string): DtoolsProduct | null {

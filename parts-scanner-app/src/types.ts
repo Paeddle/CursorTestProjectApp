@@ -13,6 +13,7 @@ export type TrackedPart = PartFields & {
   id: string
   created_at: string
   updated_at: string
+  catalogSource?: 'dtools' | 'shs'
 }
 
 export type CheckInDocument = {

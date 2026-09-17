@@ -55,7 +55,15 @@ import {
 } from './dtoolsCatalog'
 import './PartsPage.css'
 
-type WorkspaceTab = 'checkin' | 'parts' | 'other'
+function SourceBadge({ source }: { source: 'dtools' | 'shs' }) {
+  return (
+    <span className={`parts-source-badge parts-source-badge-${source}`}>
+      {source === 'dtools' ? 'D-Tools' : 'SHSWebApp'}
+    </span>
+  )
+}
+
+type WorkspaceTab = 'checkin' | 'parts'
 type CheckInSort = 'date-desc' | 'po-asc' | 'po-desc'
 type CheckInView = 'item' | 'po'
 
@@ -196,6 +204,7 @@ export function PartsPage() {
   const [filterSupplier, setFilterSupplier] = useState('')
   const [filterCategoryRoot, setFilterCategoryRoot] = useState('')
   const [filterCategoryChild, setFilterCategoryChild] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'dtools' | 'shs'>('all')
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) return
@@ -266,6 +275,9 @@ export function PartsPage() {
     () => otherParts.filter((row) => partMatchesQuery(row, search)),
     [otherParts, search],
   )
+  const visibleDtools = sourceFilter === 'shs' ? [] : filteredParts
+  const visibleOther = sourceFilter === 'dtools' ? [] : filteredOtherParts
+  const visiblePartCount = visibleDtools.length + visibleOther.length
 
   const togglePart = (id: string) => {
     setExpandedParts((prev) => {
@@ -298,6 +310,7 @@ export function PartsPage() {
       setFilterSupplier('')
       setFilterCategoryRoot('')
       setFilterCategoryChild('')
+      setSourceFilter('all')
       setWorkspaceTab('parts')
       setExpandedParts(new Set([dtoolsMatch.id]))
       setFocusedPartId(dtoolsMatch.id)
@@ -306,7 +319,8 @@ export function PartsPage() {
     if (otherMatch) {
       setError(null)
       setSearch('')
-      setWorkspaceTab('other')
+      setSourceFilter('all')
+      setWorkspaceTab('parts')
       setExpandedParts(new Set([otherMatch.id]))
       setFocusedPartId(otherMatch.id)
       return
@@ -316,16 +330,17 @@ export function PartsPage() {
   }
 
   useEffect(() => {
-    if ((workspaceTab !== 'parts' && workspaceTab !== 'other') || !focusedPartId) return
+    if (workspaceTab !== 'parts' || !focusedPartId) return
     const el = document.getElementById(`part-card-${focusedPartId}`)
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [workspaceTab, focusedPartId, parts, otherParts])
 
   const expandAllParts = () => {
-    if (filteredParts.length > 0 && filteredParts.every((r) => expandedParts.has(r.id))) {
+    const ids = [...visibleDtools, ...visibleOther].map((r) => r.id)
+    if (ids.length > 0 && ids.every((id) => expandedParts.has(id))) {
       setExpandedParts(new Set())
     } else {
-      setExpandedParts(new Set(filteredParts.map((r) => r.id)))
+      setExpandedParts(new Set(ids))
     }
   }
 
@@ -535,7 +550,7 @@ export function PartsPage() {
   }
 
   const allPartsExpanded =
-    filteredParts.length > 0 && filteredParts.every((r) => expandedParts.has(r.id))
+    visiblePartCount > 0 && [...visibleDtools, ...visibleOther].every((r) => expandedParts.has(r.id))
 
   return (
     <div className="parts-page">
@@ -572,18 +587,7 @@ export function PartsPage() {
               className={`parts-sheet-tab${workspaceTab === 'parts' ? ' active' : ''}`}
               onClick={() => setWorkspaceTab('parts')}
             >
-              D-Tools{parts.length ? ` (${parts.length})` : ''}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="parts-tab-other"
-              aria-controls="parts-panel-other"
-              aria-selected={workspaceTab === 'other'}
-              className={`parts-sheet-tab${workspaceTab === 'other' ? ' active' : ''}`}
-              onClick={() => setWorkspaceTab('other')}
-            >
-              Other parts{otherParts.length ? ` (${otherParts.length})` : ''}
+              Parts{(parts.length + otherParts.length) ? ` (${parts.length + otherParts.length})` : ''}
             </button>
           </div>
         </div>
@@ -598,9 +602,7 @@ export function PartsPage() {
               placeholder={
                 workspaceTab === 'checkin'
                   ? 'Filter check-ins by name, UPC, IPN, PO…'
-                  : workspaceTab === 'other'
-                    ? 'Filter warehouse-only parts by name, UPC, IPN…'
-                    : 'Filter D-Tools library by brand, model, part number, UPC…'
+                  : 'Filter by name, UPC, brand, or source…'
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -657,6 +659,19 @@ export function PartsPage() {
             ) : null}
             {workspaceTab === 'parts' ? (
               <>
+                <label className="parts-sort">
+                  <span>Database</span>
+                  <select
+                    className="parts-filter-select"
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value as 'all' | 'dtools' | 'shs')}
+                    aria-label="Filter by database"
+                  >
+                    <option value="all">All</option>
+                    <option value="dtools">D-Tools</option>
+                    <option value="shs">SHSWebApp</option>
+                  </select>
+                </label>
                 <label className="parts-sort">
                   <span>Sort</span>
                   <select
@@ -741,7 +756,7 @@ export function PartsPage() {
                 ) : null}
               </>
             ) : null}
-            {workspaceTab === 'parts' && filteredParts.length > 0 && filteredParts.length <= 80 && (
+            {workspaceTab === 'parts' && visiblePartCount > 0 && visiblePartCount <= 80 && (
               <button type="button" className="parts-toolbar-btn" onClick={expandAllParts}>
                 {allPartsExpanded ? 'Collapse all' : 'Expand all'}
               </button>
@@ -755,17 +770,16 @@ export function PartsPage() {
               >
                 Check-in scanner
               </a>
-            ) : workspaceTab === 'other' ? (
-              <a
-                className="parts-scanner-link"
-                href={partsScannerHref('parts')}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Add warehouse part
-              </a>
             ) : (
               <>
+                <a
+                  className="parts-scanner-link"
+                  href={partsScannerHref('parts')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Add warehouse part
+                </a>
                 <button
                   type="button"
                   className="parts-toolbar-btn"
@@ -1014,16 +1028,16 @@ export function PartsPage() {
           >
             {loading ? (
               <div className="parts-loading">Loading parts…</div>
-            ) : filteredParts.length === 0 ? (
+            ) : visiblePartCount === 0 ? (
               <div className="parts-empty">
-                {search.trim()
-                  ? 'No D-Tools products match your filter.'
-                  : 'No D-Tools products loaded yet. Import CSVFiles/Products.csv with npm run dtools:import-csv.'}
+                {search.trim() || sourceFilter !== 'all'
+                  ? 'No parts match your filter.'
+                  : 'No parts loaded yet. Import a D-Tools CSV, or add a warehouse-only part.'}
               </div>
             ) : (
               <div className="parts-list-scroll">
                 <div className="parts-list">
-                  {filteredParts.map((row) => {
+                  {visibleDtools.map((row) => {
                     const isExpanded = expandedParts.has(row.id)
                     return (
                       <div
@@ -1037,8 +1051,11 @@ export function PartsPage() {
                           onClick={() => togglePart(row.id)}
                           aria-expanded={isExpanded}
                         >
-                          <span className="parts-card-title-block">
-                            <span className="parts-card-title">{dtoolsTitle(row)}</span>
+                            <span className="parts-card-title-block">
+                            <span className="parts-card-title-row">
+                              <span className="parts-card-title">{dtoolsTitle(row)}</span>
+                              <SourceBadge source={(row.source ?? 'dtools') === 'local' ? 'shs' : 'dtools'} />
+                            </span>
                             {dtoolsMeta(row) ? (
                               <span className="parts-card-meta">{dtoolsMeta(row)}</span>
                             ) : null}
@@ -1117,30 +1134,7 @@ export function PartsPage() {
                       </div>
                     )
                   })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div
-            role="tabpanel"
-            id="parts-panel-other"
-            aria-labelledby="parts-tab-other"
-            hidden={workspaceTab !== 'other'}
-            className="parts-sheet-panel"
-          >
-            {loading ? (
-              <div className="parts-loading">Loading warehouse parts…</div>
-            ) : filteredOtherParts.length === 0 ? (
-              <div className="parts-empty">
-                {search.trim()
-                  ? 'No warehouse-only parts match your filter.'
-                  : 'No warehouse-only parts yet. Use Add warehouse part for items that are not in D-Tools.'}
-              </div>
-            ) : (
-              <div className="parts-list-scroll">
-                <div className="parts-list">
-                  {filteredOtherParts.map((row) => {
+                  {visibleOther.map((row) => {
                     const isExpanded = expandedParts.has(row.id)
                     const isEditing = editingOtherId === row.id
                     return (
@@ -1156,7 +1150,10 @@ export function PartsPage() {
                           aria-expanded={isExpanded}
                         >
                           <span className="parts-card-title-block">
-                            <span className="parts-card-title">{displayPartTitle(row)}</span>
+                            <span className="parts-card-title-row">
+                              <span className="parts-card-title">{displayPartTitle(row)}</span>
+                              <SourceBadge source="shs" />
+                            </span>
                           </span>
                           <span className="parts-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                         </button>
