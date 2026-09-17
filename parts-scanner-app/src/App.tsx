@@ -9,7 +9,7 @@ import {
   formatDateTime,
   todayLocalDate,
 } from './partsHelpers'
-import { fetchDtoolsProducts, fetchParts, fillDtoolsUpcFromCheckIn, findDtoolsInList, findExistingPart, insertCheckIn, insertPartIfMissing, mergeCatalog } from './services/partsService'
+import { fetchDtoolsProducts, fetchParts, fillDtoolsUpcFromCheckIn, findDtoolsInList, findDtoolsProductId, findExistingPart, insertCheckIn, insertPartIfMissing, mergeCatalog } from './services/partsService'
 import {
   CATALOG_FIELD_LABELS,
   EMPTY_PART_FIELDS,
@@ -447,12 +447,27 @@ export default function App() {
           window.location.assign(partsTrackerHref())
           return
         }
+        const dtoolsId = await findDtoolsProductId(fields, selectedPart?.catalogSource === 'dtools' ? selectedPart.id : null)
+        if (dtoolsId) {
+          setStatus({
+            type: 'error',
+            message: 'That part is already in the D-Tools library. Use Check-In Scanner instead of adding a warehouse copy.',
+          })
+          return
+        }
         const hasCatalogData = CATALOG_FIELD_LABELS.some(({ key }) => fields[key].trim().length > 0)
         if (!hasCatalogData) {
           setStatus({ type: 'error', message: 'Enter at least one field to add a part.' })
           return
         }
         const part = await insertPartIfMissing({ ...fields, po: '' })
+        if (!part) {
+          setStatus({
+            type: 'error',
+            message: 'That part is already in the D-Tools library. Use Check-In Scanner instead of adding a warehouse copy.',
+          })
+          return
+        }
         const snapshot = {
           ...fieldsFromRecord(part),
           po: fields.po.trim(),
@@ -478,9 +493,12 @@ export default function App() {
         po: fields.po.trim(),
         description: fields.description.trim() || selectedPart.description,
       }
-      const stored = await insertPartIfMissing({ ...snapshot, po: '' })
-      await insertCheckIn(snapshot, todayLocalDate(), stored.id, checkInExtras())
-      const dtoolsId = selectedPart.catalogSource === 'dtools' ? selectedPart.id : null
+      const dtoolsId =
+        selectedPart.catalogSource === 'dtools'
+          ? selectedPart.id
+          : await findDtoolsProductId(snapshot)
+      const stored = dtoolsId ? null : await insertPartIfMissing({ ...snapshot, po: '' })
+      await insertCheckIn(snapshot, todayLocalDate(), stored?.id ?? null, checkInExtras())
       const addedUpc = await fillDtoolsUpcFromCheckIn(snapshot, dtoolsId)
       const [tracked, library] = await Promise.all([fetchParts(), fetchDtoolsProducts()])
       setCatalog(mergeCatalog(tracked, library))

@@ -156,9 +156,46 @@ export async function findExistingPart(fields: PartFields): Promise<TrackedPart 
   return null
 }
 
-export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPart> {
+export async function findDtoolsProductId(fields: PartFields, libraryId?: string | null): Promise<string | null> {
+  const client = requireClient()
+  if (libraryId) {
+    const { data, error } = await client.from('dtools_products').select('id').eq('id', libraryId).maybeSingle()
+    if (error) throw new Error(error.message)
+    if (data) return (data as { id: string }).id
+  }
+
+  const upc = normalizeLookupKey(fields.upc_code)
+  if (upc) {
+    const key = escapeIlikeExact(upc)
+    const { data, error } = await client
+      .from('dtools_products')
+      .select('id')
+      .or(`upc.ilike.${key},ean.ilike.${key},itf.ilike.${key}`)
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (data) return (data as { id: string }).id
+  }
+
+  const ipn = normalizeLookupKey(fields.ipn)
+  if (ipn) {
+    const { data, error } = await client
+      .from('dtools_products')
+      .select('id')
+      .ilike('part_number', escapeIlikeExact(ipn))
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (data) return (data as { id: string }).id
+  }
+
+  return null
+}
+
+export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPart | null> {
   const existing = await findExistingPart(fields)
   if (existing) return existing
+  if (await findDtoolsProductId(fields)) return null
 
   const payload = nullableFields(fields)
   const { data, error } = await requireClient()
