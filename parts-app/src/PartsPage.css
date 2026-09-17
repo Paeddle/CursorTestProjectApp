@@ -418,6 +418,17 @@
   color: #cbd5e1;
 }
 
+.parts-checkin-ext-link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #38bdf8;
+  word-break: break-all;
+}
+
+.parts-checkin-ext-link:hover {
+  color: #7dd3fc;
+}
+
 .parts-checkin-doc-actions {
   display: flex;
   flex-wrap: wrap;

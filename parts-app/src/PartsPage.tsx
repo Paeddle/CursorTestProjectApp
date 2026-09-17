@@ -885,6 +885,21 @@ export function PartsPage() {
                               <span className="parts-checkin-po-label">Qty</span>
                               <span>{checkInQuantity(row)}</span>
                             </div>
+                            <div className="parts-checkin-po">
+                              <span className="parts-checkin-po-label">Link</span>
+                              {row.link?.trim() && isHttpUrl(row.link) ? (
+                                <a
+                                  className="parts-checkin-ext-link"
+                                  href={row.link.trim()}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {row.link.trim()}
+                                </a>
+                              ) : (
+                                <span>{row.link?.trim() || '—'}</span>
+                              )}
+                            </div>
                             {docs.length > 0 ? (
                               <div className="parts-checkin-docs">
                                 {docs.map((doc, index) => (
