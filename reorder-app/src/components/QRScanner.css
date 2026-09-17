@@ -3,7 +3,7 @@
   inset: 0;
   height: 100dvh;
   max-height: 100dvh;
-  background: #0f172a;
+  background: #1e293b;
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -16,7 +16,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #475569;
   flex-shrink: 0;
 }
 
@@ -28,13 +28,13 @@
 .qr-scanner-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  color: #e2e8f0;
+  color: #f1f5f9;
 }
 
 .qr-scanner-close {
   padding: 0.5rem 1rem;
-  background: #334155;
-  border: 1px solid #475569;
+  background: #475569;
+  border: 1px solid #64748b;
   border-radius: 8px;
   color: #e2e8f0;
   cursor: pointer;
@@ -42,7 +42,7 @@
 }
 
 .qr-scanner-close:hover {
-  background: #475569;
+  background: #64748b;
 }
 
 .qr-scanner-error {
@@ -54,7 +54,7 @@
 .qr-scanner-error-hint {
   margin-top: 0.5rem;
   font-size: 0.9rem;
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 
 .qr-scanner-stage {
