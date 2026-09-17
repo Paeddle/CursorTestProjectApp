@@ -92,6 +92,26 @@ function matchKey(row) {
   return `bmp:${brand}|${model}|${partNumber}`
 }
 
+function findExistingRow(record, existing, byKey) {
+  const direct = byKey.get(matchKey(record))
+  if (direct) return direct
+  const brand = String(record.brand ?? '').trim().toLowerCase()
+  const partNumber = String(record.part_number ?? '').trim().toLowerCase()
+  if (brand && partNumber) {
+    const hits = existing.filter(
+      (row) =>
+        String(row.brand ?? '').trim().toLowerCase() === brand &&
+        String(row.part_number ?? '').trim().toLowerCase() === partNumber,
+    )
+    if (hits.length === 1) return hits[0]
+  }
+  if (partNumber) {
+    const hits = existing.filter((row) => String(row.part_number ?? '').trim().toLowerCase() === partNumber)
+    if (hits.length === 1) return hits[0]
+  }
+  return null
+}
+
 function rowToRecord(row, csvRow) {
   const record = { csv_row: csvRow, imported_at: new Date().toISOString() }
   for (const [header, column] of Object.entries(CSV_TO_COLUMN)) {
@@ -154,14 +174,14 @@ async function main() {
   const toInsert = []
   const toUpdate = []
   for (const record of incoming) {
-    const found = byKey.get(matchKey(record))
+    const found = findExistingRow(record, existing, byKey)
     if (!found) {
     toInsert.push({ ...record, source: 'dtools' })
       continue
     }
     const merged = { ...record, id: found.id, csv_row: found.csv_row }
     for (const field of BARCODE_FIELDS) {
-      if (!merged[field] && found[field]) merged[field] = found[field]
+      if (found[field]) merged[field] = found[field]
     }
     toUpdate.push(merged)
   }

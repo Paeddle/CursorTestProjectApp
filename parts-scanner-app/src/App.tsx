@@ -102,6 +102,31 @@ function partSearchHaystack(part: TrackedPart): string {
     .join(' ')
 }
 
+function lookupKey(value: string): string {
+  return (value ?? '').replace(/\s+/g, '').toLowerCase()
+}
+
+function preferDtoolsMatch(catalog: TrackedPart[], query: string): TrackedPart | null {
+  const key = lookupKey(query)
+  if (!key) return null
+  const matches = (part: TrackedPart) =>
+    lookupKey(part.upc_code) === key || lookupKey(part.ipn) === key
+  return catalog.find((part) => part.catalogSource === 'dtools' && matches(part)) ??
+    catalog.find((part) => matches(part)) ??
+    null
+}
+
+function asDtoolsPart(part: TrackedPart, catalog: TrackedPart[]): TrackedPart {
+  if (part.catalogSource === 'dtools') return part
+  const byId = catalog.find((row) => row.catalogSource === 'dtools' && row.id === part.id)
+  if (byId) return byId
+  const ipn = lookupKey(part.ipn)
+  if (!ipn) return { ...part, catalogSource: part.catalogSource ?? 'shs' }
+  const byIpn = catalog.find((row) => row.catalogSource === 'dtools' && lookupKey(row.ipn) === ipn)
+  if (byIpn) return byIpn
+  return { ...part, catalogSource: part.catalogSource ?? 'shs' }
+}
+
 const SUGGEST_FIELDS: (keyof PartFields)[] = ['upc_code', 'ipn', 'part_name', 'manufacturer', 'vendor']
 
 export default function App() {
@@ -157,12 +182,13 @@ export default function App() {
   }, [])
 
   const applyMatchedPart = (part: TrackedPart, upcFallback?: string) => {
-    setSelectedPart(part)
+    const resolved = asDtoolsPart(part, catalog)
+    setSelectedPart(resolved)
     setFields((prev) => ({
-      ...fieldsFromRecord(part),
-      upc_code: part.upc_code || upcFallback || prev.upc_code,
+      ...fieldsFromRecord(resolved),
+      upc_code: upcFallback || resolved.upc_code || prev.upc_code,
       po: prev.po,
-      description: prev.description.trim() || fieldsFromRecord(part).description,
+      description: prev.description.trim() || fieldsFromRecord(resolved).description,
     }))
   }
 
@@ -185,14 +211,19 @@ export default function App() {
     setSelectedPart(null)
     try {
       if (!supabase) return
-      const existing = await findExistingPart(next)
-      if (existing) {
-        applyMatchedPart(existing, barcode)
+      const fromCatalog = preferDtoolsMatch(catalog, barcode)
+      if (fromCatalog) {
+        applyMatchedPart(fromCatalog, barcode)
         return
       }
       const library = await fetchDtoolsProducts()
       const dtools = findDtoolsInList(library, barcode)
-      if (dtools) applyMatchedPart(mergeCatalog([], [dtools])[0], barcode)
+      if (dtools) {
+        applyMatchedPart(mergeCatalog([], [dtools])[0], barcode)
+        return
+      }
+      const existing = await findExistingPart(next)
+      if (existing) applyMatchedPart(existing, barcode)
     } catch (err) {
       setStatus({
         type: 'error',
@@ -201,7 +232,7 @@ export default function App() {
     } finally {
       setLookupLoading(false)
     }
-  }, [])
+  }, [catalog])
 
   const handleScan = useCallback(
     (value: string) => {
@@ -231,7 +262,7 @@ export default function App() {
 
   const setField = (key: keyof PartFields, value: string) => {
     setFields((prev) => ({ ...prev, [key]: value }))
-    if (key === 'upc_code' || key === 'ipn' || key === 'part_name') setSelectedPart(null)
+    if (key === 'ipn' || key === 'part_name') setSelectedPart(null)
   }
 
   const resetForm = () => {
@@ -306,20 +337,17 @@ export default function App() {
   const lookupFromCatalog = async () => {
     if (!supabase || lookupLoading) return
     if (!fields.upc_code.trim() && !fields.ipn.trim()) return
+    if (selectedPart?.catalogSource === 'dtools' && fields.upc_code.trim()) return
     setLookupLoading(true)
     try {
+      const query = fields.upc_code.trim() || fields.ipn.trim()
+      const fromCatalog = preferDtoolsMatch(catalog, query)
+      if (fromCatalog) {
+        applyMatchedPart(fromCatalog, fields.upc_code.trim() || undefined)
+        return
+      }
       const existing = await findExistingPart(fields)
       if (existing) applyMatchedPart(existing, fields.upc_code.trim() || undefined)
-      else {
-        const q = (fields.upc_code || fields.ipn).trim()
-        const hit = catalog.find((part) => {
-          const upc = (part.upc_code ?? '').replace(/\s+/g, '').toLowerCase()
-          const ipn = (part.ipn ?? '').replace(/\s+/g, '').toLowerCase()
-          const key = q.replace(/\s+/g, '').toLowerCase()
-          return Boolean(key) && (upc === key || ipn === key)
-        })
-        if (hit) applyMatchedPart(hit, fields.upc_code.trim() || undefined)
-      }
     } catch {
       /* keep typed values */
     } finally {
@@ -348,9 +376,15 @@ export default function App() {
       ).length === 0
 
   const pickSuggestion = (part: TrackedPart) => {
-    applyMatchedPart(part)
+    applyMatchedPart(part, fields.upc_code.trim() || undefined)
     setSuggestField(null)
   }
+
+  const willAttachUpcToDtools =
+    !isCatalog &&
+    selectedPart?.catalogSource === 'dtools' &&
+    lookupKey(fields.upc_code).length > 0 &&
+    lookupKey(selectedPart.upc_code) === ''
 
   const suggestList = (field: keyof PartFields) =>
     suggestField === field && catalogSuggestions.length > 0 ? (
@@ -446,10 +480,15 @@ export default function App() {
       }
       const stored = await insertPartIfMissing({ ...snapshot, po: '' })
       await insertCheckIn(snapshot, todayLocalDate(), stored.id, checkInExtras())
-      await fillDtoolsUpcFromCheckIn(snapshot, selectedPart.id)
+      const dtoolsId = selectedPart.catalogSource === 'dtools' ? selectedPart.id : null
+      const addedUpc = await fillDtoolsUpcFromCheckIn(snapshot, dtoolsId)
+      const [tracked, library] = await Promise.all([fetchParts(), fetchDtoolsProducts()])
+      setCatalog(mergeCatalog(tracked, library))
       setStatus({
         type: 'success',
-        message: `Checked in: ${displayPartTitle(snapshot)}`,
+        message: addedUpc
+          ? `Checked in: ${displayPartTitle(snapshot)}. UPC ${snapshot.upc_code} saved to the D-Tools part.`
+          : `Checked in: ${displayPartTitle(snapshot)}`,
       })
       resetForm()
     } catch (err) {
@@ -657,6 +696,25 @@ export default function App() {
               Scan barcode
             </button>
             {lookupLoading && <p className="box-meta-loading">Looking up this part…</p>}
+            {selectedPart && !lookupLoading && (
+              <div className={`last-scan-panel${willAttachUpcToDtools ? ' last-scan-panel-upc' : ''}`} role="status">
+                <strong>
+                  {willAttachUpcToDtools
+                    ? 'UPC will be saved to D-Tools'
+                    : selectedPart.catalogSource === 'shs'
+                      ? 'SHSWebApp part'
+                      : 'D-Tools part'}
+                </strong>
+                <p className="last-scan-panel-main">{displayPartTitle(selectedPart)}</p>
+                <p className="last-scan-panel-meta">
+                  {willAttachUpcToDtools
+                    ? `This D-Tools part has no UPC yet. Checking it in will add ${fields.upc_code.trim()} to the D-Tools library.`
+                    : selectedPart.catalogSource === 'shs'
+                      ? 'This part is warehouse-only. Checking it in will not change the D-Tools library.'
+                      : 'This part is in the D-Tools catalog. Saving will check it in without creating a duplicate.'}
+                </p>
+              </div>
+            )}
 
             <div className="form-field">
               <span className="label">Check-in date and time</span>
@@ -714,6 +772,9 @@ export default function App() {
                 aria-controls="upc_code-suggestions"
               />
               {suggestList('upc_code')}
+              {willAttachUpcToDtools ? (
+                <p className="hint">Checking in will save this UPC onto the selected D-Tools part.</p>
+              ) : null}
             </div>
 
             <div className="form-field parts-suggest-wrap">

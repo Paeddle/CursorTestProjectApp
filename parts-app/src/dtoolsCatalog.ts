@@ -308,11 +308,38 @@ export function keepScannedBarcodes<T extends { upc?: string | null; ean?: strin
 ): T {
   const next = { ...incoming }
   for (const field of ['upc', 'ean', 'itf'] as const) {
-    if (!textField(incoming[field] as string | null) && textField(existing[field] as string | null)) {
+    if (textField(existing[field] as string | null)) {
       next[field] = existing[field]
     }
   }
   return next
+}
+
+export function findMatchingDtoolsProduct(
+  incoming: Pick<DtoolsProduct, 'item_dtin' | 'brand' | 'model' | 'part_number'>,
+  existing: DtoolsProduct[],
+): DtoolsProduct | undefined {
+  const key = dtoolsMatchKey(incoming)
+  const direct = existing.find((row) => dtoolsMatchKey(row) === key)
+  if (direct) return direct
+
+  const brand = textField(incoming.brand).toLowerCase()
+  const partNumber = textField(incoming.part_number).toLowerCase()
+  if (brand && partNumber) {
+    const byBrandPart = existing.filter(
+      (row) =>
+        textField(row.brand).toLowerCase() === brand &&
+        textField(row.part_number).toLowerCase() === partNumber,
+    )
+    if (byBrandPart.length === 1) return byBrandPart[0]
+  }
+
+  if (partNumber) {
+    const byPart = existing.filter((row) => textField(row.part_number).toLowerCase() === partNumber)
+    if (byPart.length === 1) return byPart[0]
+  }
+
+  return undefined
 }
 
 export function parseCsvRows(text: string): string[][] {

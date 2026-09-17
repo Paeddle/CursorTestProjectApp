@@ -314,10 +314,10 @@
   line-height: 1.35;
 }
 
-.last-scan-panel-meta {
-  margin: 0.35rem 0 0 0;
-  font-size: 0.85rem;
-  opacity: 0.9;
+.last-scan-panel-upc {
+  background: rgba(20, 83, 45, 0.45);
+  border-color: #4ade80;
+  color: #dcfce7;
 }
 
 .hint {

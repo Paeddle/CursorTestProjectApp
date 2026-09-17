@@ -176,21 +176,41 @@ export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPa
   return data as TrackedPart
 }
 
-export async function fillDtoolsUpcFromCheckIn(fields: PartFields, libraryId?: string | null): Promise<void> {
+export async function fillDtoolsUpcFromCheckIn(fields: PartFields, libraryId?: string | null): Promise<boolean> {
   const upc = normalizeLookupKey(fields.upc_code)
-  if (!upc || !libraryId) return
+  if (!upc) return false
   const client = requireClient()
-  const { data, error } = await client
-    .from('dtools_products')
-    .select('id, upc')
-    .eq('id', libraryId)
-    .maybeSingle()
-  if (error) throw new Error(error.message)
-  const row = data as { id: string; upc: string | null } | null
-  if (!row) return
-  if (normalizeLookupKey(row.upc ?? '')) return
+  let row: { id: string; upc: string | null } | null = null
+
+  if (libraryId) {
+    const { data, error } = await client
+      .from('dtools_products')
+      .select('id, upc')
+      .eq('id', libraryId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    row = data as { id: string; upc: string | null } | null
+  }
+
+  if (!row) {
+    const ipn = normalizeLookupKey(fields.ipn)
+    if (ipn) {
+      const { data, error } = await client
+        .from('dtools_products')
+        .select('id, upc')
+        .ilike('part_number', escapeIlikeExact(ipn))
+        .limit(1)
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      row = data as { id: string; upc: string | null } | null
+    }
+  }
+
+  if (!row) return false
+  if (normalizeLookupKey(row.upc ?? '')) return false
   const { error: updateError } = await client.from('dtools_products').update({ upc }).eq('id', row.id)
   if (updateError) throw new Error(updateError.message)
+  return true
 }
 
 export async function uploadCheckInFile(
