@@ -6,16 +6,19 @@ html {
   color-scheme: dark;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   background: #0b1220;
   color: #d1d5db;
   min-height: 100vh;
-}
-
-#root {
-  min-height: 100vh;
+  overflow-x: auto;
 }
 
 button,

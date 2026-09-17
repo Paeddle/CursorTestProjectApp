@@ -11,6 +11,10 @@
   margin-right: auto;
 }
 
+.app.portal {
+  overflow-x: auto;
+}
+
 .app-header {
   margin-bottom: 1.25rem;
   text-align: center;
