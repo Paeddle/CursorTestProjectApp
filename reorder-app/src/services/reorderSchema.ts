@@ -102,6 +102,7 @@ export function toStatusUpdate(
     if (patch.ordered === true) row.ordered_at = new Date().toISOString()
     if (patch.ordered === false) row.ordered_at = null
     if (patch.received === true) row.received_at = new Date().toISOString()
+    if (patch.received === false) row.received_at = null
   }
   return row
 }

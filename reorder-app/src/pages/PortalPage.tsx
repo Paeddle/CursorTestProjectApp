@@ -5,6 +5,7 @@ import {
   deleteReorderRequest,
   fetchOpenReorderRequests,
   fetchOrderHistory,
+  reopenReorderRequest,
   setReorderOrdered,
   setReorderReceived,
 } from '../services/portalService'
@@ -49,6 +50,7 @@ function RequestCard({
   canDelete,
   onOrderedChange,
   onReceived,
+  onReopen,
   onDelete,
   busy,
 }: {
@@ -57,6 +59,7 @@ function RequestCard({
   canDelete: boolean
   onOrderedChange: (id: string, ordered: boolean) => void
   onReceived: (id: string) => void
+  onReopen: (id: string) => void
   onDelete: (id: string) => void
   busy: string | null
 }) {
@@ -175,6 +178,17 @@ function RequestCard({
             <div className="portal-actions">
               <button
                 type="button"
+                className="portal-reopen"
+                disabled={rowBusy}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onReopen(request.id)
+                }}
+              >
+                Return to open requests
+              </button>
+              <button
+                type="button"
                 className="portal-delete"
                 disabled={rowBusy}
                 onClick={(e) => {
@@ -184,7 +198,7 @@ function RequestCard({
               >
                 Delete
               </button>
-              {rowBusy ? <span className="portal-saving">Deleting…</span> : null}
+              {rowBusy ? <span className="portal-saving">Saving…</span> : null}
             </div>
           ) : null}
         </div>
@@ -249,6 +263,20 @@ export default function PortalPage() {
       setTab('history')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not mark as received.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleReopen = async (id: string) => {
+    setBusyId(id)
+    setError(null)
+    try {
+      await reopenReorderRequest(id)
+      await load()
+      setTab('open')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not return this request to Open requests.')
     } finally {
       setBusyId(null)
     }
@@ -424,6 +452,7 @@ export default function PortalPage() {
                   canDelete={tab === 'history'}
                   onOrderedChange={(id, ordered) => void handleOrderedChange(id, ordered)}
                   onReceived={(id) => void handleReceived(id)}
+                  onReopen={(id) => void handleReopen(id)}
                   onDelete={(id) => void handleDelete(id)}
                   busy={busyId}
                 />
