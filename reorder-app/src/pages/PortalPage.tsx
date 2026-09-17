@@ -9,6 +9,7 @@ import {
   setReorderReceived,
 } from '../services/portalService'
 import type { ReorderRequestRecord } from '../types'
+import { portalDeskForCategory, type PortalDesk } from '../portalDesk'
 import '../App.css'
 import './PortalPage.css'
 
@@ -193,6 +194,7 @@ function RequestCard({
 }
 
 export default function PortalPage() {
+  const [desk, setDesk] = useState<PortalDesk>('warehouse')
   const [tab, setTab] = useState<PortalTab>('open')
   const [openRequests, setOpenRequests] = useState<ReorderRequestRecord[]>([])
   const [history, setHistory] = useState<ReorderRequestRecord[]>([])
@@ -295,16 +297,36 @@ export default function PortalPage() {
     }
   }
 
+  const warehouseOpen = useMemo(
+    () => openRequests.filter((row) => portalDeskForCategory(row.category_name) === 'warehouse'),
+    [openRequests],
+  )
+  const purchasingOpen = useMemo(
+    () => openRequests.filter((row) => portalDeskForCategory(row.category_name) === 'purchasing'),
+    [openRequests],
+  )
+  const warehouseHistory = useMemo(
+    () => history.filter((row) => portalDeskForCategory(row.category_name) === 'warehouse'),
+    [history],
+  )
+  const purchasingHistory = useMemo(
+    () => history.filter((row) => portalDeskForCategory(row.category_name) === 'purchasing'),
+    [history],
+  )
+  const deskOpen = desk === 'purchasing' ? purchasingOpen : warehouseOpen
+  const deskHistory = desk === 'purchasing' ? purchasingHistory : warehouseHistory
   const list = useMemo(
-    () => sortRequests(tab === 'open' ? openRequests : history, sort),
-    [history, openRequests, sort, tab],
+    () => sortRequests(tab === 'open' ? deskOpen : deskHistory, sort),
+    [deskHistory, deskOpen, sort, tab],
   )
 
   return (
     <div className="app portal app-wide">
       <header className="app-header">
         <h1><a href="/" className="home-title-link">Re-order Portal</a></h1>
-        <p className="app-subtitle">Track open requests and order history</p>
+        <p className="app-subtitle">
+          Warehouse handles Consumables. Purchasing reviews Inventory and Security.
+        </p>
         <Link to="/" className="nav-link">
           ← New re-order request
         </Link>
@@ -321,20 +343,39 @@ export default function PortalPage() {
       {syncMessage ? <div className="status status-success">{syncMessage}</div> : null}
 
       <div className="portal-toolbar">
+        <div className="portal-tabs portal-desk-tabs" role="tablist" aria-label="Reorder desk">
+          <button
+            type="button"
+            className={`portal-tab ${desk === 'warehouse' ? 'portal-tab-active' : ''}`}
+            onClick={() => setDesk('warehouse')}
+          >
+            Warehouse ({warehouseOpen.length})
+          </button>
+          <button
+            type="button"
+            className={`portal-tab ${desk === 'purchasing' ? 'portal-tab-active' : ''}`}
+            onClick={() => setDesk('purchasing')}
+          >
+            Purchasing ({purchasingOpen.length})
+          </button>
+        </div>
+      </div>
+
+      <div className="portal-toolbar">
         <div className="portal-tabs">
           <button
             type="button"
             className={`portal-tab ${tab === 'open' ? 'portal-tab-active' : ''}`}
             onClick={() => setTab('open')}
           >
-            Open requests ({openRequests.length})
+            Open requests ({deskOpen.length})
           </button>
           <button
             type="button"
             className={`portal-tab ${tab === 'history' ? 'portal-tab-active' : ''}`}
             onClick={() => setTab('history')}
           >
-            Order history ({history.length})
+            Order history ({deskHistory.length})
           </button>
         </div>
         <label className="portal-sort">
@@ -365,7 +406,13 @@ export default function PortalPage() {
           {loading ? <p className="portal-empty">Loading…</p> : null}
           {!loading && list.length === 0 ? (
             <p className="portal-empty">
-              {tab === 'open' ? 'No open re-order requests.' : 'No completed orders yet.'}
+              {tab === 'open'
+                ? desk === 'purchasing'
+                  ? 'No open Inventory or Security re-order requests.'
+                  : 'No open Consumables re-order requests.'
+                : desk === 'purchasing'
+                  ? 'No completed Purchasing orders yet.'
+                  : 'No completed Warehouse orders yet.'}
             </p>
           ) : null}
           {!loading
