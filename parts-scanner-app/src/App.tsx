@@ -9,7 +9,7 @@ import {
   formatDateTime,
   todayLocalDate,
 } from './partsHelpers'
-import { fetchDtoolsProducts, fetchParts, findDtoolsInList, findExistingPart, insertCheckIn, insertPartIfMissing, mergeCatalog } from './services/partsService'
+import { fetchDtoolsProducts, fetchParts, fillDtoolsUpcFromCheckIn, findDtoolsInList, findExistingPart, insertCheckIn, insertPartIfMissing, mergeCatalog } from './services/partsService'
 import {
   CATALOG_FIELD_LABELS,
   EMPTY_PART_FIELDS,
@@ -405,6 +405,7 @@ export default function App() {
             description: fields.description.trim() || existing.description,
           }
           await insertCheckIn(snapshot, todayLocalDate(), existing.id, checkInExtras())
+          await fillDtoolsUpcFromCheckIn(snapshot)
           window.location.assign(partsTrackerHref())
           return
         }
@@ -420,6 +421,7 @@ export default function App() {
           description: fields.description.trim() || part.description,
         }
         await insertCheckIn(snapshot, todayLocalDate(), part.id, checkInExtras())
+        await fillDtoolsUpcFromCheckIn(snapshot)
         window.location.assign(partsTrackerHref())
         return
       }
@@ -441,6 +443,7 @@ export default function App() {
       }
       const stored = await insertPartIfMissing({ ...snapshot, po: '' })
       await insertCheckIn(snapshot, todayLocalDate(), stored.id, checkInExtras())
+      await fillDtoolsUpcFromCheckIn(snapshot, selectedPart.id)
       setStatus({
         type: 'success',
         message: `Checked in: ${displayPartTitle(snapshot)}`,

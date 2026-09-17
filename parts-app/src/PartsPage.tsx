@@ -18,6 +18,8 @@ import {
   deleteCheckIn,
   fetchCheckIns,
   fetchDtoolsProducts,
+  fillDtoolsUpcFromCheckIn,
+  mergeDtoolsCsv,
   updateCheckIn,
   updateDtoolsProduct,
 } from './services/partsService'
@@ -33,6 +35,7 @@ import {
   categorySegments,
   dtoolsMatchesQuery,
   dtoolsMeta,
+  dtoolsProductsToCsv,
   dtoolsToEditFields,
   dtoolsTitle,
   emptyDtoolsEditFields,
@@ -174,6 +177,7 @@ export function PartsPage() {
   const [editingPartId, setEditingPartId] = useState<string | null>(null)
   const [editPartFields, setEditPartFields] = useState<DtoolsEditFields>(() => emptyDtoolsEditFields())
   const [editPartSaving, setEditPartSaving] = useState(false)
+  const [libraryBusy, setLibraryBusy] = useState(false)
   const [checkInSort, setCheckInSort] = useState<CheckInSort>('date-desc')
   const [checkInView, setCheckInView] = useState<CheckInView>('item')
   const [checkInDate, setCheckInDate] = useState('')
@@ -362,6 +366,7 @@ export function PartsPage() {
     try {
       const updated = await updateCheckIn(editingId, editFields, qty)
       setCheckIns((prev) => prev.map((row) => (row.id === editingId ? updated : row)))
+      await fillDtoolsUpcFromCheckIn(editFields)
       cancelEdit()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save check-in.')
@@ -394,6 +399,34 @@ export function PartsPage() {
       setError(err instanceof Error ? err.message : 'Could not save part.')
     } finally {
       setEditPartSaving(false)
+    }
+  }
+
+  const downloadDtoolsCsv = () => {
+    const csv = dtoolsProductsToCsv(parts)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'Products.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importDtoolsCsv = async (file: File | undefined) => {
+    if (!file) return
+    setLibraryBusy(true)
+    setError(null)
+    try {
+      const text = await file.text()
+      const result = await mergeDtoolsCsv(text)
+      await load()
+      setError(null)
+      window.alert(`Imported D-Tools CSV: updated ${result.updated}, added ${result.inserted}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not import D-Tools CSV.')
+    } finally {
+      setLibraryBusy(false)
     }
   }
 
@@ -639,14 +672,38 @@ export function PartsPage() {
                 Check-in scanner
               </a>
             ) : (
-              <a
-                className="parts-scanner-link"
-                href={partsScannerHref('parts')}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Parts scanner
-              </a>
+              <>
+                <button
+                  type="button"
+                  className="parts-toolbar-btn"
+                  onClick={downloadDtoolsCsv}
+                  disabled={parts.length === 0 || libraryBusy}
+                >
+                  Download D-Tools CSV
+                </button>
+                <label className={`parts-toolbar-btn${libraryBusy ? ' parts-toolbar-btn-disabled' : ''}`}>
+                  {libraryBusy ? 'Importing…' : 'Import D-Tools CSV'}
+                  <input
+                    type="file"
+                    hidden
+                    accept=".csv,text/csv"
+                    disabled={libraryBusy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.currentTarget.value = ''
+                      void importDtoolsCsv(file)
+                    }}
+                  />
+                </label>
+                <a
+                  className="parts-scanner-link"
+                  href={partsScannerHref('parts')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Parts scanner
+                </a>
+              </>
             )}
           </div>
 

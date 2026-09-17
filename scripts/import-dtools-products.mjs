@@ -1,5 +1,8 @@
 /**
- * Import D-Tools Cloud Products.csv into public.dtools_products.
+ * Merge a D-Tools Cloud Products.csv into public.dtools_products.
+ * Matches on Item DTIN, then Brand + Model + Part Number.
+ * Keeps scanned UPC/EAN/ITF values when the D-Tools export left those blank.
+ *
  * Usage: node scripts/import-dtools-products.mjs [path/to/Products.csv]
  */
 import fs from 'node:fs'
@@ -59,6 +62,8 @@ const CSV_TO_COLUMN = {
   'Modified Date': 'modified_date',
 }
 
+const BARCODE_FIELDS = ['upc', 'ean', 'itf']
+
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return {}
   const raw = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '')
@@ -78,12 +83,38 @@ function emptyToNull(value) {
   return trimmed === '' ? null : trimmed
 }
 
+function matchKey(row) {
+  const dtin = String(row.item_dtin ?? '').trim().toLowerCase()
+  if (dtin) return `dtin:${dtin}`
+  const brand = String(row.brand ?? '').trim().toLowerCase()
+  const model = String(row.model ?? '').trim().toLowerCase()
+  const partNumber = String(row.part_number ?? '').trim().toLowerCase()
+  return `bmp:${brand}|${model}|${partNumber}`
+}
+
 function rowToRecord(row, csvRow) {
   const record = { csv_row: csvRow, imported_at: new Date().toISOString() }
   for (const [header, column] of Object.entries(CSV_TO_COLUMN)) {
     record[column] = emptyToNull(row[header])
   }
   return record
+}
+
+async function fetchAll(supabase) {
+  const pageSize = 1000
+  const rows = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('dtools_products')
+      .select('*')
+      .order('csv_row', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw new Error(error.message)
+    const batch = data ?? []
+    rows.push(...batch)
+    if (batch.length < pageSize) break
+  }
+  return rows
 }
 
 async function main() {
@@ -112,27 +143,56 @@ async function main() {
     process.exit(1)
   }
 
-  const records = parsed.data.map((row, index) => rowToRecord(row, index + 2))
-  console.log(`Parsed ${records.length} rows from ${path.basename(csvPath)}`)
+  const incoming = parsed.data.map((row, index) => rowToRecord(row, index + 2))
+  console.log(`Parsed ${incoming.length} rows from ${path.basename(csvPath)}`)
 
   const supabase = createClient(url, key)
-  const { error: deleteError } = await supabase.from('dtools_products').delete().gte('csv_row', 0)
-  if (deleteError) {
-    console.error('Could not clear previous import:', deleteError.message)
-    process.exit(1)
+  const existing = await fetchAll(supabase)
+  const byKey = new Map()
+  for (const row of existing) byKey.set(matchKey(row), row)
+
+  const toInsert = []
+  const toUpdate = []
+  for (const record of incoming) {
+    const found = byKey.get(matchKey(record))
+    if (!found) {
+      toInsert.push(record)
+      continue
+    }
+    const merged = { ...record, id: found.id, csv_row: found.csv_row }
+    for (const field of BARCODE_FIELDS) {
+      if (!merged[field] && found[field]) merged[field] = found[field]
+    }
+    toUpdate.push(merged)
   }
 
-  const batchSize = 200
-  let inserted = 0
-  for (let i = 0; i < records.length; i += batchSize) {
-    const batch = records.slice(i, i + batchSize)
-    const { error } = await supabase.from('dtools_products').insert(batch)
+  console.log(`Matched ${toUpdate.length} existing products, ${toInsert.length} new`)
+
+  const batchSize = 100
+  for (let i = 0; i < toUpdate.length; i += batchSize) {
+    const batch = toUpdate.slice(i, i + batchSize)
+    const { error } = await supabase.from('dtools_products').upsert(batch, { onConflict: 'id' })
     if (error) {
-      console.error(`Batch ${Math.floor(i / batchSize) + 1} failed:`, error.message)
+      console.error(`Update batch ${Math.floor(i / batchSize) + 1} failed:`, error.message)
       process.exit(1)
     }
-    inserted += batch.length
-    console.log(`Inserted ${inserted}/${records.length}`)
+    console.log(`Updated ${Math.min(i + batch.length, toUpdate.length)}/${toUpdate.length}`)
+  }
+
+  let maxRow = existing.reduce((max, row) => Math.max(max, Number(row.csv_row) || 0), 0)
+  for (const record of toInsert) {
+    maxRow += 1
+    record.csv_row = maxRow
+  }
+
+  for (let i = 0; i < toInsert.length; i += batchSize) {
+    const batch = toInsert.slice(i, i + batchSize)
+    const { error } = await supabase.from('dtools_products').insert(batch)
+    if (error) {
+      console.error(`Insert batch ${Math.floor(i / batchSize) + 1} failed:`, error.message)
+      process.exit(1)
+    }
+    console.log(`Inserted ${Math.min(i + batch.length, toInsert.length)}/${toInsert.length}`)
   }
 
   const { count, error: countError } = await supabase

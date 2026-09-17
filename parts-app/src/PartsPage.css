@@ -261,6 +261,8 @@
   color: #e2e8f0;
   font-size: 0.9rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
 }
 
 .parts-toolbar-btn:hover:not(:disabled) {
@@ -268,7 +270,7 @@
   border-color: #64748b;
 }
 
-.parts-toolbar-btn:disabled {
+.parts-toolbar-btn-disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

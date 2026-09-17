@@ -14,7 +14,8 @@
     "deploy:do": "powershell -ExecutionPolicy Bypass -File deployments/digitalocean/deploy.ps1",
     "inventree:sync": "node scripts/sync-inventree-parts.mjs",
     "inventree:import-csv": "node scripts/import-inventree-parts.mjs",
-    "dtools:import-csv": "node scripts/import-dtools-products.mjs"
+    "dtools:import-csv": "node scripts/import-dtools-products.mjs",
+    "dtools:export-csv": "node scripts/export-dtools-products.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",

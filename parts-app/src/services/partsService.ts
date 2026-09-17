@@ -5,7 +5,14 @@ import {
   nullableFields,
   parseCheckInDocuments,
 } from '../partsHelpers'
-import { dtoolsEditPayload, type DtoolsEditFields, type DtoolsProduct } from '../dtoolsCatalog'
+import {
+  dtoolsEditPayload,
+  dtoolsMatchKey,
+  keepScannedBarcodes,
+  parseDtoolsCsv,
+  type DtoolsEditFields,
+  type DtoolsProduct,
+} from '../dtoolsCatalog'
 import type { CheckInDocument, PartCheckIn, PartFields, TrackedPart } from '../types'
 
 function requireClient() {
@@ -75,6 +82,88 @@ export async function updateDtoolsProduct(id: string, fields: DtoolsEditFields):
     .single()
   if (error) throw new Error(error.message)
   return data as DtoolsProduct
+}
+
+export async function mergeDtoolsCsv(csvText: string): Promise<{ updated: number; inserted: number }> {
+  const incoming = parseDtoolsCsv(csvText)
+  if (incoming.length === 0) throw new Error('That CSV has no product rows.')
+  const existing = await fetchDtoolsProducts()
+  const byKey = new Map(existing.map((row) => [dtoolsMatchKey(row), row]))
+  const toInsert: Partial<DtoolsProduct>[] = []
+  const toUpdate: DtoolsProduct[] = []
+  const importedAt = new Date().toISOString()
+
+  for (const record of incoming) {
+    const found = byKey.get(dtoolsMatchKey(record as DtoolsProduct))
+    if (!found) {
+      toInsert.push({ ...record, imported_at: importedAt })
+      continue
+    }
+    const merged = keepScannedBarcodes(found, {
+      ...found,
+      ...record,
+      imported_at: importedAt,
+    } as DtoolsProduct)
+    toUpdate.push({ ...merged, id: found.id, csv_row: found.csv_row })
+  }
+
+  const client = requireClient()
+  const batchSize = 80
+  for (let i = 0; i < toUpdate.length; i += batchSize) {
+    const batch = toUpdate.slice(i, i + batchSize)
+    const { error } = await client.from('dtools_products').upsert(batch, { onConflict: 'id' })
+    if (error) throw new Error(error.message)
+  }
+
+  let maxRow = existing.reduce((max, row) => Math.max(max, Number(row.csv_row) || 0), 0)
+  const inserts = toInsert.map((row) => {
+    maxRow += 1
+    return { ...row, csv_row: maxRow, imported_at: importedAt }
+  })
+  for (let i = 0; i < inserts.length; i += batchSize) {
+    const batch = inserts.slice(i, i + batchSize)
+    const { error } = await client.from('dtools_products').insert(batch)
+    if (error) throw new Error(error.message)
+  }
+
+  return { updated: toUpdate.length, inserted: inserts.length }
+}
+
+export async function fillDtoolsUpcFromCheckIn(fields: PartFields, libraryId?: string | null): Promise<void> {
+  const upc = normalizeLookupKey(fields.upc_code)
+  if (!upc) return
+  const client = requireClient()
+  let row: { id: string; upc: string | null } | null = null
+  if (libraryId) {
+    const { data, error } = await client
+      .from('dtools_products')
+      .select('id, upc')
+      .eq('id', libraryId)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    row = data as { id: string; upc: string | null } | null
+  }
+  if (!row) {
+    const ipn = normalizeLookupKey(fields.ipn)
+    const brand = (fields.manufacturer ?? '').trim().toLowerCase()
+    if (ipn) {
+      const { data, error } = await client
+        .from('dtools_products')
+        .select('id, upc, brand')
+        .ilike('part_number', escapeIlikeExact(ipn))
+        .limit(8)
+      if (error) throw new Error(error.message)
+      const matches = (data ?? []) as { id: string; upc: string | null; brand: string | null }[]
+      row =
+        (brand
+          ? matches.find((item) => (item.brand ?? '').trim().toLowerCase() === brand) ?? null
+          : null) ?? (matches.length === 1 ? matches[0] : null)
+    }
+  }
+  if (!row) return
+  if (normalizeLookupKey(row.upc ?? '')) return
+  const { error } = await client.from('dtools_products').update({ upc }).eq('id', row.id)
+  if (error) throw new Error(error.message)
 }
 
 export async function findExistingPart(fields: PartFields): Promise<TrackedPart | null> {

@@ -233,6 +233,141 @@ export function dtoolsToPartFields(row: DtoolsProduct): {
   }
 }
 
+export const DTOOLS_CSV_COLUMNS: { header: string; key: DtoolsEditKey }[] = [
+  { header: 'Brand', key: 'brand' },
+  { header: 'Model', key: 'model' },
+  { header: 'Part Number', key: 'part_number' },
+  { header: 'Short Description', key: 'short_description' },
+  { header: 'Description', key: 'description' },
+  { header: 'Category', key: 'category' },
+  { header: 'Keywords', key: 'keywords' },
+  { header: 'Image URL', key: 'image_url' },
+  { header: 'MSRP', key: 'msrp' },
+  { header: 'Unit Cost', key: 'unit_cost' },
+  { header: 'Unit Price', key: 'unit_price' },
+  { header: 'Taxable', key: 'taxable' },
+  { header: 'Supplier', key: 'supplier' },
+  { header: 'System', key: 'system' },
+  { header: 'Phase', key: 'phase' },
+  { header: 'UPC', key: 'upc' },
+  { header: 'EAN', key: 'ean' },
+  { header: 'ITF', key: 'itf' },
+  { header: 'Quantity on Hand', key: 'quantity_on_hand' },
+  { header: 'Minimum Stock Level', key: 'minimum_stock_level' },
+  { header: 'Reorder Level', key: 'reorder_level' },
+  { header: 'Discontinued', key: 'discontinued' },
+  { header: 'Height', key: 'height' },
+  { header: 'Width', key: 'width' },
+  { header: 'Depth', key: 'depth' },
+  { header: 'Weight', key: 'weight' },
+  { header: 'Rack Mounted', key: 'rack_mounted' },
+  { header: 'Rack Units', key: 'rack_units' },
+  { header: 'Amps', key: 'amps' },
+  { header: 'Volts', key: 'volts' },
+  { header: 'Watts', key: 'watts' },
+  { header: 'BTU', key: 'btu' },
+  { header: 'Installation Hours', key: 'installation_hours' },
+  { header: 'Tax', key: 'tax' },
+  { header: 'Unit of Measure', key: 'unit_of_measure' },
+  { header: 'Margin', key: 'margin' },
+  { header: 'Markup', key: 'markup' },
+  { header: 'Length Based', key: 'length_based' },
+  { header: 'Inventory Value', key: 'inventory_value' },
+  { header: 'Inherited Labor Items', key: 'inherited_labor_items' },
+  { header: 'Inherited Accessories', key: 'inherited_accessories' },
+  { header: 'Item DTIN', key: 'item_dtin' },
+  { header: 'Active', key: 'active' },
+  { header: 'Created Date', key: 'created_date' },
+  { header: 'Modified Date', key: 'modified_date' },
+]
+
+export function dtoolsMatchKey(row: Pick<DtoolsProduct, 'item_dtin' | 'brand' | 'model' | 'part_number'>): string {
+  const dtin = textField(row.item_dtin).toLowerCase()
+  if (dtin) return `dtin:${dtin}`
+  return `bmp:${textField(row.brand).toLowerCase()}|${textField(row.model).toLowerCase()}|${textField(row.part_number).toLowerCase()}`
+}
+
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+export function dtoolsProductsToCsv(rows: DtoolsProduct[]): string {
+  const header = DTOOLS_CSV_COLUMNS.map((col) => csvEscape(col.header)).join(',')
+  const lines = rows.map((row) =>
+    DTOOLS_CSV_COLUMNS.map((col) => csvEscape(textField(row[col.key] as string | null))).join(','),
+  )
+  return `${[header, ...lines].join('\r\n')}\r\n`
+}
+
+export function keepScannedBarcodes<T extends { upc?: string | null; ean?: string | null; itf?: string | null }>(
+  existing: T,
+  incoming: T,
+): T {
+  const next = { ...incoming }
+  for (const field of ['upc', 'ean', 'itf'] as const) {
+    if (!textField(incoming[field] as string | null) && textField(existing[field] as string | null)) {
+      next[field] = existing[field]
+    }
+  }
+  return next
+}
+
+export function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let inQuotes = false
+  const source = text.replace(/^\uFEFF/, '')
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i]
+    if (inQuotes) {
+      if (char === '"') {
+        if (source[i + 1] === '"') {
+          cell += '"'
+          i += 1
+        } else {
+          inQuotes = false
+        }
+      } else {
+        cell += char
+      }
+    } else if (char === '"') {
+      inQuotes = true
+    } else if (char === ',') {
+      row.push(cell)
+      cell = ''
+    } else if (char === '\n') {
+      row.push(cell)
+      rows.push(row)
+      row = []
+      cell = ''
+    } else if (char !== '\r') {
+      cell += char
+    }
+  }
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell)
+    rows.push(row)
+  }
+  return rows.filter((line) => line.some((value) => value.trim() !== ''))
+}
+
+export function parseDtoolsCsv(text: string): Partial<DtoolsProduct>[] {
+  const table = parseCsvRows(text)
+  const header = table[0]
+  if (!header) return []
+  const indexByHeader = new Map(header.map((name, index) => [name.trim(), index]))
+  return table.slice(1).map((line) => {
+    const record: Record<string, string | null> = {}
+    for (const col of DTOOLS_CSV_COLUMNS) {
+      const index = indexByHeader.get(col.header)
+      record[col.key] = index == null ? null : textField(line[index]) || null
+    }
+    return record as Partial<DtoolsProduct>
+  })
+}
+
 export function dtoolsSearchHaystack(row: DtoolsProduct): string {
   return [
     row.brand,
