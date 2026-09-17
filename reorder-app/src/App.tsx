@@ -18,7 +18,13 @@ function RequireShsUnlock({ children }: { children: ReactNode }) {
     window.location.replace(`/?next=${next}`)
   }, [allowed, location.hash, location.pathname, location.search])
 
-  if (!allowed) return null
+  if (!allowed) {
+    return (
+      <div className="app">
+        <p className="app-subtitle">Opening unlock screen…</p>
+      </div>
+    )
+  }
   return children
 }
 
