@@ -27,14 +27,60 @@
   max-width: none;
 }
 
+.portal-desk-bar {
+  margin-bottom: 0;
+  gap: 0;
+}
+
 .portal-desk-tabs {
   width: 100%;
   min-width: 0;
+  gap: 0.35rem;
 }
 
 .portal-desk-tabs .portal-tab {
   padding: 0.8rem 0.9rem;
   font-size: 1rem;
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  position: relative;
+  z-index: 1;
+}
+
+.portal-desk-tabs .portal-tab-active {
+  z-index: 2;
+}
+
+.portal-desk-panel {
+  margin-top: -1px;
+  padding: 0.85rem 0.85rem 1rem;
+  border: 2px solid #0f766e;
+  background: #16353a;
+  min-width: 0;
+}
+
+.portal-desk-panel-warehouse {
+  border-top-left-radius: 0;
+  border-top-right-radius: 12px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.portal-desk-panel-purchasing {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.portal-desk-panel .portal-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.portal-sub-tab-active {
+  background: #5eead4;
+  border-color: #99f6e4;
+  color: #042f2e;
 }
 
 .portal-sync-btn {
@@ -337,6 +383,10 @@
   .portal-desk-tabs .portal-tab {
     padding: 0.7rem 0.4rem;
     font-size: 0.88rem;
+  }
+
+  .portal-desk-panel {
+    padding: 0.65rem 0.55rem 0.85rem;
   }
 
   .portal-sort {

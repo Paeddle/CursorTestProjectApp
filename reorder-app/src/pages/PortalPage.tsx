@@ -371,7 +371,8 @@ export default function PortalPage() {
 
       {syncMessage ? <div className="status status-success">{syncMessage}</div> : null}
 
-      <div className="portal-toolbar">
+      <div className="portal-desk">
+      <div className="portal-toolbar portal-desk-bar">
         <div className="portal-tabs portal-desk-tabs" role="tablist" aria-label="Reorder desk">
           <button
             type="button"
@@ -390,18 +391,19 @@ export default function PortalPage() {
         </div>
       </div>
 
+      <div className={`portal-desk-panel portal-desk-panel-${desk}`}>
       <div className="portal-toolbar">
-        <div className="portal-tabs">
+        <div className="portal-tabs portal-sub-tabs" role="tablist" aria-label="Request list">
           <button
             type="button"
-            className={`portal-tab ${tab === 'open' ? 'portal-tab-active' : ''}`}
+            className={`portal-tab ${tab === 'open' ? 'portal-sub-tab-active' : ''}`}
             onClick={() => setTab('open')}
           >
             Open requests ({deskOpen.length})
           </button>
           <button
             type="button"
-            className={`portal-tab ${tab === 'history' ? 'portal-tab-active' : ''}`}
+            className={`portal-tab ${tab === 'history' ? 'portal-sub-tab-active' : ''}`}
             onClick={() => setTab('history')}
           >
             Order history ({deskHistory.length})
@@ -461,6 +463,8 @@ export default function PortalPage() {
             : null}
         </div>
       </main>
+      </div>
+      </div>
     </div>
   )
 }
