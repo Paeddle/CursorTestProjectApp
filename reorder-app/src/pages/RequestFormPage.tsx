@@ -299,12 +299,6 @@ export default function RequestFormPage() {
                 {part.category_name ? (
                   <p className="item-meta">Category: {part.category_name}</p>
                 ) : null}
-                <p className="item-meta">
-                  Portal: {portalDeskLabel(portalDeskForCategory(part.category_name))}
-                  {portalDeskForCategory(part.category_name) === 'purchasing'
-                    ? ' (Security / Stock Inventory and Stock - Non Inventory)'
-                    : ' (Consumables / Security - Non Inventory)'}
-                </p>
                 {part.maximum_stock != null ? (
                   <p className="item-meta">Maximum stock: {part.maximum_stock}</p>
                 ) : null}
