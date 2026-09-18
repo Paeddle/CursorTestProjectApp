@@ -68,6 +68,7 @@ function catalogScannerHref(fields?: {
   po?: string
   partName?: string
   description?: string
+  missingFromDtools?: boolean
 }): string {
   if (typeof window === 'undefined') return '?mode=parts'
   const url = new URL(window.location.href)
@@ -86,6 +87,8 @@ function catalogScannerHref(fields?: {
   else url.searchParams.delete('name')
   if (description) url.searchParams.set('description', description)
   else url.searchParams.delete('description')
+  if (fields?.missingFromDtools) url.searchParams.set('missing', '1')
+  else url.searchParams.delete('missing')
   return url.toString()
 }
 
@@ -151,7 +154,11 @@ export default function App() {
   const [manualBarcode, setManualBarcode] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [missingFromDtools, setMissingFromDtools] = useState(false)
+  const [missingFromDtools, setMissingFromDtools] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const value = new URLSearchParams(window.location.search).get('missing')
+    return value === '1' || value === 'true'
+  })
   const openingCatalogRef = useRef(false)
 
   useEffect(() => {
@@ -260,6 +267,9 @@ export default function App() {
     if (extras.po || extras.part_name || extras.description) {
       setFormOpen(true)
       setFields((prev) => ({ ...prev, ...extras }))
+    }
+    if (params.get('missing') === '1' || params.get('missing') === 'true') {
+      setMissingFromDtools(true)
     }
   }, [applyBarcode])
 
@@ -370,7 +380,6 @@ export default function App() {
   const showAddPartCta =
     !isCatalog &&
     formOpen &&
-    !missingFromDtools &&
     !selectedPart &&
     (fields.upc_code.trim().length > 0 || fields.ipn.trim().length > 0 || nameQuery.length > 0) &&
     catalog
@@ -428,6 +437,7 @@ export default function App() {
         po: fields.po,
         partName: fields.part_name,
         description: fields.description,
+        missingFromDtools,
       }),
     )
   }
@@ -448,7 +458,10 @@ export default function App() {
             po: fields.po.trim(),
             description: fields.description.trim() || existing.description,
           }
-          await insertCheckIn(snapshot, todayLocalDate(), existing.id, checkInExtras())
+          const stored = missingFromDtools
+            ? await insertPartIfMissing({ ...snapshot, po: '' }, { missingFromDtools: true })
+            : existing
+          await insertCheckIn(snapshot, todayLocalDate(), stored?.id ?? existing.id, checkInExtras())
           window.location.assign(partsTrackerHref())
           return
         }
@@ -465,7 +478,10 @@ export default function App() {
           setStatus({ type: 'error', message: 'Enter at least one field to add a part.' })
           return
         }
-        const part = await insertPartIfMissing({ ...fields, po: '' })
+        const part = await insertPartIfMissing(
+          { ...fields, po: '' },
+          missingFromDtools ? { missingFromDtools: true } : undefined,
+        )
         if (!part) {
           setStatus({
             type: 'error',
