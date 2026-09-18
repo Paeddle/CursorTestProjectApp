@@ -7,6 +7,7 @@ import {
   checkInMatchesQuery,
   checkInQuantity,
   displayPartTitle,
+  displayCheckInTitle,
   fieldsFromRecord,
   formatCheckInWhen,
   formatDateTime,
@@ -865,7 +866,7 @@ export function PartsPage() {
                           className="parts-checkin-name"
                           onClick={() => openPartFromCheckIn(row)}
                         >
-                          {displayPartTitle(row)}
+                          {displayCheckInTitle(row)}
                         </button>
                         {!isEditing ? (
                           <>

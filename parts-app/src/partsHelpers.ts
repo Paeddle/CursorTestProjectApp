@@ -49,6 +49,15 @@ export function displayPartTitle(row: Partial<PartFields>): string {
   )
 }
 
+export function displayCheckInTitle(row: Partial<PartFields>): string {
+  return (
+    trimField(row.ipn) ||
+    trimField(row.part_name) ||
+    trimField(row.upc_code) ||
+    'Untitled part'
+  )
+}
+
 export function displayPartMeta(row: Partial<PartFields>): string {
   const bits: string[] = []
   const manufacturer = trimField(row.manufacturer)
