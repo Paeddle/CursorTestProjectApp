@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import BarcodeScanner from './components/BarcodeScanner'
 import DocumentScanner from './components/DocumentScanner'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -61,35 +61,6 @@ function readScannerMode(): ScannerMode {
   const mode = new URLSearchParams(window.location.search).get('mode')
   if (mode === 'parts' || mode === 'catalog') return 'parts'
   return 'checkin'
-}
-
-function catalogScannerHref(fields?: {
-  upc?: string
-  po?: string
-  partName?: string
-  description?: string
-  missingFromDtools?: boolean
-}): string {
-  if (typeof window === 'undefined') return '?mode=parts'
-  const url = new URL(window.location.href)
-  url.searchParams.set('mode', 'parts')
-  const upc = fields?.upc?.trim()
-  const po = fields?.po?.trim()
-  const partName = fields?.partName?.trim()
-  const description = fields?.description?.trim()
-  if (upc) url.searchParams.set('upc', upc)
-  else url.searchParams.delete('upc')
-  url.searchParams.delete('code')
-  url.searchParams.delete('barcode')
-  if (po) url.searchParams.set('po', po)
-  else url.searchParams.delete('po')
-  if (partName) url.searchParams.set('name', partName)
-  else url.searchParams.delete('name')
-  if (description) url.searchParams.set('description', description)
-  else url.searchParams.delete('description')
-  if (fields?.missingFromDtools) url.searchParams.set('missing', '1')
-  else url.searchParams.delete('missing')
-  return url.toString()
 }
 
 function partsTrackerHref(): string {
@@ -159,7 +130,6 @@ export default function App() {
     const value = new URLSearchParams(window.location.search).get('missing')
     return value === '1' || value === 'true'
   })
-  const openingCatalogRef = useRef(false)
 
   useEffect(() => {
     document.title = title
@@ -428,18 +398,48 @@ export default function App() {
       </ul>
     ) : null
 
-  const openCatalogScanner = () => {
-    if (openingCatalogRef.current) return
-    openingCatalogRef.current = true
-    window.location.assign(
-      catalogScannerHref({
-        upc: fields.upc_code,
-        po: fields.po,
-        partName: fields.part_name,
-        description: fields.description,
-        missingFromDtools,
-      }),
-    )
+  const addWarehousePart = async () => {
+    if (submitting) return
+    const catalogFields: PartFields = {
+      ...fields,
+      po: '',
+      description: '',
+    }
+    if (!catalogFields.upc_code.trim() && !catalogFields.ipn.trim() && !catalogFields.part_name.trim()) {
+      setStatus({ type: 'error', message: 'Enter a UPC, IPN, or part name before adding a warehouse part.' })
+      return
+    }
+    setSubmitting(true)
+    setStatus(null)
+    try {
+      const part = await insertPartIfMissing(
+        catalogFields,
+        missingFromDtools ? { missingFromDtools: true } : undefined,
+      )
+      if (!part) {
+        setStatus({
+          type: 'error',
+          message: 'That part is already in the D-Tools library. Uncheck Missing from D-Tools only if you meant to check in a D-Tools part.',
+        })
+        return
+      }
+      const [tracked, library] = await Promise.all([fetchParts(), fetchDtoolsProducts()])
+      setCatalog(mergeCatalog(tracked, library))
+      applyMatchedPart({ ...part, catalogSource: 'shs' }, fields.upc_code.trim() || undefined, fields.description)
+      setStatus({
+        type: 'success',
+        message: missingFromDtools
+          ? `Added warehouse part ${displayPartTitle(part)} and marked it missing from D-Tools. Save to check it in.`
+          : `Added warehouse part ${displayPartTitle(part)}. Save to check it in.`,
+      })
+    } catch (err) {
+      setStatus({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Could not add warehouse part.',
+      })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleSave = async (e: FormEvent) => {
@@ -945,9 +945,10 @@ export default function App() {
                   type="button"
                   className="btn btn-primary btn-full"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={openCatalogScanner}
+                  onClick={() => void addWarehousePart()}
+                  disabled={submitting}
                 >
-                Add warehouse part
+                {submitting ? 'Adding…' : 'Add warehouse part'}
                 </button>
               </div>
             )}
