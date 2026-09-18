@@ -353,8 +353,8 @@ export default function PortalPage() {
       <header className="app-header">
         <h1><a href="/" className="home-title-link">Re-order Portal</a></h1>
         <p className="app-subtitle">
-          Warehouse handles Consumables, Stock - Non Inventory, and Security - Non Inventory.
-          Purchasing reviews Security - Inventory and Stock - Inventory.
+          Warehouse handles Consumables and Security - Non Inventory.
+          Purchasing reviews Security - Inventory, Stock - Inventory, and Stock - Non Inventory.
         </p>
         <Link to="/" className="nav-link">
           ← New re-order request
@@ -437,8 +437,8 @@ export default function PortalPage() {
             <p className="portal-empty">
               {tab === 'open'
                 ? desk === 'purchasing'
-                  ? 'No open Security - Inventory or Stock - Inventory re-order requests.'
-                  : 'No open Consumables or Non Inventory re-order requests.'
+                  ? 'No open Security - Inventory, Stock - Inventory, or Stock - Non Inventory re-order requests.'
+                  : 'No open Consumables or Security - Non Inventory re-order requests.'
                 : desk === 'purchasing'
                   ? 'No completed Purchasing orders yet.'
                   : 'No completed Warehouse orders yet.'}

@@ -15,9 +15,14 @@ function isNonInventory(normalized: string): boolean {
 
 export function isPurchasingCategory(category: string | null | undefined): boolean {
   const normalized = normalizeCategory(category)
-  if (!normalized || isNonInventory(normalized)) return false
+  if (!normalized) return false
+  const stock = /\bstock\b/.test(normalized)
+  const security = normalized.includes('security')
+  if (isNonInventory(normalized)) {
+    return stock && !security
+  }
   if (!/\binventory\b/.test(normalized)) return false
-  return normalized.includes('security') || /\bstock\b/.test(normalized)
+  return security || stock
 }
 
 export function portalDeskForCategory(category: string | null | undefined): PortalDesk {
