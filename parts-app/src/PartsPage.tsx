@@ -278,10 +278,10 @@ export function PartsPage() {
       ),
     [filterBrand, filterCategoryChild, filterCategoryRoot, filterSupplier, partSort, parts, search],
   )
-  const filteredOtherParts = useMemo(
-    () => otherParts.filter((row) => partMatchesQuery(row, search)),
-    [otherParts, search],
-  )
+  const filteredOtherParts = useMemo(() => {
+    if (filterCategoryRoot || filterCategoryChild) return []
+    return otherParts.filter((row) => partMatchesQuery(row, search))
+  }, [filterCategoryChild, filterCategoryRoot, otherParts, search])
   const visibleDtools = sourceFilter === 'shs' ? [] : filteredParts
   const visibleOther = sourceFilter === 'dtools' ? [] : filteredOtherParts
   const visiblePartCount = visibleDtools.length + visibleOther.length
