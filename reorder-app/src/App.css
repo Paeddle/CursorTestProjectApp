@@ -12,9 +12,10 @@
 }
 
 .app.portal {
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: visible;
-  max-width: none;
+  max-width: 960px;
+  width: 100%;
 }
 
 .app-header {
