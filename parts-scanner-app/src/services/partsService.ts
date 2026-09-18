@@ -192,12 +192,32 @@ export async function findDtoolsProductId(fields: PartFields, libraryId?: string
   return null
 }
 
-export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPart | null> {
-  const existing = await findExistingPart(fields)
-  if (existing) return existing
-  if (await findDtoolsProductId(fields)) return null
+function missingColumnError(message: string): Error {
+  if (/missing_from_dtools|schema cache|column/i.test(message)) {
+    return new Error(
+      'Missing-from-D-Tools column is not set up yet. Run supabase/add-tracked-parts-missing-from-dtools.sql in the Supabase SQL Editor.',
+    )
+  }
+  return new Error(message)
+}
 
-  const payload = nullableFields(fields)
+export async function insertPartIfMissing(
+  fields: PartFields,
+  options?: { missingFromDtools?: boolean },
+): Promise<TrackedPart | null> {
+  const existing = await findExistingPart(fields)
+  if (existing) {
+    if (options?.missingFromDtools && !existing.missing_from_dtools) {
+      return markMissingFromDtools(existing.id)
+    }
+    return existing
+  }
+  if (!options?.missingFromDtools && (await findDtoolsProductId(fields))) return null
+
+  const payload = {
+    ...nullableFields(fields),
+    ...(options?.missingFromDtools ? { missing_from_dtools: true } : {}),
+  }
   const { data, error } = await requireClient()
     .from('tracked_parts')
     .insert(payload)
@@ -206,10 +226,26 @@ export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPa
   if (error) {
     if (/duplicate|unique/i.test(error.message)) {
       const again = await findExistingPart(fields)
-      if (again) return again
+      if (again) {
+        if (options?.missingFromDtools && !again.missing_from_dtools) {
+          return markMissingFromDtools(again.id)
+        }
+        return again
+      }
     }
-    throw new Error(error.message)
+    throw missingColumnError(error.message)
   }
+  return data as TrackedPart
+}
+
+export async function markMissingFromDtools(id: string): Promise<TrackedPart> {
+  const { data, error } = await requireClient()
+    .from('tracked_parts')
+    .update({ missing_from_dtools: true })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) throw missingColumnError(error.message)
   return data as TrackedPart
 }
 

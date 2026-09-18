@@ -14,6 +14,7 @@ export type TrackedPart = PartFields & {
   created_at: string
   updated_at: string
   catalogSource?: 'dtools' | 'shs'
+  missing_from_dtools?: boolean
 }
 
 export type CheckInDocument = {

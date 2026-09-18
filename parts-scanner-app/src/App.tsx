@@ -151,6 +151,7 @@ export default function App() {
   const [manualBarcode, setManualBarcode] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [missingFromDtools, setMissingFromDtools] = useState(false)
   const openingCatalogRef = useRef(false)
 
   useEffect(() => {
@@ -184,6 +185,7 @@ export default function App() {
   const applyMatchedPart = (part: TrackedPart, upcFallback?: string, notes?: string) => {
     const resolved = asDtoolsPart(part, catalog)
     setSelectedPart(resolved)
+    setMissingFromDtools(resolved.catalogSource !== 'dtools' && resolved.missing_from_dtools === true)
     setFields((prev) => ({
       ...fieldsFromRecord(resolved),
       upc_code: upcFallback || resolved.upc_code || prev.upc_code,
@@ -209,6 +211,7 @@ export default function App() {
     }
     setFields(next)
     setSelectedPart(null)
+    setMissingFromDtools(false)
     try {
       if (!supabase) return
       const fromCatalog = preferDtoolsMatch(catalog, barcode)
@@ -274,6 +277,7 @@ export default function App() {
     setFields(EMPTY_PART_FIELDS)
     setCheckInAt(new Date())
     setSelectedPart(null)
+    setMissingFromDtools(false)
     setFormOpen(isCatalog ? false : true)
     setManualBarcode('')
     setSuggestField(null)
@@ -366,6 +370,7 @@ export default function App() {
   const showAddPartCta =
     !isCatalog &&
     formOpen &&
+    !missingFromDtools &&
     !selectedPart &&
     (fields.upc_code.trim().length > 0 || fields.ipn.trim().length > 0 || nameQuery.length > 0) &&
     catalog
@@ -478,6 +483,37 @@ export default function App() {
         return
       }
 
+      if (!isCatalog && missingFromDtools) {
+        const hasPartData =
+          fields.upc_code.trim() || fields.ipn.trim() || fields.part_name.trim() || fields.manufacturer.trim()
+        if (!hasPartData) {
+          setStatus({ type: 'error', message: 'Enter a UPC, IPN, or part name for this warehouse part.' })
+          return
+        }
+        const snapshot = {
+          ...fields,
+          po: fields.po.trim(),
+          description: fields.description.trim(),
+        }
+        const stored = await insertPartIfMissing({ ...snapshot, po: '' }, { missingFromDtools: true })
+        if (!stored) {
+          setStatus({
+            type: 'error',
+            message: 'That part is already in the D-Tools library. Uncheck Missing from D-Tools to check it in there.',
+          })
+          return
+        }
+        await insertCheckIn(snapshot, todayLocalDate(), stored.id, checkInExtras())
+        const [tracked, library] = await Promise.all([fetchParts(), fetchDtoolsProducts()])
+        setCatalog(mergeCatalog(tracked, library))
+        setStatus({
+          type: 'success',
+          message: `Checked in warehouse part: ${displayPartTitle(snapshot)}. Marked missing from D-Tools.`,
+        })
+        resetForm()
+        return
+      }
+
       if (!selectedPart) {
         setStatus({
           type: 'error',
@@ -497,7 +533,12 @@ export default function App() {
         selectedPart.catalogSource === 'dtools'
           ? selectedPart.id
           : await findDtoolsProductId(snapshot)
-      const stored = dtoolsId ? null : await insertPartIfMissing({ ...snapshot, po: '' })
+      const stored = dtoolsId
+        ? null
+        : await insertPartIfMissing(
+            { ...snapshot, po: '' },
+            selectedPart.catalogSource === 'shs' && missingFromDtools ? { missingFromDtools: true } : undefined,
+          )
       await insertCheckIn(snapshot, todayLocalDate(), stored?.id ?? null, checkInExtras())
       const addedUpc = await fillDtoolsUpcFromCheckIn(snapshot, dtoolsId)
       const [tracked, library] = await Promise.all([fetchParts(), fetchDtoolsProducts()])
@@ -835,6 +876,17 @@ export default function App() {
                 autoComplete="off"
               />
             </div>
+
+            {selectedPart?.catalogSource === 'dtools' ? null : (
+              <label className="missing-dtools-check">
+                <input
+                  type="checkbox"
+                  checked={missingFromDtools}
+                  onChange={(e) => setMissingFromDtools(e.target.checked)}
+                />
+                Missing from D-Tools
+              </label>
+            )}
 
             <div className="form-field">
               <span className="label">Documents</span>

@@ -13,6 +13,7 @@ export type TrackedPart = PartFields & {
   id: string
   created_at: string
   updated_at: string
+  missing_from_dtools?: boolean
 }
 
 export type CheckInDocument = {

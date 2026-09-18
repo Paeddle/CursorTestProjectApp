@@ -58,6 +58,33 @@ export function displayCheckInTitle(row: Partial<PartFields>): string {
   )
 }
 
+export function isMissingFromDtools(row: { missing_from_dtools?: boolean | null }): boolean {
+  return row.missing_from_dtools === true
+}
+
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+export function missingFromDtoolsPartsToCsv(rows: TrackedPart[]): string {
+  const header = ['Brand', 'Part Number', 'Short Description', 'Description', 'Supplier', 'UPC', 'Image URL']
+  const lines = rows.filter(isMissingFromDtools).map((row) =>
+    [
+      trimField(row.manufacturer),
+      trimField(row.ipn),
+      trimField(row.part_name),
+      trimField(row.description),
+      trimField(row.vendor),
+      trimField(row.upc_code),
+      trimField(row.link),
+    ]
+      .map(csvEscape)
+      .join(','),
+  )
+  return `${[header.join(','), ...lines].join('\r\n')}\r\n`
+}
+
 export function displayPartMeta(row: Partial<PartFields>): string {
   const bits: string[] = []
   const manufacturer = trimField(row.manufacturer)

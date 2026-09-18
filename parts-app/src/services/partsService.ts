@@ -197,11 +197,29 @@ export async function findExistingPart(fields: PartFields): Promise<TrackedPart 
   return null
 }
 
-export async function insertPartIfMissing(fields: PartFields): Promise<TrackedPart> {
+export async function insertPartIfMissing(
+  fields: PartFields,
+  options?: { missingFromDtools?: boolean },
+): Promise<TrackedPart> {
   const existing = await findExistingPart(fields)
-  if (existing) return existing
+  if (existing) {
+    if (options?.missingFromDtools && !existing.missing_from_dtools) {
+      const { data, error } = await requireClient()
+        .from('tracked_parts')
+        .update({ missing_from_dtools: true })
+        .eq('id', existing.id)
+        .select('*')
+        .single()
+      if (error) throw new Error(error.message)
+      return data as TrackedPart
+    }
+    return existing
+  }
 
-  const payload = nullableFields(fields)
+  const payload = {
+    ...nullableFields(fields),
+    ...(options?.missingFromDtools ? { missing_from_dtools: true } : {}),
+  }
   const { data, error } = await requireClient()
     .from('tracked_parts')
     .insert(payload)

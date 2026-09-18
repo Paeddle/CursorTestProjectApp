@@ -12,6 +12,8 @@ import {
   formatCheckInWhen,
   formatDateTime,
   isHttpUrl,
+  isMissingFromDtools,
+  missingFromDtoolsPartsToCsv,
   parseCheckInDocuments,
   partMatchesQuery,
   trimField,
@@ -62,6 +64,10 @@ function SourceBadge({ source }: { source: 'dtools' | 'shs' }) {
       {source === 'dtools' ? 'D-Tools' : 'SHSWebApp'}
     </span>
   )
+}
+
+function MissingDtoolsBadge() {
+  return <span className="parts-source-badge parts-missing-dtools-badge">Missing from D-Tools</span>
 }
 
 type WorkspaceTab = 'checkin' | 'parts'
@@ -500,6 +506,17 @@ export function PartsPage() {
     URL.revokeObjectURL(url)
   }
 
+  const downloadMissingFromDtoolsCsv = () => {
+    const csv = missingFromDtoolsPartsToCsv(otherParts)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'missing-from-dtools.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const importDtoolsCsv = async (file: File | undefined) => {
     if (!file) return
     setLibraryBusy(true)
@@ -798,6 +815,14 @@ export function PartsPage() {
                   disabled={parts.length === 0 || libraryBusy}
                 >
                   Download D-Tools CSV
+                </button>
+                <button
+                  type="button"
+                  className="parts-toolbar-btn"
+                  onClick={downloadMissingFromDtoolsCsv}
+                  disabled={!otherParts.some(isMissingFromDtools) || libraryBusy}
+                >
+                  Export missing from D-Tools
                 </button>
                 <label className={`parts-toolbar-btn${libraryBusy ? ' parts-toolbar-btn-disabled' : ''}`}>
                   {libraryBusy ? 'Importing…' : 'Import D-Tools CSV'}
@@ -1165,6 +1190,7 @@ export function PartsPage() {
                             <span className="parts-card-title-row">
                               <span className="parts-card-title">{displayPartTitle(row)}</span>
                               <SourceBadge source="shs" />
+                              {isMissingFromDtools(row) ? <MissingDtoolsBadge /> : null}
                             </span>
                           </span>
                           <span className="parts-card-chevron">{isExpanded ? '▾' : '▸'}</span>
