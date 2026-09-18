@@ -68,21 +68,12 @@ function csvEscape(value: string): string {
 }
 
 export function missingFromDtoolsPartsToCsv(rows: TrackedPart[]): string {
-  const header = ['Brand', 'Part Number', 'Short Description', 'Description', 'Supplier', 'UPC', 'Image URL']
-  const lines = rows.filter(isMissingFromDtools).map((row) =>
-    [
-      trimField(row.manufacturer),
-      trimField(row.ipn),
-      trimField(row.part_name),
-      trimField(row.description),
-      trimField(row.vendor),
-      trimField(row.upc_code),
-      trimField(row.link),
-    ]
-      .map(csvEscape)
-      .join(','),
-  )
-  return `${[header.join(','), ...lines].join('\r\n')}\r\n`
+  const numbers = rows
+    .filter(isMissingFromDtools)
+    .map((row) => trimField(row.ipn))
+    .filter(Boolean)
+  const lines = ['Part Number', ...numbers.map(csvEscape)]
+  return `${lines.join('\r\n')}\r\n`
 }
 
 export function displayPartMeta(row: Partial<PartFields>): string {
