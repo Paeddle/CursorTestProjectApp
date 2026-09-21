@@ -128,6 +128,27 @@ export function formatCheckInWhen(checkInDate: string, scannedAt: string): strin
   return `${date} · ${time}`
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+export function toDatetimeLocalValue(iso: string | null | undefined): string {
+  const d = new Date(iso ?? '')
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+export function fromDatetimeLocalValue(value: string): { scannedAt: string; checkInDate: string } | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const d = new Date(trimmed)
+  if (Number.isNaN(d.getTime())) return null
+  return {
+    scannedAt: d.toISOString(),
+    checkInDate: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
+  }
+}
+
 export function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim())
 }

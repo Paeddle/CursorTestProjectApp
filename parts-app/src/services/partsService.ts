@@ -313,15 +313,20 @@ export async function updateCheckIn(
   id: string,
   fields: PartFields,
   quantity: number,
+  when?: { scannedAt: string; checkInDate: string } | null,
 ): Promise<PartCheckIn> {
   const client = requireClient()
   const qty = Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity) : 1
   const matched = await findExistingPart(fields).catch(() => null)
   const { data: existing } = await client.from('part_checkins').select('part_id').eq('id', id).maybeSingle()
-  const payload = {
+  const payload: Record<string, unknown> = {
     ...nullableFields(fields),
     quantity: qty,
     part_id: matched?.id ?? (existing as { part_id?: string | null } | null)?.part_id ?? null,
+  }
+  if (when) {
+    payload.scanned_at = when.scannedAt
+    payload.check_in_date = when.checkInDate
   }
   const first = await client.from('part_checkins').update(payload).eq('id', id).select('*').single()
   if (first.error) {

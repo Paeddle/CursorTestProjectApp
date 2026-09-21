@@ -11,11 +11,13 @@ import {
   fieldsFromRecord,
   formatCheckInWhen,
   formatDateTime,
+  fromDatetimeLocalValue,
   isHttpUrl,
   isMissingFromDtools,
   missingFromDtoolsPartsToCsv,
   parseCheckInDocuments,
   partMatchesQuery,
+  toDatetimeLocalValue,
   trimField,
 } from './partsHelpers'
 import {
@@ -195,6 +197,7 @@ export function PartsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editFields, setEditFields] = useState<PartFields>(EMPTY_PART_FIELDS)
   const [editQty, setEditQty] = useState('1')
+  const [editWhen, setEditWhen] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editingPartId, setEditingPartId] = useState<string | null>(null)
   const [editPartFields, setEditPartFields] = useState<DtoolsEditFields>(() => emptyDtoolsEditFields())
@@ -399,6 +402,7 @@ export function PartsPage() {
     setEditingId(row.id)
     setEditFields(fieldsFromRecord(row))
     setEditQty(String(checkInQuantity(row)))
+    setEditWhen(toDatetimeLocalValue(row.scanned_at || row.check_in_date))
     setError(null)
   }
 
@@ -406,6 +410,7 @@ export function PartsPage() {
     setEditingId(null)
     setEditFields(EMPTY_PART_FIELDS)
     setEditQty('1')
+    setEditWhen('')
   }
 
   const saveEdit = async () => {
@@ -415,10 +420,15 @@ export function PartsPage() {
       setError('Quantity must be at least 1.')
       return
     }
+    const when = fromDatetimeLocalValue(editWhen)
+    if (!when) {
+      setError('Enter a valid check-in date and time.')
+      return
+    }
     setEditSaving(true)
     setError(null)
     try {
-      const updated = await updateCheckIn(editingId, editFields, qty)
+      const updated = await updateCheckIn(editingId, editFields, qty, when)
       setCheckIns((prev) => prev.map((row) => (row.id === editingId ? updated : row)))
       cancelEdit()
     } catch (err) {
@@ -973,6 +983,18 @@ export function PartsPage() {
                                 className="parts-edit-input"
                                 value={editQty}
                                 onChange={(e) => setEditQty(e.target.value)}
+                              />
+                            </div>
+                            <div className="parts-edit-field">
+                              <label className="parts-checkin-po-label" htmlFor={`edit-${row.id}-when`}>
+                                Check-in date and time
+                              </label>
+                              <input
+                                id={`edit-${row.id}-when`}
+                                type="datetime-local"
+                                className="parts-edit-input"
+                                value={editWhen}
+                                onChange={(e) => setEditWhen(e.target.value)}
                               />
                             </div>
                             <div className="parts-edit-field">
