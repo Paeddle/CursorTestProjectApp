@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import BarcodeScanner from './components/BarcodeScanner'
 import DocumentScanner from './components/DocumentScanner'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -130,6 +130,10 @@ export default function App() {
     const value = new URLSearchParams(window.location.search).get('missing')
     return value === '1' || value === 'true'
   })
+  const selectedPartRef = useRef<TrackedPart | null>(null)
+  const fieldsRef = useRef(fields)
+  selectedPartRef.current = selectedPart
+  fieldsRef.current = fields
 
   useEffect(() => {
     document.title = title
@@ -179,31 +183,74 @@ export default function App() {
     setStatus(null)
     setCheckInAt(new Date())
     setLookupLoading(true)
-    const next: PartFields = {
-      ...EMPTY_PART_FIELDS,
-      upc_code: barcode,
-      po: extras?.po?.trim() ?? '',
-      part_name: extras?.part_name?.trim() ?? '',
-      description: extras?.description?.trim() ?? '',
+
+    const currentPart = selectedPartRef.current
+    const currentFields = fieldsRef.current
+    const attachUpcToCurrent = () => {
+      setFields((prev) => ({
+        ...prev,
+        upc_code: barcode,
+        po: extras?.po?.trim() ? extras.po.trim() : prev.po,
+        description: extras?.description !== undefined ? extras.description.trim() : prev.description,
+      }))
     }
-    setFields(next)
-    setSelectedPart(null)
-    setMissingFromDtools(false)
+
     try {
-      if (!supabase) return
-      const fromCatalog = preferDtoolsMatch(catalog, barcode)
-      if (fromCatalog) {
-        applyMatchedPart(fromCatalog, barcode, extras?.description?.trim() ?? '')
+      if (!supabase) {
+        if (currentPart) attachUpcToCurrent()
+        else {
+          setFields({
+            ...EMPTY_PART_FIELDS,
+            upc_code: barcode,
+            po: extras?.po?.trim() ?? '',
+            part_name: extras?.part_name?.trim() ?? '',
+            description: extras?.description?.trim() ?? '',
+          })
+          setSelectedPart(null)
+          setMissingFromDtools(false)
+        }
         return
       }
-      const library = await fetchDtoolsProducts()
-      const dtools = findDtoolsInList(library, barcode)
-      if (dtools) {
-        applyMatchedPart(mergeCatalog([], [dtools])[0], barcode, extras?.description?.trim() ?? '')
+
+      let matched: TrackedPart | null = preferDtoolsMatch(catalog, barcode)
+      if (!matched) {
+        const library = await fetchDtoolsProducts()
+        const dtools = findDtoolsInList(library, barcode)
+        if (dtools) matched = mergeCatalog([], [dtools])[0]
+      }
+      if (!matched) {
+        matched = await findExistingPart({ ...EMPTY_PART_FIELDS, upc_code: barcode })
+      }
+
+      const sameAsCurrent = Boolean(
+        currentPart &&
+          matched &&
+          (currentPart.id === matched.id ||
+            (lookupKey(currentPart.ipn) !== '' && lookupKey(currentPart.ipn) === lookupKey(matched.ipn))),
+      )
+
+      if (matched && (!currentPart || !sameAsCurrent)) {
+        applyMatchedPart(matched, barcode, extras?.description?.trim() ?? (currentPart ? currentFields.description : ''))
+        if (currentPart) {
+          setFields((prev) => ({ ...prev, po: extras?.po?.trim() ? extras.po.trim() : currentFields.po }))
+        }
         return
       }
-      const existing = await findExistingPart(next)
-      if (existing) applyMatchedPart(existing, barcode, extras?.description?.trim() ?? '')
+
+      if (currentPart) {
+        attachUpcToCurrent()
+        return
+      }
+
+      setFields({
+        ...EMPTY_PART_FIELDS,
+        upc_code: barcode,
+        po: extras?.po?.trim() ?? '',
+        part_name: extras?.part_name?.trim() ?? '',
+        description: extras?.description?.trim() ?? '',
+      })
+      setSelectedPart(null)
+      setMissingFromDtools(false)
     } catch (err) {
       setStatus({
         type: 'error',
