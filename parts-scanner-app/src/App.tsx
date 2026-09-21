@@ -578,10 +578,21 @@ export default function App() {
       }
 
       if (!selectedPart) {
+        const snapshot = {
+          ...fields,
+          po: fields.po.trim(),
+          description: fields.description.trim(),
+        }
+        if (!snapshot.upc_code.trim() && !snapshot.ipn.trim() && !snapshot.part_name.trim()) {
+          setStatus({ type: 'error', message: 'Enter a UPC, IPN, or part name to check in.' })
+          return
+        }
+        await insertCheckIn(snapshot, todayLocalDate(), null, checkInExtras())
         setStatus({
-          type: 'error',
-          message: 'Choose a part from the catalog, or add it in Parts Scanner first.',
+          type: 'success',
+          message: `Checked in: ${displayPartTitle(snapshot)}`,
         })
+        resetForm()
         return
       }
 
@@ -985,7 +996,7 @@ export default function App() {
               <div className="missing-part-panel" role="status">
                 <p>
                   {fields.upc_code.trim() || fields.ipn.trim() || fields.part_name.trim()
-                    ? 'This UPC, IPN, or part name is not in the catalog yet.'
+                    ? 'This UPC, IPN, or part name is not in the catalog yet. You can still save a one-time check-in, or add it as a warehouse part.'
                     : 'Choose a catalog part to check in.'}
                 </p>
                 <button
@@ -1015,7 +1026,7 @@ export default function App() {
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={submitting || lookupLoading || !selectedPart}
+                disabled={submitting || lookupLoading}
               >
                 {submitting ? 'Saving…' : 'Save check-in'}
               </button>
