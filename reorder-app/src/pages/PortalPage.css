@@ -45,17 +45,23 @@
   border-bottom: none;
   position: relative;
   z-index: 1;
+  background: #1a4c53;
+  border-color: #2a6d72;
+  color: #ecfdf5;
 }
 
 .portal-desk-tabs .portal-tab-active {
   z-index: 2;
+  background: #12756c;
+  border-color: #12756c;
+  color: #f0fdfa;
 }
 
 .portal-desk-panel {
   margin-top: -1px;
   padding: 0.85rem 0.85rem 1rem;
   border: 2px solid #0f766e;
-  background: #16353a;
+  background: #174850;
   min-width: 0;
 }
 
