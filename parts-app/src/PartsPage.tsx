@@ -943,26 +943,15 @@ export function PartsPage() {
                             {docs.length > 0 ? (
                               <div className="parts-checkin-docs">
                                 {docs.map((doc, index) => (
-                                  <span key={`${doc.url}-${index}`} className="parts-checkin-doc-item">
-                                    <a
-                                      className="parts-checkin-doc-link"
-                                      href={doc.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      {doc.name || `Document ${index + 1}`}
-                                    </a>
-                                    <button
-                                      type="button"
-                                      className="parts-doc-remove"
-                                      disabled={docBusyId === row.id}
-                                      onClick={() =>
-                                        void handleRemoveDocument(row.id, doc.url, doc.name || `Document ${index + 1}`)
-                                      }
-                                    >
-                                      Delete
-                                    </button>
-                                  </span>
+                                  <a
+                                    key={`${doc.url}-${index}`}
+                                    className="parts-checkin-doc-link"
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {doc.name || `Document ${index + 1}`}
+                                  </a>
                                 ))}
                               </div>
                             ) : null}
