@@ -560,7 +560,11 @@ export function PartsPage() {
   }
 
   const handleDeleteCheckIn = async (id: string) => {
-    if (!window.confirm('Delete this check-in? This cannot be undone.')) return
+    if (
+      !window.confirm('Are you sure you want to delete this check-in? This cannot be undone.')
+    ) {
+      return
+    }
     setDeletingId(id)
     try {
       await deleteCheckIn(id)
@@ -1087,23 +1091,27 @@ export function PartsPage() {
                         <span className="parts-checkin-when">
                           {formatCheckInWhen(row.check_in_date, row.scanned_at)}
                         </span>
-                        {!isEditing ? (
+                        <div className="parts-row-actions">
+                          {!isEditing ? (
+                            <button
+                              type="button"
+                              className="parts-edit-btn"
+                              onClick={() => startEdit(row)}
+                            >
+                              Edit
+                            </button>
+                          ) : (
+                            <span />
+                          )}
                           <button
                             type="button"
-                            className="parts-edit-btn"
-                            onClick={() => startEdit(row)}
+                            className="parts-delete"
+                            disabled={deletingId === row.id || isEditing}
+                            onClick={() => void handleDeleteCheckIn(row.id)}
                           >
-                            Edit
+                            Delete
                           </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="parts-delete"
-                          disabled={deletingId === row.id || isEditing}
-                          onClick={() => void handleDeleteCheckIn(row.id)}
-                        >
-                          Delete
-                        </button>
+                        </div>
                       </div>
                     </div>
                     )
@@ -1312,17 +1320,19 @@ export function PartsPage() {
                                 <FieldRows row={row} labels={CATALOG_FIELD_LABELS} />
                                 <div className="parts-card-footer">
                                   <span className="parts-muted">Added {formatDateTime(row.created_at)}</span>
-                                  <button type="button" className="parts-edit-btn" onClick={() => startOtherEdit(row)}>
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="parts-delete"
-                                    disabled={deletingId === row.id}
-                                    onClick={() => void handleDeleteOtherPart(row.id)}
-                                  >
-                                    Delete
-                                  </button>
+                                  <div className="parts-row-actions">
+                                    <button type="button" className="parts-edit-btn" onClick={() => startOtherEdit(row)}>
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="parts-delete"
+                                      disabled={deletingId === row.id}
+                                      onClick={() => void handleDeleteOtherPart(row.id)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
                                 </div>
                               </>
                             )}
