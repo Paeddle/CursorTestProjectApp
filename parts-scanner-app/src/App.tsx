@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import BarcodeScanner from './components/BarcodeScanner'
 import DocumentScanner from './components/DocumentScanner'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -489,8 +489,15 @@ export default function App() {
     }
   }
 
-  const handleSave = async (e: FormEvent) => {
+  const preventScanEnterSubmit = (e: KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter') return
+    const tag = (e.target as HTMLElement | null)?.tagName
+    if (tag === 'TEXTAREA' || tag === 'BUTTON') return
     e.preventDefault()
+  }
+
+  const handleSave = async (e?: FormEvent) => {
+    e?.preventDefault()
     if (!supabase) return
     setSubmitting(true)
     setStatus(null)
@@ -695,7 +702,7 @@ export default function App() {
             </form>
           </section>
         ) : isCatalog ? (
-          <form onSubmit={handleSave} className="section form-section">
+          <form onSubmit={handleSave} onKeyDown={preventScanEnterSubmit} className="section form-section">
             {lookupLoading && <p className="box-meta-loading">Looking up this part…</p>}
             {selectedPart && !lookupLoading && selectedPart.catalogSource === 'shs' && (
               <div className="last-scan-panel" role="status">
@@ -812,13 +819,13 @@ export default function App() {
               >
                 Scan another
               </button>
-              <button type="submit" className="btn btn-primary" disabled={submitting || lookupLoading}>
+              <button type="button" className="btn btn-primary" disabled={submitting || lookupLoading} onClick={() => void handleSave()}>
                 {submitting ? 'Saving…' : 'Save part and Check-In'}
               </button>
             </div>
           </form>
         ) : (
-          <form onSubmit={handleSave} className="section form-section">
+          <form onSubmit={handleSave} onKeyDown={preventScanEnterSubmit} className="section form-section">
             <button
               type="button"
               className="btn btn-primary btn-full scan-now-btn"
@@ -1024,9 +1031,10 @@ export default function App() {
                 Scan another
               </button>
               <button
-                type="submit"
+                type="button"
                 className="btn btn-primary"
                 disabled={submitting || lookupLoading}
+                onClick={() => void handleSave()}
               >
                 {submitting ? 'Saving…' : 'Save check-in'}
               </button>
