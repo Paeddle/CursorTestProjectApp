@@ -244,6 +244,17 @@ function asCheckIn(row: PartCheckIn): PartCheckIn {
   }
 }
 
+async function removeStoredFile(url: string): Promise<void> {
+  try {
+    const u = new URL(url)
+    const m = u.pathname.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
+    if (!m) return
+    await requireClient().storage.from(decodeURIComponent(m[1])).remove([decodeURIComponent(m[2])])
+  } catch {
+    /* ignore storage cleanup */
+  }
+}
+
 export async function uploadCheckInFile(
   checkInId: string,
   blob: Blob,
@@ -309,6 +320,27 @@ export async function addCheckInDocuments(
   return asCheckIn(data as PartCheckIn)
 }
 
+export async function removeCheckInDocument(checkInId: string, url: string): Promise<PartCheckIn> {
+  const client = requireClient()
+  const { data: existingRow, error: loadError } = await client
+    .from('part_checkins')
+    .select('*')
+    .eq('id', checkInId)
+    .single()
+  if (loadError) throw new Error(loadError.message)
+
+  const documents = parseCheckInDocuments((existingRow as PartCheckIn).documents).filter((doc) => doc.url !== url)
+  const { data, error } = await client
+    .from('part_checkins')
+    .update({ documents })
+    .eq('id', checkInId)
+    .select('*')
+    .single()
+  if (error) throw new Error(error.message)
+  await removeStoredFile(url)
+  return asCheckIn(data as PartCheckIn)
+}
+
 export async function updateCheckIn(
   id: string,
   fields: PartFields,
@@ -367,14 +399,7 @@ export async function deleteCheckIn(id: string): Promise<void> {
   const { error } = await client.from('part_checkins').delete().eq('id', id)
   if (error) throw new Error(error.message)
   for (const doc of documents) {
-    try {
-      const u = new URL(doc.url)
-      const m = u.pathname.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/)
-      if (!m) continue
-      await client.storage.from(decodeURIComponent(m[1])).remove([decodeURIComponent(m[2])])
-    } catch {
-      /* ignore storage cleanup */
-    }
+    await removeStoredFile(doc.url)
   }
 }
 

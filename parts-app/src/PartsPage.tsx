@@ -28,6 +28,7 @@ import {
   fetchDtoolsProducts,
   fetchParts,
   mergeDtoolsCsv,
+  removeCheckInDocument,
   updateCheckIn,
   updateDtoolsProduct,
   updateTrackedPart,
@@ -396,6 +397,20 @@ export function PartsPage() {
     setScanForId(null)
     if (!checkInId) return
     void attachDocuments(checkInId, [{ blob, name: `scan_${Date.now()}.jpg` }])
+  }
+
+  const handleRemoveDocument = async (checkInId: string, url: string, name: string) => {
+    if (!window.confirm(`Delete ${name || 'this document'}?`)) return
+    setDocBusyId(checkInId)
+    setError(null)
+    try {
+      const updated = await removeCheckInDocument(checkInId, url)
+      setCheckIns((prev) => prev.map((row) => (row.id === checkInId ? updated : row)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete document.')
+    } finally {
+      setDocBusyId(null)
+    }
   }
 
   const startEdit = (row: PartCheckIn) => {
@@ -924,15 +939,26 @@ export function PartsPage() {
                             {docs.length > 0 ? (
                               <div className="parts-checkin-docs">
                                 {docs.map((doc, index) => (
-                                  <a
-                                    key={`${doc.url}-${index}`}
-                                    className="parts-checkin-doc-link"
-                                    href={doc.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {doc.name || `Document ${index + 1}`}
-                                  </a>
+                                  <span key={`${doc.url}-${index}`} className="parts-checkin-doc-item">
+                                    <a
+                                      className="parts-checkin-doc-link"
+                                      href={doc.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      {doc.name || `Document ${index + 1}`}
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className="parts-doc-remove"
+                                      disabled={docBusyId === row.id}
+                                      onClick={() =>
+                                        void handleRemoveDocument(row.id, doc.url, doc.name || `Document ${index + 1}`)
+                                      }
+                                    >
+                                      Delete
+                                    </button>
+                                  </span>
                                 ))}
                               </div>
                             ) : null}
@@ -1001,15 +1027,26 @@ export function PartsPage() {
                               <span className="parts-checkin-po-label">Documents</span>
                               <div className="parts-checkin-docs">
                                 {docs.map((doc, index) => (
-                                  <a
-                                    key={`${doc.url}-${index}`}
-                                    className="parts-checkin-doc-link"
-                                    href={doc.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {doc.name || `Document ${index + 1}`}
-                                  </a>
+                                  <span key={`${doc.url}-${index}`} className="parts-checkin-doc-item">
+                                    <a
+                                      className="parts-checkin-doc-link"
+                                      href={doc.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      {doc.name || `Document ${index + 1}`}
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className="parts-doc-remove"
+                                      disabled={docBusyId === row.id}
+                                      onClick={() =>
+                                        void handleRemoveDocument(row.id, doc.url, doc.name || `Document ${index + 1}`)
+                                      }
+                                    >
+                                      Delete
+                                    </button>
+                                  </span>
                                 ))}
                                 <div className="parts-checkin-doc-actions">
                                   <label className="parts-doc-btn">

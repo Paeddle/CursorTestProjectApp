@@ -432,6 +432,33 @@
   color: #cbd5e1;
 }
 
+.parts-checkin-doc-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.parts-doc-remove {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #fecaca;
+  background: #450a0a;
+  border: 1px solid #7f1d1d;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.parts-doc-remove:hover:not(:disabled) {
+  background: #7f1d1d;
+}
+
+.parts-doc-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .parts-checkin-doc-actions {
   display: flex;
   flex-wrap: wrap;
