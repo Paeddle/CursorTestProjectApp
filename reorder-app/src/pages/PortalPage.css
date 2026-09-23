@@ -45,23 +45,23 @@
   border-bottom: none;
   position: relative;
   z-index: 1;
-  background: #1a4c53;
-  border-color: #2a6d72;
-  color: #ecfdf5;
+  background: #164a5c;
+  border-color: #2a6d82;
+  color: #e0f2fe;
 }
 
 .portal-desk-tabs .portal-tab-active {
   z-index: 2;
-  background: #12756c;
-  border-color: #12756c;
-  color: #f0fdfa;
+  background: #0e7490;
+  border-color: #0e7490;
+  color: #f0f9ff;
 }
 
 .portal-desk-panel {
   margin-top: -1px;
   padding: 0.85rem 0.85rem 1rem;
-  border: 2px solid #0f766e;
-  background: #174850;
+  border: 2px solid #0e7490;
+  background: #154454;
   min-width: 0;
 }
 
