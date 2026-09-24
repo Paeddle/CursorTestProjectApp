@@ -10,12 +10,21 @@ import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
 import './App.css'
 
-type ListFilter = 'all' | 'differences' | 'grouped' | 'matched' | 'similar' | 'ipoint-only' | 'dtools-only' | 'overrides'
+type ViewMode = 'problems' | 'all'
 
 function formatQty(n: number | null, raw: string): string {
   if (n == null) return '—'
-  if (raw === '') return 'blank → 0'
+  if (raw === '') return '0'
   return raw
+}
+
+function problemLabel(line: CompareLine): string {
+  if (line.qtyDiffers) return 'Different counts'
+  if (line.isGrouped) return 'Added together'
+  if (line.isSimilar) return 'Looks similar, not the same'
+  if (line.match === 'ipoint-only') return 'Only in iPoint'
+  if (line.match === 'dtools-only') return 'Only in D-Tools'
+  return 'Match'
 }
 
 function deltaText(line: CompareLine): string {
@@ -23,6 +32,14 @@ function deltaText(line: CompareLine): string {
   const d = line.ipointQty - line.dtoolsQty
   if (d === 0) return '0'
   return d > 0 ? `+${d}` : String(d)
+}
+
+function ipointLabel(line: CompareLine): string {
+  return [line.ipointPartNumber, line.ipointItem].filter(Boolean).join(' · ') || '—'
+}
+
+function dtoolsLabel(line: CompareLine): string {
+  return [line.dtoolsPartNumber, line.dtoolsModel].filter(Boolean).join(' · ') || '—'
 }
 
 async function fileFromSample(url: string, fallbackName: string): Promise<File> {
@@ -42,53 +59,12 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url)
 }
 
-function FileCountMeta({ file, source }: { file: ParsedWorkbook; source: SourceKind }) {
-  const excelCount = file.dataRowCount + 1
-  return (
-    <div className="xfer-meta">
-      <div>
-        <strong>Spreadsheet rows:</strong> {excelCount.toLocaleString()} including header ({file.dataRowCount.toLocaleString()}{' '}
-        product rows)
-      </div>
-      <div>
-        <strong>Included in compare:</strong> {file.comparedCount.toLocaleString()}
-      </div>
-      <div>
-        <strong>Blank part number:</strong> {file.blankPartNumberCount.toLocaleString()}
-        {source === 'dtools' ? ' (still compared by Model)' : ' (still compared by Item if present)'}
-      </div>
-      {file.skippedNoIdentity ? (
-        <div>
-          <strong>Skipped, no match fields:</strong> {file.skippedNoIdentity.toLocaleString()}
-        </div>
-      ) : null}
-      <div>
-        <strong>Part column:</strong> {file.partNumberHeader}
-      </div>
-      <div>
-        <strong>Qty column:</strong> {file.qtyHeader}
-      </div>
-      {file.dataRowCount === 1000 && source === 'ipoint' ? (
-        <p className="xfer-warn">
-          This iPoint file has exactly 1,000 product rows. iPoint exports are often capped at 1,000. If your real
-          catalog is larger, export the full item list and upload that, or many D-Tools parts will look unmatched.
-        </p>
-      ) : null}
-      {file.warnings.map((w) => (
-        <p key={w} className="xfer-warn">
-          {w}
-        </p>
-      ))}
-    </div>
-  )
-}
-
 export function App() {
   const [ipoint, setIpoint] = useState<ParsedWorkbook | null>(null)
   const [dtools, setDtools] = useState<ParsedWorkbook | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<ListFilter>('all')
+  const [view, setView] = useState<ViewMode>('problems')
   const [query, setQuery] = useState('')
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
 
@@ -113,7 +89,7 @@ export function App() {
   }
 
   const loadSamples = async () => {
-    setBusy('Loading CSVFiles examples…')
+    setBusy('Loading example files…')
     setError(null)
     try {
       const [ipFile, dtFile] = await Promise.all([
@@ -128,11 +104,7 @@ export function App() {
       setDtools(dtParsed)
       setChoices({})
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? `${err.message} Example loading only works in local development when CSVFiles/Item List24.xlsx and CSVFiles/Products.csv are present. Upload both files here instead.`
-          : 'Could not load example files.',
-      )
+      setError(err instanceof Error ? err.message : 'Could not load example files.')
     } finally {
       setBusy(null)
     }
@@ -147,49 +119,16 @@ export function App() {
     if (!result) return []
     const q = query.trim().toUpperCase()
     return result.lines.filter((line) => {
-      if (filter === 'all' && !lineIsDiscrepancy(line)) return false
-      if (filter === 'differences' && !line.qtyDiffers) return false
-      if (filter === 'grouped' && !line.isGrouped) return false
-      if (filter === 'matched' && line.match !== 'both') return false
-      if (filter === 'similar' && !line.isSimilar) return false
-      if (filter === 'ipoint-only' && line.match !== 'ipoint-only') return false
-      if (filter === 'dtools-only' && line.match !== 'dtools-only') return false
-      if (filter === 'overrides' && resolvedChoices[line.id] !== 'use-ipoint') return false
+      if (view === 'problems' && !lineIsDiscrepancy(line)) return false
       if (!q) return true
-      const hay = [
-        line.ipointPartNumber,
-        line.ipointItem,
-        line.ipointManufacturer,
-        line.dtoolsBrand,
-        line.dtoolsPartNumber,
-        line.dtoolsModel,
-        line.matchVia,
-        line.similarTo,
-        line.groupDetail,
-        ...line.notes,
-      ]
+      return [ipointLabel(line), dtoolsLabel(line), problemLabel(line), line.similarTo, line.groupDetail]
         .join(' ')
         .toUpperCase()
-      return hay.includes(q)
+        .includes(q)
     })
-  }, [filter, query, resolvedChoices, result])
+  }, [query, result, view])
 
   const overrideCount = countOverrides(resolvedChoices)
-
-  const setChoice = (id: string, choice: QtyChoice) => {
-    setChoices((prev) => ({ ...prev, [id]: choice }))
-  }
-
-  const applyIpointToDiffs = () => {
-    if (!result) return
-    const next = { ...resolvedChoices }
-    for (const line of result.lines) {
-      if (line.qtyDiffers) next[line.id] = 'use-ipoint'
-    }
-    setChoices(next)
-  }
-
-  const resetChoices = () => setChoices({})
 
   const exportCsv = () => {
     if (!dtools || !result) return
@@ -204,134 +143,71 @@ export function App() {
         <div>
           <h1>Inventory Transfer</h1>
           <p className="xfer-lead">
-            Compare iPoint <strong>Item</strong> or <strong>Part Number</strong> to D-Tools Cloud{' '}
-            <strong>Model</strong> or <strong>Part Number</strong>. Any of those four fields matching counts as the
-            same part. Then compare iPoint <strong>Stock available</strong> to D-Tools <strong>Quantity on Hand</strong>
-            . Nothing is written back to either system — you review each difference, then download an updated
-            Products.csv if you want D-Tools to use the iPoint quantities.
+            Upload both lists. Same part numbers are compared. Anything that does not line up shows in the list below.
           </p>
         </div>
         <a className="xfer-home" href="/">
-          SHS home
+          Home
         </a>
       </header>
 
-      <section className="xfer-algorithm" aria-labelledby="xfer-algorithm-title">
-        <h2 id="xfer-algorithm-title">How the comparison works</h2>
-        <ol>
-          <li>
-            <strong>Read the files in the browser only.</strong> iPoint is read from <code>Item</code>,{' '}
-            <code>Part Number</code>, and <code>stock_Available</code> (Excel or CSV). D-Tools is read from{' '}
-            <code>Model</code>, <code>Part Number</code>, and <code>Quantity on Hand</code>. No data is uploaded to a
-            server or written back to iPoint or D-Tools Cloud.
-          </li>
-          <li>
-            <strong>Normalize text before matching.</strong> Leading/trailing spaces are stripped, internal spaces are
-            collapsed, and letters are compared in uppercase. So <code>tp13bk</code> and <code>TP13BK</code> are the
-            same key. Values shorter than 2 characters, and placeholders like <code>N/A</code>, <code>-</code>,{' '}
-            <code>NONE</code>, <code>NULL</code>, or <code>?</code>, are ignored so they cannot create fake matches.
-          </li>
-          <li>
-            <strong>A D-Tools row matches an iPoint row if any one of these equalities is true</strong> after
-            normalization:
-            <ul>
-              <li>iPoint Part Number = D-Tools Part Number</li>
-              <li>iPoint Part Number = D-Tools Model</li>
-              <li>iPoint Item = D-Tools Part Number</li>
-              <li>iPoint Item = D-Tools Model</li>
-            </ul>
-            Brand, description, UPC, and every other column are not used for matching. The <em>Matched via</em> column
-            lists which of those four checks succeeded.
-          </li>
-          <li>
-            <strong>Results are grouped by D-Tools product row.</strong> If several iPoint rows match the same D-Tools
-            row, their <code>stock_Available</code> values are <strong>added together</strong>. The row is flagged{' '}
-            <em>Grouped / added</em> and shows each iPoint line that went into the total, for example{' '}
-            <code>ABC (1) + DEF (2) = 3</code>. That grouping is treated as a discrepancy even when the total happens
-            to equal D-Tools qty, so it cannot be missed. If one iPoint row also matches more than one D-Tools product,
-            the same iPoint stock is shown on each of those D-Tools rows and noted as shared.
-          </li>
-          <li>
-            <strong>Quantities are numbers.</strong> Blank <code>stock_Available</code> or <code>Quantity on Hand</code>{' '}
-            is treated as <strong>0</strong> and labeled <code>blank → 0</code>. Commas are stripped (<code>1,200</code>{' '}
-            → 1200). A quantity difference is any matched pair where iPoint stock ≠ D-Tools qty on hand.
-          </li>
-          <li>
-            <strong>Unmatched rows stay unmatched unless every character matches after normalize.</strong> They are
-            listed as iPoint only or D-Tools only. Related SKUs such as <code>C4-CA1</code> vs <code>C4-CA1-V2</code>,
-            or the same letters with different hyphens, are <strong>flagged Similar</strong> in their own tab. Similar
-            is a review flag only: quantity is not compared and cannot be overwritten from that flag. The iPoint export
-            also has fewer items than the D-Tools catalog, so many D-Tools-only rows simply are not in iPoint.
-          </li>
-          <li>
-            <strong>Override is opt-in and local.</strong> Default for every matched line is Keep D-Tools. Choosing Use
-            iPoint qty only changes the downloaded CSV: that D-Tools row’s <code>Quantity on Hand</code> is replaced
-            with the iPoint stock used on that line. Every other Products column stays as it was, including rows you
-            did not override. The original uploaded files are never modified.
-          </li>
-        </ol>
-      </section>
-
       <div className="xfer-uploads">
         <section className="xfer-card">
-          <h2>iPoint — Item List</h2>
-          <p>
-            Current inventory export (example: <code>Item List24.xlsx</code>). Matches using the <code>Item</code> and{' '}
-            <code>Part Number</code> columns against D-Tools, and compares <code>stock_Available</code>.
-          </p>
-          <div className="xfer-file-row">
-            <label className="xfer-file-btn">
-              Upload iPoint file
-              <input
-                type="file"
-                hidden
-                accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  e.target.value = ''
-                  if (file) void loadFile(file, 'ipoint')
-                }}
-              />
-            </label>
-            <span className="xfer-file-name">{ipoint?.fileName || 'No file yet'}</span>
-          </div>
-          {ipoint ? <FileCountMeta file={ipoint} source="ipoint" /> : null}
+          <h2>iPoint file</h2>
+          <label className="xfer-file-btn">
+            Choose file
+            <input
+              type="file"
+              hidden
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) void loadFile(file, 'ipoint')
+              }}
+            />
+          </label>
+          {ipoint ? (
+            <div className="xfer-meta">
+              {ipoint.comparedCount.toLocaleString()} parts · {ipoint.fileName}
+              {ipoint.dataRowCount === 1000 ? (
+                <p className="xfer-warn">This file has exactly 1,000 parts. If iPoint has more, export all of them.</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="xfer-muted">No file yet</p>
+          )}
         </section>
 
         <section className="xfer-card">
-          <h2>D-Tools Cloud — Products</h2>
-          <p>
-            Destination inventory export (example: <code>Products.csv</code>). Matches using <code>Model</code> and{' '}
-            <code>Part Number</code>, then compares <code>Quantity on Hand</code>. Other columns stay untouched on
-            export.
-          </p>
-          <div className="xfer-file-row">
-            <label className="xfer-file-btn">
-              Upload Products file
-              <input
-                type="file"
-                hidden
-                accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  e.target.value = ''
-                  if (file) void loadFile(file, 'dtools')
-                }}
-              />
-            </label>
-            <span className="xfer-file-name">{dtools?.fileName || 'No file yet'}</span>
-          </div>
-          {dtools ? <FileCountMeta file={dtools} source="dtools" /> : null}
+          <h2>D-Tools file</h2>
+          <label className="xfer-file-btn">
+            Choose file
+            <input
+              type="file"
+              hidden
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) void loadFile(file, 'dtools')
+              }}
+            />
+          </label>
+          {dtools ? (
+            <div className="xfer-meta">
+              {dtools.comparedCount.toLocaleString()} parts · {dtools.fileName}
+            </div>
+          ) : (
+            <p className="xfer-muted">No file yet</p>
+          )}
         </section>
       </div>
 
       {import.meta.env.DEV ? (
-        <div className="xfer-toolbar">
-          <button type="button" className="xfer-btn xfer-btn-secondary" onClick={() => void loadSamples()} disabled={!!busy}>
-            Load CSVFiles examples
-          </button>
-          <span className="xfer-muted">Local only: Item List24.xlsx + Products.csv from the CSVFiles folder.</span>
-        </div>
+        <button type="button" className="xfer-btn xfer-btn-secondary" onClick={() => void loadSamples()} disabled={!!busy}>
+          Load example files
+        </button>
       ) : null}
 
       {busy ? <p className="xfer-empty">{busy}</p> : null}
@@ -340,129 +216,51 @@ export function App() {
       {result && ipoint && dtools ? (
         <>
           <p className="xfer-coverage">
-            Exact matches: <strong>{result.matchedKeys.toLocaleString()}</strong> of{' '}
-            {dtools.comparedCount.toLocaleString()} D-Tools rows (
-            {Math.round((result.matchedKeys / Math.max(dtools.comparedCount, 1)) * 100)}%) and{' '}
-            {ipoint.comparedCount.toLocaleString()} iPoint rows. The rest are not missing because of a bug — they are
-            not in the other file under Item / Part Number / Model. Similar flags are near-misses such as a suffix
-            difference, not exact matches the app failed to see.
+            <strong>{result.discrepancyCount.toLocaleString()} problems</strong>
+            {' · '}
+            {result.matchedKeys.toLocaleString()} parts match
+            {' · '}
+            {result.qtyDifferences.toLocaleString()} have different counts
           </p>
-          <div className="xfer-stats">
-            <div className="xfer-stat">
-              <span>iPoint rows compared</span>
-              <b>{ipoint.comparedCount}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>D-Tools rows compared</span>
-              <b>{dtools.comparedCount}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>Matched D-Tools rows</span>
-              <b>{result.matchedKeys}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>All discrepancies</span>
-              <b>{result.discrepancyCount}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Qty differences</span>
-              <b>{result.qtyDifferences}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Grouped / added</span>
-              <b>{result.groupedCount}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Similar SKUs flagged</span>
-              <b>{result.similarCount}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>iPoint only</span>
-              <b>{result.ipointOnly}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>D-Tools only</span>
-              <b>{result.dtoolsOnly}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>Use iPoint qty</span>
-              <b>{overrideCount}</b>
-            </div>
-          </div>
 
           <div className="xfer-toolbar">
-            <div className="xfer-tabs">
-              {(
-                [
-                  ['all', `All discrepancies (${result.discrepancyCount})`],
-                  ['differences', `Qty differences (${result.qtyDifferences})`],
-                  ['grouped', `Grouped / added (${result.groupedCount})`],
-                  ['matched', `Matched (${result.matchedKeys})`],
-                  ['similar', `Similar SKUs (${result.similarCount})`],
-                  ['ipoint-only', `iPoint only, no exact match (${result.ipointOnly})`],
-                  ['dtools-only', `D-Tools only, no exact match (${result.dtoolsOnly})`],
-                  ['overrides', `Chosen overrides (${overrideCount})`],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`xfer-tab ${filter === id ? 'xfer-tab-active' : ''}`}
-                  onClick={() => setFilter(id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <label className="xfer-choice">
+              <input
+                type="checkbox"
+                checked={view === 'all'}
+                onChange={(e) => setView(e.target.checked ? 'all' : 'problems')}
+              />
+              Show matching parts too
+            </label>
             <input
               className="xfer-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search part number, item, brand…"
+              placeholder="Search…"
             />
-            <button type="button" className="xfer-btn" onClick={applyIpointToDiffs} disabled={result.qtyDifferences === 0}>
-              Use iPoint qty for all differences
-            </button>
-            <button type="button" className="xfer-btn xfer-btn-secondary" onClick={resetChoices} disabled={overrideCount === 0}>
-              Keep all D-Tools qtys
-            </button>
             <button type="button" className="xfer-btn" onClick={exportCsv} disabled={overrideCount === 0}>
-              Download updated Products.csv
+              Download D-Tools file ({overrideCount} count changes)
             </button>
           </div>
 
-          {result.ipointDuplicates || result.dtoolsDuplicates ? (
-            <p className="xfer-warn">
-              Duplicate identity values: {result.ipointDuplicates} iPoint item/part-number values and{' '}
-              {result.dtoolsDuplicates} D-Tools model/part-number values appear on more than one row. Those stay
-              visible. If several iPoint rows match one D-Tools row, stock available is summed.
-            </p>
-          ) : null}
-
           {visible.length === 0 ? (
-            <p className="xfer-empty">No lines in this view{query.trim() ? ' for that search' : ''}.</p>
+            <p className="xfer-empty">{query.trim() ? 'Nothing matches that search.' : 'No problems found.'}</p>
           ) : (
             <div className="xfer-table-wrap">
               <table className="xfer-table">
                 <thead>
                   <tr>
-                    <th>iPoint part number</th>
-                    <th>iPoint item</th>
-                    <th>D-Tools part number</th>
-                    <th>D-Tools model</th>
-                    <th>Matched via</th>
-                    <th>Similar SKU (flagged, not a match)</th>
-                    <th>iPoint stock available</th>
-                    <th>D-Tools qty on hand</th>
-                    <th>Difference</th>
-                    <th>Decision</th>
-                    <th>Notes</th>
+                    <th>What is different</th>
+                    <th>iPoint</th>
+                    <th>D-Tools</th>
+                    <th>iPoint count</th>
+                    <th>D-Tools count</th>
+                    <th>Use iPoint count?</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map((line) => {
                     const choice = resolvedChoices[line.id]
-                    const delta = line.ipointQty != null && line.dtoolsQty != null ? line.ipointQty - line.dtoolsQty : 0
                     return (
                       <tr
                         key={line.id}
@@ -475,94 +273,43 @@ export function App() {
                           .join(' ') || undefined}
                       >
                         <td>
-                          {line.ipointPartNumber ? (
-                            <code>{line.ipointPartNumber}</code>
-                          ) : (
-                            <span className="xfer-muted">—</span>
-                          )}
-                          {line.isSimilar && line.match === 'dtools-only' ? (
-                            <div className="xfer-muted">Nearby iPoint SKU for review — not a match</div>
+                          <strong>{problemLabel(line)}</strong>
+                          {line.isSimilar && line.similarTo ? (
+                            <div className="xfer-muted">Close to {line.similarTo}</div>
                           ) : null}
+                          {line.isGrouped ? <div className="xfer-group-total">{line.groupDetail}</div> : null}
                         </td>
                         <td>
-                          {line.ipointItem || <span className="xfer-muted">—</span>}
-                          {line.ipointManufacturer ? (
-                            <div className="xfer-muted">{line.ipointManufacturer}</div>
-                          ) : null}
+                          {ipointLabel(line) === '—' ? <span className="xfer-muted">—</span> : ipointLabel(line)}
                         </td>
                         <td>
-                          {line.dtoolsPartNumber ? (
-                            <code>{line.dtoolsPartNumber}</code>
-                          ) : (
-                            <span className="xfer-muted">—</span>
-                          )}
-                          {line.dtoolsBrand ? <div className="xfer-muted">{line.dtoolsBrand}</div> : null}
-                          {line.isSimilar && line.match === 'ipoint-only' ? (
-                            <div className="xfer-muted">Nearby D-Tools SKU for review — not a match</div>
-                          ) : null}
-                        </td>
-                        <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
-                        <td className="xfer-notes">{line.matchVia || '—'}</td>
-                        <td>
-                          {line.isSimilar ? <span className="xfer-flag-similar">Similar</span> : null}
-                          {line.similarTo ? (
-                            <code>{line.similarTo}</code>
-                          ) : (
-                            <span className="xfer-muted">—</span>
-                          )}
+                          {dtoolsLabel(line) === '—' ? <span className="xfer-muted">—</span> : dtoolsLabel(line)}
                         </td>
                         <td className="xfer-num">
                           {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
-                          {line.isGrouped ? (
-                            <div className="xfer-group">
-                              <span className="xfer-flag-grouped">Grouped / added</span>
-                              <ul>
-                                {line.ipointSlices.map((slice, idx) => (
-                                  <li key={`${line.id}-s-${idx}`}>
-                                    <code>{slice.partNumber || slice.item || 'row'}</code>
-                                    {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
-                                    {': '}
-                                    {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
-                                  </li>
-                                ))}
-                              </ul>
-                              <div className="xfer-group-total">{line.groupDetail}</div>
-                            </div>
-                          ) : null}
                         </td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
-                        <td
-                          className={`xfer-num ${delta > 0 ? 'xfer-delta-up' : delta < 0 ? 'xfer-delta-down' : ''}`}
-                        >
-                          {deltaText(line)}
-                        </td>
                         <td>
-                          {line.match === 'both' ? (
-                            <div className="xfer-choice">
-                              <label>
-                                <input
-                                  type="radio"
-                                  name={`choice-${line.id}`}
-                                  checked={choice !== 'use-ipoint'}
-                                  onChange={() => setChoice(line.id, 'keep-dtools')}
-                                />
-                                Keep D-Tools
-                              </label>
-                              <label>
-                                <input
-                                  type="radio"
-                                  name={`choice-${line.id}`}
-                                  checked={choice === 'use-ipoint'}
-                                  onChange={() => setChoice(line.id, 'use-ipoint')}
-                                />
-                                Use iPoint qty
-                              </label>
-                            </div>
+                          {line.qtyDiffers ? (
+                            <label className="xfer-choice">
+                              <input
+                                type="checkbox"
+                                checked={choice === 'use-ipoint'}
+                                onChange={(e) =>
+                                  setChoices((prev) => ({
+                                    ...prev,
+                                    [line.id]: e.target.checked ? 'use-ipoint' : 'keep-dtools',
+                                  }))
+                                }
+                              />
+                              Yes ({deltaText(line)})
+                            </label>
+                          ) : line.match === 'both' ? (
+                            <span className="xfer-muted">Same</span>
                           ) : (
-                            <span className="xfer-muted">No D-Tools row to update</span>
+                            <span className="xfer-muted">—</span>
                           )}
                         </td>
-                        <td className="xfer-notes">{line.notes.join('. ') || '—'}</td>
                       </tr>
                     )
                   })}
@@ -572,7 +319,7 @@ export function App() {
           )}
         </>
       ) : (
-        <p className="xfer-empty">Upload both files to see the side-by-side comparison.</p>
+        <p className="xfer-empty">Choose both files to compare.</p>
       )}
     </div>
   )
