@@ -564,7 +564,7 @@ export function App() {
                           .filter(Boolean)
                           .join(' ') || undefined}
                       >
-                        <td>
+                        <td className="xfer-problem">
                           {problemLabel(line)}
                         </td>
                         <td>

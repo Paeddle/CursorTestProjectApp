@@ -356,15 +356,15 @@
   font-weight: 400;
 }
 
-.xfer-col-problem { width: 8%; }
-.xfer-col-pn { width: 8%; }
-.xfer-col-item { width: 8%; }
-.xfer-col-via { width: 7%; }
-.xfer-col-similar { width: 8%; }
-.xfer-col-qty { width: 6%; }
-.xfer-col-diff { width: 5%; }
-.xfer-col-decision { width: 8%; }
-.xfer-col-notes { width: 20%; }
+.xfer-col-problem { width: 7%; }
+.xfer-col-pn { width: 6%; }
+.xfer-col-item { width: 6%; }
+.xfer-col-via { width: 6%; }
+.xfer-col-similar { width: 7%; }
+.xfer-col-qty { width: 5%; }
+.xfer-col-diff { width: 4%; }
+.xfer-col-decision { width: 7%; }
+.xfer-col-notes { width: 35%; }
 
 .xfer-table th,
 .xfer-table td {
@@ -382,9 +382,9 @@
   background: #2f4558;
   color: #ffffff;
   font-size: 0.92rem;
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
   z-index: 1;
 }
 
@@ -394,8 +394,8 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  font-weight: 400;
-  text-transform: uppercase;
+  font-weight: 700;
+  text-transform: none;
   letter-spacing: inherit;
   text-align: left;
   cursor: pointer;
@@ -424,14 +424,18 @@
 }
 
 .xfer-row-diff td {
-  background: #9bc7d8;
+  background: #deebed;
 }
 
 .xfer-table tr:hover td,
 .xfer-table .xfer-row-diff:hover td,
 .xfer-table .xfer-row-similar:hover td,
 .xfer-table .xfer-row-grouped:hover td {
-  background: #f0e3d6;
+  background: #efe8e8;
+}
+
+.xfer-table td.xfer-problem {
+  font-weight: 700;
 }
 
 .xfer-num {
