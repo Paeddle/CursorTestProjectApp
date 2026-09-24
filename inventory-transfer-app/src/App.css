@@ -14,8 +14,25 @@
   margin-bottom: 1.1rem;
 }
 
+.xfer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.3rem;
+}
+
+.xfer-logo {
+  display: block;
+  width: 3.15rem;
+  height: 3.15rem;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #000;
+  flex-shrink: 0;
+}
+
 .xfer-header h1 {
-  margin: 0 0 0.3rem;
+  margin: 0;
   font-size: 1.7rem;
   color: #f0f4f8;
 }
@@ -451,14 +468,14 @@
 }
 
 .xfer-row-diff td {
-  background: #deebed;
+  background: #f5f0f0;
 }
 
 .xfer-table tr:hover td,
 .xfer-table .xfer-row-diff:hover td,
 .xfer-table .xfer-row-similar:hover td,
 .xfer-table .xfer-row-grouped:hover td {
-  background: #efe8e8;
+  background: #c0ccd5;
 }
 
 .xfer-table td.xfer-problem {

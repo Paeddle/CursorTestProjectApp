@@ -333,7 +333,14 @@ export function App() {
     <div className="xfer-page">
       <header className="xfer-header">
         <div>
-          <h1>Inventory Transfer</h1>
+          <div className="xfer-title-row">
+            <img
+              className="xfer-logo"
+              src={`${import.meta.env.BASE_URL}favicon.png`}
+              alt="SHS"
+            />
+            <h1>Inventory Transfer</h1>
+          </div>
           <p className="xfer-lead">
             Compare iPoint <strong>Item</strong> or <strong>Part Number</strong> to D-Tools Cloud{' '}
             <strong>Model</strong> or <strong>Part Number</strong>. Matching parts then compare iPoint{' '}
