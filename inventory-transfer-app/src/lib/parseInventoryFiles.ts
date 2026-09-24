@@ -30,7 +30,10 @@ export type ParsedWorkbook = {
   items: ParsedItem[]
   originalRows: OriginalRow[]
   warnings: string[]
-  blankPartRows: number
+  dataRowCount: number
+  comparedCount: number
+  blankPartNumberCount: number
+  skippedNoIdentity: number
 }
 
 const IPOINT_PART_HEADERS = ['part number', 'partnumber', 'part_number', 'part', 'sku', 'item number']
@@ -171,7 +174,8 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
 
   const items: ParsedItem[] = []
   const originalRows: OriginalRow[] = []
-  let blankPartRows = 0
+  let skippedNoIdentity = 0
+  let blankPartNumberCount = 0
   rows.forEach((row, idx) => {
     const sourceIndex = idx + 2
     const original = stringifyOriginal(row)
@@ -181,10 +185,11 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
       ? cell(row, itemHeader)
       : pickAlt(row, ['item', 'description_customer', 'short description', 'description'])
     const model = modelHeader ? cell(row, modelHeader) : pickAlt(row, ['model'])
+    if (!partNumber) blankPartNumberCount += 1
     const hasIdentity =
       kind === 'ipoint' ? Boolean(partNumber || itemName) : Boolean(partNumber || model)
     if (!hasIdentity) {
-      blankPartRows += 1
+      skippedNoIdentity += 1
       return
     }
     const { raw, qty } = parseQty(row[qtyHeader])
@@ -202,11 +207,16 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
     })
   })
 
-  if (blankPartRows) {
+  if (skippedNoIdentity) {
     warnings.push(
       kind === 'ipoint'
-        ? `${blankPartRows} row(s) had a blank part number and item and were skipped.`
-        : `${blankPartRows} row(s) had a blank part number and model and were skipped.`,
+        ? `${skippedNoIdentity} data row(s) had a blank part number and item, so they could not be compared.`
+        : `${skippedNoIdentity} data row(s) had a blank part number and model, so they could not be compared.`,
+    )
+  }
+  if (blankPartNumberCount && kind === 'dtools') {
+    warnings.push(
+      `${blankPartNumberCount} D-Tools row(s) have a blank Part Number. They are still included and matched by Model.`,
     )
   }
   const sci = items.filter((i) => /^\d+\.\d+E\+\d+$/i.test(i.partNumber)).length
@@ -225,6 +235,9 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
     items,
     originalRows,
     warnings,
-    blankPartRows,
+    dataRowCount: rows.length,
+    comparedCount: items.length,
+    blankPartNumberCount,
+    skippedNoIdentity,
   }
 }

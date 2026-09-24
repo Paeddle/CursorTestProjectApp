@@ -41,6 +41,41 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url)
 }
 
+function FileCountMeta({ file, source }: { file: ParsedWorkbook; source: SourceKind }) {
+  const excelCount = file.dataRowCount + 1
+  return (
+    <div className="xfer-meta">
+      <div>
+        <strong>Spreadsheet rows:</strong> {excelCount.toLocaleString()} including header ({file.dataRowCount.toLocaleString()}{' '}
+        product rows)
+      </div>
+      <div>
+        <strong>Included in compare:</strong> {file.comparedCount.toLocaleString()}
+      </div>
+      <div>
+        <strong>Blank part number:</strong> {file.blankPartNumberCount.toLocaleString()}
+        {source === 'dtools' ? ' (still compared by Model)' : ' (still compared by Item if present)'}
+      </div>
+      {file.skippedNoIdentity ? (
+        <div>
+          <strong>Skipped, no match fields:</strong> {file.skippedNoIdentity.toLocaleString()}
+        </div>
+      ) : null}
+      <div>
+        <strong>Part column:</strong> {file.partNumberHeader}
+      </div>
+      <div>
+        <strong>Qty column:</strong> {file.qtyHeader}
+      </div>
+      {file.warnings.map((w) => (
+        <p key={w} className="xfer-warn">
+          {w}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export function App() {
   const [ipoint, setIpoint] = useState<ParsedWorkbook | null>(null)
   const [dtools, setDtools] = useState<ParsedWorkbook | null>(null)
@@ -192,24 +227,7 @@ export function App() {
             </label>
             <span className="xfer-file-name">{ipoint?.fileName || 'No file yet'}</span>
           </div>
-          {ipoint ? (
-            <div className="xfer-meta">
-              <div>
-                <strong>Rows with a part number:</strong> {ipoint.items.length}
-              </div>
-              <div>
-                <strong>Part column:</strong> {ipoint.partNumberHeader}
-              </div>
-              <div>
-                <strong>Qty column:</strong> {ipoint.qtyHeader}
-              </div>
-              {ipoint.warnings.map((w) => (
-                <p key={w} className="xfer-warn">
-                  {w}
-                </p>
-              ))}
-            </div>
-          ) : null}
+          {ipoint ? <FileCountMeta file={ipoint} source="ipoint" /> : null}
         </section>
 
         <section className="xfer-card">
@@ -235,24 +253,7 @@ export function App() {
             </label>
             <span className="xfer-file-name">{dtools?.fileName || 'No file yet'}</span>
           </div>
-          {dtools ? (
-            <div className="xfer-meta">
-              <div>
-                <strong>Rows with a part number:</strong> {dtools.items.length}
-              </div>
-              <div>
-                <strong>Part column:</strong> {dtools.partNumberHeader}
-              </div>
-              <div>
-                <strong>Qty column:</strong> {dtools.qtyHeader}
-              </div>
-              {dtools.warnings.map((w) => (
-                <p key={w} className="xfer-warn">
-                  {w}
-                </p>
-              ))}
-            </div>
-          ) : null}
+          {dtools ? <FileCountMeta file={dtools} source="dtools" /> : null}
         </section>
       </div>
 
@@ -272,12 +273,12 @@ export function App() {
         <>
           <div className="xfer-stats">
             <div className="xfer-stat">
-              <span>iPoint parts</span>
-              <b>{ipoint.items.length}</b>
+              <span>iPoint rows compared</span>
+              <b>{ipoint.comparedCount}</b>
             </div>
             <div className="xfer-stat">
-              <span>D-Tools parts</span>
-              <b>{dtools.items.length}</b>
+              <span>D-Tools rows compared</span>
+              <b>{dtools.comparedCount}</b>
             </div>
             <div className="xfer-stat">
               <span>Matched D-Tools rows</span>
