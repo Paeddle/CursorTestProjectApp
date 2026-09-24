@@ -183,6 +183,21 @@
   font-size: 0.88rem;
 }
 
+.xfer-coverage {
+  margin: 0 0 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid #0e7490;
+  background: #0b3a44;
+  color: #e0f2fe;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.xfer-coverage strong {
+  color: #f0fdfa;
+}
+
 .xfer-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));

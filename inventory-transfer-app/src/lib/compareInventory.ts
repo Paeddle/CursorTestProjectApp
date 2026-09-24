@@ -128,11 +128,21 @@ function unique(values: string[]): string[] {
 }
 
 function ipointKeys(item: ParsedItem): string[] {
-  return unique([usableKey(item.partNumber), usableKey(item.itemName)])
+  return unique([
+    usableKey(item.partNumber),
+    usableKey(item.itemName),
+    compactKey(item.partNumber),
+    compactKey(item.itemName),
+  ])
 }
 
 function dtoolsKeys(item: ParsedItem): string[] {
-  return unique([usableKey(item.partNumber), usableKey(item.model)])
+  return unique([
+    usableKey(item.partNumber),
+    usableKey(item.model),
+    compactKey(item.partNumber),
+    compactKey(item.model),
+  ])
 }
 
 function matchReasons(ipoint: ParsedItem, dtools: ParsedItem): string[] {
@@ -145,6 +155,11 @@ function matchReasons(ipoint: ParsedItem, dtools: ParsedItem): string[] {
   if (iPart && dModel && iPart === dModel) reasons.push('iPoint part number = D-Tools model')
   if (iItem && dPart && iItem === dPart) reasons.push('iPoint item = D-Tools part number')
   if (iItem && dModel && iItem === dModel) reasons.push('iPoint item = D-Tools model')
+  const iCompact = unique([compactKey(ipoint.partNumber), compactKey(ipoint.itemName)])
+  const dCompact = unique([compactKey(dtools.partNumber), compactKey(dtools.model)])
+  if (reasons.length === 0 && iCompact.some((a) => dCompact.includes(a))) {
+    reasons.push('same SKU after ignoring hyphens and spaces')
+  }
   return reasons
 }
 

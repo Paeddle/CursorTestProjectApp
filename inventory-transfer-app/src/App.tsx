@@ -68,6 +68,12 @@ function FileCountMeta({ file, source }: { file: ParsedWorkbook; source: SourceK
       <div>
         <strong>Qty column:</strong> {file.qtyHeader}
       </div>
+      {file.dataRowCount === 1000 && source === 'ipoint' ? (
+        <p className="xfer-warn">
+          This iPoint file has exactly 1,000 product rows. iPoint exports are often capped at 1,000. If your real
+          catalog is larger, export the full item list and upload that, or many D-Tools parts will look unmatched.
+        </p>
+      ) : null}
       {file.warnings.map((w) => (
         <p key={w} className="xfer-warn">
           {w}
@@ -333,6 +339,14 @@ export function App() {
 
       {result && ipoint && dtools ? (
         <>
+          <p className="xfer-coverage">
+            Exact matches: <strong>{result.matchedKeys.toLocaleString()}</strong> of{' '}
+            {dtools.comparedCount.toLocaleString()} D-Tools rows (
+            {Math.round((result.matchedKeys / Math.max(dtools.comparedCount, 1)) * 100)}%) and{' '}
+            {ipoint.comparedCount.toLocaleString()} iPoint rows. The rest are not missing because of a bug — they are
+            not in the other file under Item / Part Number / Model. Similar flags are near-misses such as a suffix
+            difference, not exact matches the app failed to see.
+          </p>
           <div className="xfer-stats">
             <div className="xfer-stat">
               <span>iPoint rows compared</span>
