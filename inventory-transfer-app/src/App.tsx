@@ -568,6 +568,9 @@ export function App() {
                               Treat as same part
                             </label>
                           ) : null}
+                          {line.treatedAsSame ? (
+                            <div className="xfer-muted">Now comparing these counts</div>
+                          ) : null}
                         </td>
                         <td className="xfer-num">
                           {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}

@@ -2,7 +2,7 @@
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 1rem 0.85rem 2rem;
+  padding: 1.1rem 2.15rem 2rem;
 }
 
 .xfer-header {
@@ -467,6 +467,10 @@
 }
 
 @media (max-width: 800px) {
+  .xfer-page {
+    padding: 1rem 1.15rem 2rem;
+  }
+
   .xfer-uploads {
     grid-template-columns: 1fr;
   }

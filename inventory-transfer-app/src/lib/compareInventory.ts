@@ -185,7 +185,7 @@ function groupDetail(slices: QtySlice[], total: number): string {
 }
 
 export function lineIsDiscrepancy(line: CompareLine): boolean {
-  if (line.treatedAsSame) return line.qtyDiffers || line.isGrouped
+  if (line.treatedAsSame) return true
   return line.qtyDiffers || line.isSimilar || line.match !== 'both' || line.isGrouped
 }
 
@@ -429,17 +429,12 @@ export function applyTreatedSimilar(
   lines: CompareLine[],
   treatedIds: Record<string, boolean>,
 ): CompareLine[] {
-  const byId = new Map(lines.map((line) => [line.id, line]))
   const isTreated = (line: CompareLine) =>
     Boolean(treatedIds[line.id] || (line.similarPeerId && treatedIds[line.similarPeerId]))
 
   const out: CompareLine[] = []
   for (const line of lines) {
     const treated = line.isSimilar && isTreated(line)
-    if (treated && line.match === 'ipoint-only') {
-      const peer = line.similarPeerId ? byId.get(line.similarPeerId) : undefined
-      if (peer?.match === 'dtools-only') continue
-    }
     if (!treated) {
       out.push(line)
       continue
