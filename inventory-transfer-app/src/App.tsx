@@ -143,7 +143,11 @@ export function App() {
         <div>
           <h1>Inventory Transfer</h1>
           <p className="xfer-lead">
-            Upload both lists. Same part numbers are compared. Anything that does not line up shows in the list below.
+            Compare iPoint <strong>Item</strong> or <strong>Part Number</strong> to D-Tools Cloud{' '}
+            <strong>Model</strong> or <strong>Part Number</strong>. Matching parts then compare iPoint{' '}
+            <strong>Stock available</strong> to D-Tools <strong>Quantity on Hand</strong>. Nothing is written back
+            to either system — you review differences, then download an updated Products.csv if you want D-Tools to
+            use the iPoint quantities.
           </p>
         </div>
         <a className="xfer-home" href="/">
@@ -151,56 +155,94 @@ export function App() {
         </a>
       </header>
 
+      <section className="xfer-algorithm" aria-labelledby="xfer-algorithm-title">
+        <h2 id="xfer-algorithm-title">How the comparison works</h2>
+        <ol>
+          <li>
+            <strong>Files stay in the browser.</strong> iPoint is read from <code>Item</code>,{' '}
+            <code>Part Number</code>, and <code>stock_Available</code>. D-Tools is read from <code>Model</code>,{' '}
+            <code>Part Number</code>, and <code>Quantity on Hand</code>. Nothing is uploaded to a server or written
+            back to iPoint or D-Tools Cloud.
+          </li>
+          <li>
+            <strong>Text is cleaned before matching.</strong> Extra spaces are stripped and letters are compared in
+            uppercase, so <code>tp13bk</code> and <code>TP13BK</code> are the same. Short placeholders like{' '}
+            <code>N/A</code>, <code>-</code>, or <code>NONE</code> are ignored so they cannot create fake matches.
+          </li>
+          <li>
+            <strong>A D-Tools row matches an iPoint row if any one of these is true</strong> after that cleanup:
+            <ul>
+              <li>iPoint Part Number = D-Tools Part Number</li>
+              <li>iPoint Part Number = D-Tools Model</li>
+              <li>iPoint Item = D-Tools Part Number</li>
+              <li>iPoint Item = D-Tools Model</li>
+            </ul>
+            Hyphens that are the only difference (same letters and numbers) also count as a match. Brand,
+            description, and UPC are not used.
+          </li>
+          <li>
+            <strong>Several iPoint rows can land on one D-Tools product.</strong> Their stock counts are{' '}
+            <strong>added together</strong> and the row is labeled <em>Added together</em>, even if the total happens
+            to equal the D-Tools quantity.
+          </li>
+          <li>
+            <strong>Blank quantities count as 0.</strong> Commas are stripped (<code>1,200</code> → 1200).{' '}
+            <em>Different counts</em> means the iPoint stock is not the same number as D-Tools qty on hand.
+          </li>
+          <li>
+            <strong>Close SKUs are not treated as the same part.</strong> Related names like <code>C4-CA1</code> vs{' '}
+            <code>C4-CA1-V2</code> are labeled <em>Looks similar, not the same</em>. Quantity is not copied from
+            those. Rows that only appear in one file stay <em>Only in iPoint</em> or <em>Only in D-Tools</em>.
+          </li>
+          <li>
+            <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes the
+            downloaded Products.csv for that row. Original files are never modified.
+          </li>
+        </ol>
+      </section>
+
       <div className="xfer-uploads">
         <section className="xfer-card">
           <h2>iPoint file</h2>
-          <label className="xfer-file-btn">
-            Choose file
-            <input
-              type="file"
-              hidden
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) void loadFile(file, 'ipoint')
-              }}
-            />
-          </label>
-          {ipoint ? (
-            <div className="xfer-meta">
-              {ipoint.comparedCount.toLocaleString()} parts · {ipoint.fileName}
-              {ipoint.dataRowCount === 1000 ? (
-                <p className="xfer-warn">This file has exactly 1,000 parts. If iPoint has more, export all of them.</p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="xfer-muted">No file yet</p>
-          )}
+          <div className="xfer-file-row">
+            <label className="xfer-file-btn">
+              Choose file
+              <input
+                type="file"
+                hidden
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (file) void loadFile(file, 'ipoint')
+                }}
+              />
+            </label>
+            <span className="xfer-file-name">{ipoint ? `${ipoint.comparedCount.toLocaleString()} parts · ${ipoint.fileName}` : 'No file yet'}</span>
+          </div>
+          {ipoint?.dataRowCount === 1000 ? (
+            <p className="xfer-warn">This file has exactly 1,000 parts. If iPoint has more, export all of them.</p>
+          ) : null}
         </section>
 
         <section className="xfer-card">
           <h2>D-Tools file</h2>
-          <label className="xfer-file-btn">
-            Choose file
-            <input
-              type="file"
-              hidden
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) void loadFile(file, 'dtools')
-              }}
-            />
-          </label>
-          {dtools ? (
-            <div className="xfer-meta">
-              {dtools.comparedCount.toLocaleString()} parts · {dtools.fileName}
-            </div>
-          ) : (
-            <p className="xfer-muted">No file yet</p>
-          )}
+          <div className="xfer-file-row">
+            <label className="xfer-file-btn">
+              Choose file
+              <input
+                type="file"
+                hidden
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (file) void loadFile(file, 'dtools')
+                }}
+              />
+            </label>
+            <span className="xfer-file-name">{dtools ? `${dtools.comparedCount.toLocaleString()} parts · ${dtools.fileName}` : 'No file yet'}</span>
+          </div>
         </section>
       </div>
 
