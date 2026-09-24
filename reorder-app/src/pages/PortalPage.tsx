@@ -260,7 +260,6 @@ export default function PortalPage() {
     try {
       await setReorderReceived(id)
       await load()
-      setTab('history')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not mark as received.')
     } finally {

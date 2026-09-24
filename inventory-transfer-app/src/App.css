@@ -222,11 +222,11 @@
 }
 
 .xfer-row-similar td {
-  background: #d7deee;
+  background: #454e5c;
 }
 
 .xfer-row-grouped td {
-  background: #d3e8e4;
+  background: #3e4f5c;
 }
 
 .xfer-flag-grouped {
@@ -252,14 +252,14 @@
 .xfer-group ul {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;
-  color: #2b3a4d;
+  color: #e8eef5;
   font-size: 0.74rem;
   font-weight: 500;
 }
 
 .xfer-group-total {
   margin-top: 0.2rem;
-  color: #1f6b7c;
+  color: #9ee0ea;
   font-size: 0.74rem;
   font-weight: 700;
 }
@@ -327,9 +327,9 @@
 
 .xfer-table-wrap {
   overflow-x: hidden;
-  border: 1px solid #9bb3c7;
+  border: 1px solid #556575;
   border-radius: 10px;
-  background: #e4eef6;
+  background: #3a4654;
   max-height: min(78vh, 52rem);
 }
 
@@ -338,13 +338,13 @@
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.74rem;
-  color: #243344;
+  color: #e8eef5;
 }
 
 .xfer-table th,
 .xfer-table td {
   padding: 0.35rem 0.4rem;
-  border-bottom: 1px solid #c5d5e3;
+  border-bottom: 1px solid #556575;
   text-align: left;
   vertical-align: top;
   word-break: break-word;
@@ -354,8 +354,8 @@
 .xfer-table th {
   position: sticky;
   top: 0;
-  background: #c5d9e8;
-  color: #243344;
+  background: #455564;
+  color: #e8eef5;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -381,11 +381,11 @@
 }
 
 .xfer-sort:hover {
-  color: #1f4f6a;
+  color: #fff;
 }
 
 .xfer-sort-arrow {
-  color: #1f6b7c;
+  color: #9ee0ea;
   font-size: 0.72rem;
 }
 
@@ -394,15 +394,15 @@
   white-space: normal;
   font-size: 0.76rem;
   font-weight: 650;
-  color: #243344;
+  color: #e8eef5;
 }
 
 .xfer-table tr:hover td {
-  background: #d3e4f0;
+  background: #4a5868;
 }
 
 .xfer-row-diff td {
-  background: #dce3f2;
+  background: #434c58;
 }
 
 .xfer-num {
@@ -411,12 +411,12 @@
 }
 
 .xfer-delta-up {
-  color: #1f7a4a;
+  color: #7dcea0;
   font-weight: 700;
 }
 
 .xfer-delta-down {
-  color: #b4233a;
+  color: #f0a0a8;
   font-weight: 700;
 }
 
@@ -449,12 +449,12 @@
 }
 
 .xfer-notes {
-  color: #2d5f73;
+  color: #c5dce6;
   font-size: 0.74rem;
 }
 
 .xfer-table .xfer-muted {
-  color: #5a7084;
+  color: #9aabbd;
 }
 
 .xfer-empty {
