@@ -11,6 +11,7 @@ export function exportUpdatedProductsCsv(
   const qtyBySourceIndex = new Map<number, number>()
   for (const line of lines) {
     if (choices[line.id] !== 'use-ipoint') continue
+    if (!line.quantitiesCombined) continue
     if (line.dtoolsSourceIndex == null || line.ipointQty == null) continue
     qtyBySourceIndex.set(line.dtoolsSourceIndex, line.ipointQty)
   }

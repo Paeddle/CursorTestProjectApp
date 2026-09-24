@@ -5,10 +5,8 @@ import {
   compareInventories,
   defaultChoices,
   lineIsDiscrepancy,
-  splitKey,
   type CompareLine,
   type QtyChoice,
-  type QtySlice,
 } from './lib/compareInventory'
 import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
@@ -40,8 +38,8 @@ function problemLabel(line: CompareLine): string {
   if (line.treatedAsSame && line.qtyDiffers) return 'Different counts'
   if (line.treatedAsSame) return 'Treated as the same'
   if (line.qtyDiffers) return 'Different counts'
+  if (line.groupSlices.length > 1 && !line.quantitiesCombined) return 'Not combined'
   if (line.isGrouped) return 'Added together'
-  if (line.splitFromGroup) return 'Kept separate'
   if (line.isSimilar) return 'Looks similar, not the same'
   if (line.match === 'ipoint-only') return 'Only in iPoint'
   if (line.match === 'dtools-only') return 'Only in D-Tools'
@@ -70,7 +68,7 @@ function lineMatchesFilter(
 ): boolean {
   if (filter === 'review') return true
   if (filter === 'diff') return line.qtyDiffers
-  if (filter === 'grouped') return line.isGrouped
+  if (filter === 'grouped') return line.groupSlices.length > 1
   if (filter === 'similar') return line.isSimilar && !line.treatedAsSame
   if (filter === 'ipoint') return line.match === 'ipoint-only'
   if (filter === 'dtools') return line.match === 'dtools-only'
@@ -259,7 +257,7 @@ export function App() {
     () => ({
       discrepancyCount: effectiveLines.filter(lineIsDiscrepancy).length,
       qtyDifferences: effectiveLines.filter((line) => line.qtyDiffers).length,
-      groupedCount: effectiveLines.filter((line) => line.isGrouped).length,
+      groupedCount: effectiveLines.filter((line) => line.groupSlices.length > 1).length,
       similarCount: effectiveLines.filter((line) => line.isSimilar && !line.treatedAsSame).length,
       ipointOnly: effectiveLines.filter((line) => line.match === 'ipoint-only').length,
       dtoolsOnly: effectiveLines.filter((line) => line.match === 'dtools-only').length,
@@ -292,26 +290,14 @@ export function App() {
     setSortDir('asc')
   }
 
-  const toggleKeepSeparate = (parentId: string, slice: QtySlice, keepSeparate: boolean) => {
+  const setQuantitiesCombined = (lineId: string, combined: boolean) => {
     setUncombined((prev) => {
       const next = { ...prev }
-      const key = splitKey(parentId, slice.sourceIndex)
-      if (keepSeparate) next[key] = true
-      else delete next[key]
+      if (combined) delete next[lineId]
+      else next[lineId] = true
       return next
     })
-  }
-
-  const setGroupCombined = (line: CompareLine, combined: boolean) => {
-    setUncombined((prev) => {
-      const next = { ...prev }
-      for (const slice of line.groupSlices) {
-        const key = splitKey(line.id, slice.sourceIndex)
-        if (combined) delete next[key]
-        else next[key] = true
-      }
-      return next
-    })
+    if (!combined) setChoice(lineId, 'keep-dtools')
   }
 
   const toggleTreatAsSame = (line: CompareLine, checked: boolean) => {
@@ -389,9 +375,9 @@ export function App() {
           <li>
             <strong>Several iPoint rows can land on one D-Tools product.</strong> Their stock counts are{' '}
             <strong>added together</strong> and the row is labeled <em>Added together</em>, even if the total happens
-            to equal the D-Tools quantity. If those iPoint rows are actually different parts, check{' '}
-            <em>Keep separate</em> on each one (or <em>Uncombine all</em>) so they are not added into that D-Tools
-            count.
+            to equal the D-Tools quantity. That combined total is the only number that can be saved onto the matching
+            Products.csv row. Choose <em>Don't combine quantities</em> if they should not be added — then the
+            Products.csv row keeps its current D-Tools quantity.
           </li>
           <li>
             <strong>Blank quantities count as 0.</strong> Commas are stripped (<code>1,200</code> → 1200).{' '}
@@ -628,62 +614,48 @@ export function App() {
                           ) : null}
                         </td>
                         <td className="xfer-num">
-                          {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
+                          {formatQty(
+                            line.ipointQty,
+                            line.quantitiesCombined && line.isGrouped ? String(line.ipointQty) : line.ipointRaw,
+                          )}
                           {line.groupSlices.length > 1 ? (
                             <div className="xfer-group">
-                              {line.isGrouped ? <span className="xfer-flag-grouped">Added together</span> : null}
-                              <button
-                                type="button"
-                                className="xfer-split-btn"
-                                onClick={() => setGroupCombined(line, false)}
-                              >
-                                Uncombine all
-                              </button>
-                              {line.groupSlices.some((slice) => uncombined[splitKey(line.id, slice.sourceIndex)]) ? (
-                                <button
-                                  type="button"
-                                  className="xfer-split-btn"
-                                  onClick={() => setGroupCombined(line, true)}
-                                >
-                                  Combine again
-                                </button>
-                              ) : null}
+                              <div className="xfer-choice-stack">
+                                <label>
+                                  <input
+                                    type="radio"
+                                    name={`combine-${line.id}`}
+                                    checked={line.quantitiesCombined}
+                                    onChange={() => setQuantitiesCombined(line.id, true)}
+                                  />
+                                  Combine quantities
+                                </label>
+                                <label>
+                                  <input
+                                    type="radio"
+                                    name={`combine-${line.id}`}
+                                    checked={!line.quantitiesCombined}
+                                    onChange={() => setQuantitiesCombined(line.id, false)}
+                                  />
+                                  Don't combine quantities
+                                </label>
+                              </div>
                               <ul>
                                 {line.groupSlices.map((slice) => (
                                   <li key={`${line.id}-s-${slice.sourceIndex}`}>
-                                    <div>
-                                      <code>{slice.partNumber || slice.item || 'row'}</code>
-                                      {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
-                                      {': '}
-                                      {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
-                                    </div>
-                                    <label className="xfer-choice xfer-treat">
-                                      <input
-                                        type="checkbox"
-                                        checked={Boolean(uncombined[splitKey(line.id, slice.sourceIndex)])}
-                                        onChange={(e) => toggleKeepSeparate(line.id, slice, e.target.checked)}
-                                      />
-                                      Keep separate — different part
-                                    </label>
+                                    <code>{slice.partNumber || slice.item || 'row'}</code>
+                                    {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
+                                    {': '}
+                                    {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
                                   </li>
                                 ))}
                               </ul>
-                              {line.isGrouped ? <div className="xfer-group-total">{line.groupDetail}</div> : null}
+                              {line.quantitiesCombined ? (
+                                <div className="xfer-group-total">{line.groupDetail}</div>
+                              ) : (
+                                <div className="xfer-muted">Not added together — Products.csv keeps the D-Tools qty</div>
+                              )}
                             </div>
-                          ) : null}
-                          {line.splitFromGroup ? (
-                            <label className="xfer-choice xfer-treat">
-                              <input
-                                type="checkbox"
-                                checked
-                                onChange={(e) => {
-                                  if (!e.target.checked && line.splitParentId && line.ipointSlices[0]) {
-                                    toggleKeepSeparate(line.splitParentId, line.ipointSlices[0], false)
-                                  }
-                                }}
-                              />
-                              Keep separate — add back to the combined row if unchecked
-                            </label>
                           ) : null}
                         </td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
@@ -693,7 +665,7 @@ export function App() {
                           {deltaText(line)}
                         </td>
                         <td>
-                          {line.match === 'both' ? (
+                          {line.match === 'both' && line.quantitiesCombined ? (
                             <div className="xfer-choice-stack">
                               <label>
                                 <input
@@ -714,6 +686,8 @@ export function App() {
                                 Use iPoint count
                               </label>
                             </div>
+                          ) : line.match === 'both' ? (
+                            <span className="xfer-muted">Combine quantities first to change this Products.csv row</span>
                           ) : (
                             <span className="xfer-muted">No D-Tools row to update</span>
                           )}

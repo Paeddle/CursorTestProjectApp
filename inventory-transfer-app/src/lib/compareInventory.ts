@@ -47,6 +47,7 @@ export type CompareLine = {
   groupDetail: string
   splitFromGroup: boolean
   splitParentId: string
+  quantitiesCombined: boolean
 }
 
 export type CompareResult = {
@@ -186,10 +187,6 @@ function sliceFrom(item: ParsedItem): QtySlice {
   }
 }
 
-export function splitKey(lineId: string, sourceIndex: number): string {
-  return `${lineId}:${sourceIndex}`
-}
-
 function groupDetail(slices: QtySlice[], total: number): string {
   const parts = slices.map((s) => `${s.partNumber || s.item || 'row'} (${s.qtyRaw === '' ? 'blank→0' : s.qtyRaw})`)
   return `${parts.join(' + ')} = ${total}`
@@ -326,6 +323,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       groupDetail: isGrouped ? groupDetail(slices, ipointQty) : '',
       splitFromGroup: false,
       splitParentId: '',
+      quantitiesCombined: true,
     })
   }
 
@@ -377,6 +375,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       groupDetail: '',
       splitFromGroup: false,
       splitParentId: '',
+      quantitiesCombined: true,
     })
   }
 
@@ -428,6 +427,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       groupDetail: '',
       splitFromGroup: false,
       splitParentId: '',
+      quantitiesCombined: true,
     })
   }
 
@@ -485,113 +485,25 @@ export function applyTreatedSimilar(
   return out
 }
 
-function lineFromStaySlices(line: CompareLine, stay: QtySlice[]): CompareLine {
-  const total = stay.reduce((sum, slice) => sum + slice.qty, 0)
-  const grouped = stay.length > 1
-  const qtyDiffers = line.dtoolsQty != null && total !== line.dtoolsQty
-  return {
-    ...line,
-    match: 'both',
-    ipointPartNumber: unique(stay.map((slice) => slice.partNumber).filter(Boolean)).join(' / '),
-    ipointItem: unique(stay.map((slice) => slice.item).filter(Boolean)).join(' / '),
-    ipointManufacturer: unique(stay.map((slice) => slice.manufacturer).filter(Boolean)).join(' / '),
-    ipointQty: total,
-    ipointRaw: grouped ? groupDetail(stay, total) : stay[0]?.qtyRaw || '',
-    ipointRows: stay.length,
-    ipointSlices: stay,
-    isGrouped: grouped,
-    groupDetail: grouped ? groupDetail(stay, total) : '',
-    qtyDiffers,
-    notes: [
-      grouped
-        ? `GROUPED: ${stay.length} iPoint rows were added together: ${groupDetail(stay, total)}`
-        : stay.length === 1 && line.groupSlices.length > 1
-          ? 'Other iPoint rows were kept separate because they are different parts.'
-          : line.notes.find((note) => note.startsWith('SHARED:')) || '',
-      qtyDiffers ? 'Quantity differs' : '',
-    ].filter(Boolean),
-  }
-}
-
-function splitLineFromSlice(parent: CompareLine, slice: QtySlice): CompareLine {
-  const label = parent.dtoolsPartNumber || parent.dtoolsModel || 'the D-Tools row'
-  return {
-    ...parent,
-    id: `split-${parent.id}-${slice.sourceIndex}`,
-    partKey: usableKey(slice.partNumber) || usableKey(slice.item) || String(slice.sourceIndex),
-    ipointPartNumber: slice.partNumber,
-    dtoolsPartNumber: '',
-    match: 'ipoint-only',
-    matchVia: '',
-    ipointQty: slice.qty,
-    dtoolsQty: null,
-    ipointRaw: slice.qtyRaw,
-    dtoolsRaw: '',
-    ipointItem: slice.item,
-    ipointManufacturer: slice.manufacturer,
-    dtoolsBrand: '',
-    dtoolsModel: '',
-    ipointRows: 1,
-    dtoolsRowsForKey: 0,
-    dtoolsSourceIndex: null,
-    notes: [`Kept separate from ${label}. Not added into that D-Tools count.`],
-    qtyDiffers: false,
-    similarTo: '',
-    isSimilar: false,
-    similarPeerId: '',
-    similarIpointQty: null,
-    similarIpointRaw: '',
-    similarDtoolsQty: null,
-    similarDtoolsRaw: '',
-    similarDtoolsSourceIndex: null,
-    treatedAsSame: false,
-    ipointSlices: [slice],
-    groupSlices: [slice],
-    isGrouped: false,
-    groupDetail: '',
-    splitFromGroup: true,
-    splitParentId: parent.id,
-  }
-}
-
 export function applyUncombined(
   lines: CompareLine[],
   uncombined: Record<string, boolean>,
 ): CompareLine[] {
-  const out: CompareLine[] = []
-  for (const line of lines) {
-    const originals = line.groupSlices.length > 1 ? line.groupSlices : []
-    if (originals.length < 2) {
-      out.push(line)
-      continue
+  return lines.map((line) => {
+    if (line.groupSlices.length < 2 || !uncombined[line.id]) return line
+    return {
+      ...line,
+      ipointQty: null,
+      ipointRaw: '',
+      qtyDiffers: false,
+      isGrouped: true,
+      quantitiesCombined: false,
+      groupDetail: '',
+      notes: [
+        'iPoint quantities are not added together. The Products.csv row will keep its current D-Tools quantity.',
+      ],
     }
-
-    const stay = originals.filter((slice) => !uncombined[splitKey(line.id, slice.sourceIndex)])
-    const split = originals.filter((slice) => uncombined[splitKey(line.id, slice.sourceIndex)])
-
-    if (stay.length === 0) {
-      out.push({
-        ...line,
-        match: 'dtools-only',
-        ipointPartNumber: '',
-        ipointItem: '',
-        ipointManufacturer: '',
-        ipointQty: null,
-        ipointRaw: '',
-        ipointRows: 0,
-        ipointSlices: [],
-        isGrouped: false,
-        groupDetail: '',
-        qtyDiffers: false,
-        notes: ['iPoint rows were kept separate because they are different parts.'],
-      })
-    } else {
-      out.push(lineFromStaySlices(line, stay))
-    }
-
-    for (const slice of split) out.push(splitLineFromSlice(line, slice))
-  }
-  return out
+  })
 }
 
 export function defaultChoices(lines: CompareLine[]): Record<string, QtyChoice> {
