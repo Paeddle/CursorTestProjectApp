@@ -24,6 +24,7 @@ export type CompareLine = {
   notes: string[]
   qtyDiffers: boolean
   similarTo: string
+  isSimilar: boolean
 }
 
 export type CompareResult = {
@@ -34,6 +35,7 @@ export type CompareResult = {
   dtoolsOnly: number
   ipointDuplicates: number
   dtoolsDuplicates: number
+  similarCount: number
 }
 
 const SKIP_KEYS = new Set(['N/A', 'NA', '-', '--', 'NONE', 'NULL', '?', '#'])
@@ -49,11 +51,12 @@ function compactKey(value: string): string {
 }
 
 function similarScore(a: string, b: string): number {
-  if (!a || !b || a === b) return 0
+  if (!a || !b) return 0
+  if (a === b) return 1000 + a.length
   const shorter = a.length <= b.length ? a : b
   const longer = a.length > b.length ? a : b
   if (shorter.length < 6) return 0
-  if (longer.startsWith(shorter)) return shorter.length
+  if (longer.startsWith(shorter) || longer.includes(shorter)) return shorter.length
   return 0
 }
 
@@ -203,6 +206,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       notes,
       qtyDiffers,
       similarTo: '',
+      isSimilar: false,
     })
   }
 
@@ -213,7 +217,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dSimilar,
     )
     const notes = ['In iPoint only — no exact D-Tools Model or Part Number match']
-    if (similarTo) notes.push(`Closest D-Tools SKU (not counted as a match): ${similarTo}`)
+    if (similarTo) notes.push(`Flagged as similar to D-Tools ${similarTo}. Not an exact match, so quantity is not compared.`)
     lines.push({
       id: `i-${ir.sourceIndex}`,
       partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
@@ -235,6 +239,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       notes,
       qtyDiffers: false,
       similarTo,
+      isSimilar: Boolean(similarTo),
     })
   }
 
@@ -245,7 +250,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       iSimilar,
     )
     const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
-    if (similarTo) notes.push(`Looks similar to iPoint ${similarTo}, but it is not an exact match so this row stays D-Tools only`)
+    if (similarTo) notes.push(`Flagged as similar to iPoint ${similarTo}. Not an exact match, so quantity is not compared.`)
     lines.push({
       id: `d-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
@@ -267,6 +272,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       notes,
       qtyDiffers: false,
       similarTo,
+      isSimilar: Boolean(similarTo),
     })
   }
 
@@ -278,6 +284,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     dtoolsOnly: lines.filter((l) => l.match === 'dtools-only').length,
     ipointDuplicates: iIndex.duplicateKeys,
     dtoolsDuplicates: dIndex.duplicateKeys,
+    similarCount: lines.filter((l) => l.isSimilar).length,
   }
 }
 

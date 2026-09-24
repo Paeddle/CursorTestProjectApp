@@ -9,7 +9,7 @@ import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
 import './App.css'
 
-type ListFilter = 'differences' | 'matched' | 'ipoint-only' | 'dtools-only' | 'overrides'
+type ListFilter = 'differences' | 'matched' | 'similar' | 'ipoint-only' | 'dtools-only' | 'overrides'
 
 function formatQty(n: number | null, raw: string): string {
   if (n == null) return '—'
@@ -142,6 +142,7 @@ export function App() {
     return result.lines.filter((line) => {
       if (filter === 'differences' && !line.qtyDiffers) return false
       if (filter === 'matched' && line.match !== 'both') return false
+      if (filter === 'similar' && !line.isSimilar) return false
       if (filter === 'ipoint-only' && line.match !== 'ipoint-only') return false
       if (filter === 'dtools-only' && line.match !== 'dtools-only') return false
       if (filter === 'overrides' && resolvedChoices[line.id] !== 'use-ipoint') return false
@@ -241,13 +242,14 @@ export function App() {
           <li>
             <strong>Quantities are numbers.</strong> Blank <code>stock_Available</code> or <code>Quantity on Hand</code>{' '}
             is treated as <strong>0</strong> and labeled <code>blank → 0</code>. Commas are stripped (<code>1,200</code>{' '}
-            → 1200). A quantity difference is any matched pair where iPoint stock ≠ D-Tools qty on hand. Unmatched
-            Unmatched rows are listed as <strong>iPoint only</strong> or <strong>D-Tools only</strong>. That means
-            there was no exact field match. Related SKUs are not merged: <code>C4-CA1</code> is not the same as{' '}
-            <code>C4-CA1-V2</code>, and <code>PROA7PLUS</code> is not <code>PROA7PLUS-FA</code>. Those stay unmatched
-            on purpose so a different product’s quantity is never overwritten. If a nearby SKU exists, the notes show
-            it as “closest SKU (not counted as a match).” The iPoint export also has fewer items than the D-Tools
-            catalog, so many D-Tools-only rows simply are not in the iPoint file.
+            → 1200). A quantity difference is any matched pair where iPoint stock ≠ D-Tools qty on hand.
+          </li>
+          <li>
+            <strong>Unmatched rows stay unmatched unless every character matches after normalize.</strong> They are
+            listed as iPoint only or D-Tools only. Related SKUs such as <code>C4-CA1</code> vs <code>C4-CA1-V2</code>,
+            or the same letters with different hyphens, are <strong>flagged Similar</strong> in their own tab. Similar
+            is a review flag only: quantity is not compared and cannot be overwritten from that flag. The iPoint export
+            also has fewer items than the D-Tools catalog, so many D-Tools-only rows simply are not in iPoint.
           </li>
           <li>
             <strong>Override is opt-in and local.</strong> Default for every matched line is Keep D-Tools. Choosing Use
@@ -342,6 +344,10 @@ export function App() {
               <span>Qty differences</span>
               <b>{result.qtyDifferences}</b>
             </div>
+            <div className="xfer-stat xfer-stat-alert">
+              <span>Similar SKUs flagged</span>
+              <b>{result.similarCount}</b>
+            </div>
             <div className="xfer-stat">
               <span>iPoint only</span>
               <b>{result.ipointOnly}</b>
@@ -362,6 +368,7 @@ export function App() {
                 [
                   ['differences', `Qty differences (${result.qtyDifferences})`],
                   ['matched', `Matched (${result.matchedKeys})`],
+                  ['similar', `Similar SKUs (${result.similarCount})`],
                   ['ipoint-only', `iPoint only, no exact match (${result.ipointOnly})`],
                   ['dtools-only', `D-Tools only, no exact match (${result.dtoolsOnly})`],
                   ['overrides', `Chosen overrides (${overrideCount})`],
@@ -414,7 +421,7 @@ export function App() {
                     <th>D-Tools part number</th>
                     <th>D-Tools model</th>
                     <th>Matched via</th>
-                    <th>Similar SKU (not a match)</th>
+                    <th>Similar SKU (flagged, not a match)</th>
                     <th>iPoint stock available</th>
                     <th>D-Tools qty on hand</th>
                     <th>Difference</th>
@@ -427,7 +434,12 @@ export function App() {
                     const choice = resolvedChoices[line.id]
                     const delta = line.ipointQty != null && line.dtoolsQty != null ? line.ipointQty - line.dtoolsQty : 0
                     return (
-                      <tr key={line.id} className={line.qtyDiffers ? 'xfer-row-diff' : undefined}>
+                      <tr
+                        key={line.id}
+                        className={[line.qtyDiffers ? 'xfer-row-diff' : '', line.isSimilar ? 'xfer-row-similar' : '']
+                          .filter(Boolean)
+                          .join(' ') || undefined}
+                      >
                         <td>
                           {line.ipointPartNumber ? (
                             <code>{line.ipointPartNumber}</code>
@@ -451,7 +463,14 @@ export function App() {
                         </td>
                         <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
                         <td className="xfer-notes">{line.matchVia || '—'}</td>
-                        <td className="xfer-notes">{line.similarTo || '—'}</td>
+                        <td>
+                          {line.isSimilar ? <span className="xfer-flag-similar">Similar</span> : null}
+                          {line.similarTo ? (
+                            <code>{line.similarTo}</code>
+                          ) : (
+                            <span className="xfer-muted">—</span>
+                          )}
+                        </td>
                         <td className="xfer-num">{formatQty(line.ipointQty, line.ipointRaw)}</td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
                         <td

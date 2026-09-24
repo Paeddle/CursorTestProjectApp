@@ -211,6 +211,23 @@
   color: #f8fafc;
 }
 
+.xfer-row-similar td {
+  background: #1c1910;
+}
+
+.xfer-flag-similar {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  background: #854d0e;
+  color: #fef08a;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .xfer-stat-alert b {
   color: #fbbf24;
 }
