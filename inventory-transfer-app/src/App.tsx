@@ -466,6 +466,9 @@ export function App() {
                           ) : (
                             <span className="xfer-muted">—</span>
                           )}
+                          {line.isSimilar && line.match === 'dtools-only' ? (
+                            <div className="xfer-muted">Nearby iPoint SKU for review — not a match</div>
+                          ) : null}
                         </td>
                         <td>
                           {line.ipointItem || <span className="xfer-muted">—</span>}
@@ -480,6 +483,9 @@ export function App() {
                             <span className="xfer-muted">—</span>
                           )}
                           {line.dtoolsBrand ? <div className="xfer-muted">{line.dtoolsBrand}</div> : null}
+                          {line.isSimilar && line.match === 'ipoint-only' ? (
+                            <div className="xfer-muted">Nearby D-Tools SKU for review — not a match</div>
+                          ) : null}
                         </td>
                         <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
                         <td className="xfer-notes">{line.matchVia || '—'}</td>

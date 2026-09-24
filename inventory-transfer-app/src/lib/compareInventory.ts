@@ -72,20 +72,55 @@ function similarScore(a: string, b: string): number {
   return 0
 }
 
-function bestSimilarLabel(
+function similarReason(left: string, right: string, leftLabel: string, rightLabel: string): string {
+  if (!left || !right) return ''
+  if (left === right) {
+    return `${leftLabel} and ${rightLabel} match after ignoring hyphens and spaces`
+  }
+  const shorter = left.length <= right.length ? left : right
+  const longer = left.length > right.length ? left : right
+  const shorterLabel = left.length <= right.length ? leftLabel : rightLabel
+  const longerLabel = left.length > right.length ? leftLabel : rightLabel
+  if (longer.startsWith(shorter)) {
+    return `${longerLabel} starts with ${shorterLabel}`
+  }
+  if (longer.includes(shorter)) {
+    return `${shorterLabel} appears inside ${longerLabel}`
+  }
+  return `${leftLabel} is similar to ${rightLabel}`
+}
+
+function bestSimilar(
   keys: string[],
-  others: { keys: string[]; label: string }[],
-): string {
-  let best = { score: 0, label: '' }
+  others: { keys: string[]; partNumber: string; item: string }[],
+): { partNumber: string; item: string; label: string; reason: string } | null {
+  let best: { score: number; partNumber: string; item: string; label: string; left: string; right: string } | null =
+    null
   for (const key of keys) {
     for (const other of others) {
       for (const otherKey of other.keys) {
         const score = similarScore(key, otherKey)
-        if (score > best.score) best = { score, label: other.label }
+        if (score > (best?.score || 0)) {
+          best = {
+            score,
+            partNumber: other.partNumber,
+            item: other.item,
+            label: other.partNumber || other.item,
+            left: key,
+            right: otherKey,
+          }
+        }
       }
     }
   }
-  return best.label
+  if (!best) return null
+  const label = best.partNumber || best.item
+  return {
+    partNumber: best.partNumber,
+    item: best.item,
+    label,
+    reason: similarReason(best.left, best.right, 'this SKU', label),
+  }
 }
 
 function unique(values: string[]): string[] {
@@ -165,11 +200,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
   const iIndex = indexByKey(ipoint.items, ipointKeys)
   const iSimilar = ipoint.items.map((item) => ({
     keys: unique([compactKey(item.partNumber), compactKey(item.itemName)]),
-    label: item.partNumber || item.itemName,
+    partNumber: item.partNumber,
+    item: item.itemName,
   }))
   const dSimilar = dtools.items.map((item) => ({
     keys: unique([compactKey(item.partNumber), compactKey(item.model)]),
-    label: item.partNumber || item.model,
+    partNumber: item.partNumber,
+    item: item.model,
   }))
   const matchedD = new Map<number, DtoolsMatch>()
   const matchedI = new Set<number>()
@@ -250,19 +287,22 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
 
   for (const ir of ipoint.items) {
     if (matchedI.has(ir.sourceIndex)) continue
-    const similarTo = bestSimilarLabel(
+    const similar = bestSimilar(
       unique([compactKey(ir.partNumber), compactKey(ir.itemName)]),
       dSimilar,
     )
+    const similarTo = similar?.label || ''
     const notes = ['In iPoint only — no exact D-Tools Model or Part Number match']
-    if (similarTo) notes.push(`Flagged as similar to D-Tools ${similarTo}. Not an exact match, so quantity is not compared.`)
+    if (similar) {
+      notes.push(`Flagged similar to D-Tools ${similar.label}. ${similar.reason}. Quantity is not compared.`)
+    }
     lines.push({
       id: `i-${ir.sourceIndex}`,
       partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
       ipointPartNumber: ir.partNumber,
-      dtoolsPartNumber: '',
+      dtoolsPartNumber: similar?.partNumber || '',
       match: 'ipoint-only',
-      matchVia: '',
+      matchVia: similar ? `Similar only — ${similar.reason}` : '',
       ipointQty: ir.qty,
       dtoolsQty: null,
       ipointRaw: ir.qtyRaw,
@@ -270,7 +310,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       ipointItem: ir.itemName,
       ipointManufacturer: ir.manufacturer,
       dtoolsBrand: '',
-      dtoolsModel: '',
+      dtoolsModel: similar?.item || '',
       ipointRows: 1,
       dtoolsRowsForKey: 0,
       dtoolsSourceIndex: null,
@@ -286,24 +326,29 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
 
   for (const dr of dtools.items) {
     if (matchedD.has(dr.sourceIndex)) continue
-    const similarTo = bestSimilarLabel(
+    const similar = bestSimilar(
       unique([compactKey(dr.partNumber), compactKey(dr.model)]),
       iSimilar,
     )
+    const similarTo = similar?.label || ''
     const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
-    if (similarTo) notes.push(`Flagged as similar to iPoint ${similarTo}. Not an exact match, so quantity is not compared.`)
+    if (similar) {
+      notes.push(
+        `Flagged similar to iPoint ${similar.label}. ${similar.reason}. Shown in the iPoint columns for comparison only — not a match, quantity is not compared.`,
+      )
+    }
     lines.push({
       id: `d-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
-      ipointPartNumber: '',
+      ipointPartNumber: similar?.partNumber || '',
       dtoolsPartNumber: dr.partNumber,
       match: 'dtools-only',
-      matchVia: '',
+      matchVia: similar ? `Similar only — ${similar.reason}` : '',
       ipointQty: null,
       dtoolsQty: dr.qty,
       ipointRaw: '',
       dtoolsRaw: dr.qtyRaw,
-      ipointItem: '',
+      ipointItem: similar ? `${similar.item || similar.partNumber} (similar, not a match)` : '',
       ipointManufacturer: '',
       dtoolsBrand: dr.brand,
       dtoolsModel: dr.model,
