@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
 import {
   applyTreatedSimilar,
+  applyUncombined,
   compareInventories,
   defaultChoices,
   lineIsDiscrepancy,
+  splitKey,
   type CompareLine,
   type QtyChoice,
+  type QtySlice,
 } from './lib/compareInventory'
 import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
@@ -38,6 +41,7 @@ function problemLabel(line: CompareLine): string {
   if (line.treatedAsSame) return 'Treated as the same'
   if (line.qtyDiffers) return 'Different counts'
   if (line.isGrouped) return 'Added together'
+  if (line.splitFromGroup) return 'Kept separate'
   if (line.isSimilar) return 'Looks similar, not the same'
   if (line.match === 'ipoint-only') return 'Only in iPoint'
   if (line.match === 'dtools-only') return 'Only in D-Tools'
@@ -139,6 +143,7 @@ export function App() {
   const [query, setQuery] = useState('')
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
   const [treatedSimilar, setTreatedSimilar] = useState<Record<string, boolean>>({})
+  const [uncombined, setUncombined] = useState<Record<string, boolean>>({})
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
@@ -156,6 +161,7 @@ export function App() {
       else setDtools(parsed)
       setChoices({})
       setTreatedSimilar({})
+      setUncombined({})
       setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read that file.')
@@ -180,6 +186,7 @@ export function App() {
       setDtools(dtParsed)
       setChoices({})
       setTreatedSimilar({})
+      setUncombined({})
       setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load example files.')
@@ -190,8 +197,8 @@ export function App() {
 
   const effectiveLines = useMemo(() => {
     if (!result) return []
-    return applyTreatedSimilar(result.lines, treatedSimilar)
-  }, [result, treatedSimilar])
+    return applyUncombined(applyTreatedSimilar(result.lines, treatedSimilar), uncombined)
+  }, [result, treatedSimilar, uncombined])
 
   const resolvedChoices = useMemo(() => {
     if (!effectiveLines.length) return {}
@@ -261,6 +268,28 @@ export function App() {
     }
     setSortCol(null)
     setSortDir('asc')
+  }
+
+  const toggleKeepSeparate = (parentId: string, slice: QtySlice, keepSeparate: boolean) => {
+    setUncombined((prev) => {
+      const next = { ...prev }
+      const key = splitKey(parentId, slice.sourceIndex)
+      if (keepSeparate) next[key] = true
+      else delete next[key]
+      return next
+    })
+  }
+
+  const setGroupCombined = (line: CompareLine, combined: boolean) => {
+    setUncombined((prev) => {
+      const next = { ...prev }
+      for (const slice of line.groupSlices) {
+        const key = splitKey(line.id, slice.sourceIndex)
+        if (combined) delete next[key]
+        else next[key] = true
+      }
+      return next
+    })
   }
 
   const toggleTreatAsSame = (line: CompareLine, checked: boolean) => {
@@ -338,7 +367,9 @@ export function App() {
           <li>
             <strong>Several iPoint rows can land on one D-Tools product.</strong> Their stock counts are{' '}
             <strong>added together</strong> and the row is labeled <em>Added together</em>, even if the total happens
-            to equal the D-Tools quantity.
+            to equal the D-Tools quantity. If those iPoint rows are actually different parts, check{' '}
+            <em>Keep separate</em> on each one (or <em>Uncombine all</em>) so they are not added into that D-Tools
+            count.
           </li>
           <li>
             <strong>Blank quantities count as 0.</strong> Commas are stripped (<code>1,200</code> → 1200).{' '}
@@ -574,21 +605,61 @@ export function App() {
                         </td>
                         <td className="xfer-num">
                           {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
-                          {line.isGrouped ? (
+                          {line.groupSlices.length > 1 ? (
                             <div className="xfer-group">
-                              <span className="xfer-flag-grouped">Added together</span>
+                              {line.isGrouped ? <span className="xfer-flag-grouped">Added together</span> : null}
+                              <button
+                                type="button"
+                                className="xfer-split-btn"
+                                onClick={() => setGroupCombined(line, false)}
+                              >
+                                Uncombine all
+                              </button>
+                              {line.groupSlices.some((slice) => uncombined[splitKey(line.id, slice.sourceIndex)]) ? (
+                                <button
+                                  type="button"
+                                  className="xfer-split-btn"
+                                  onClick={() => setGroupCombined(line, true)}
+                                >
+                                  Combine again
+                                </button>
+                              ) : null}
                               <ul>
-                                {line.ipointSlices.map((slice, idx) => (
-                                  <li key={`${line.id}-s-${idx}`}>
-                                    <code>{slice.partNumber || slice.item || 'row'}</code>
-                                    {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
-                                    {': '}
-                                    {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
+                                {line.groupSlices.map((slice) => (
+                                  <li key={`${line.id}-s-${slice.sourceIndex}`}>
+                                    <div>
+                                      <code>{slice.partNumber || slice.item || 'row'}</code>
+                                      {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
+                                      {': '}
+                                      {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
+                                    </div>
+                                    <label className="xfer-choice xfer-treat">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(uncombined[splitKey(line.id, slice.sourceIndex)])}
+                                        onChange={(e) => toggleKeepSeparate(line.id, slice, e.target.checked)}
+                                      />
+                                      Keep separate — different part
+                                    </label>
                                   </li>
                                 ))}
                               </ul>
-                              <div className="xfer-group-total">{line.groupDetail}</div>
+                              {line.isGrouped ? <div className="xfer-group-total">{line.groupDetail}</div> : null}
                             </div>
+                          ) : null}
+                          {line.splitFromGroup ? (
+                            <label className="xfer-choice xfer-treat">
+                              <input
+                                type="checkbox"
+                                checked
+                                onChange={(e) => {
+                                  if (!e.target.checked && line.splitParentId && line.ipointSlices[0]) {
+                                    toggleKeepSeparate(line.splitParentId, line.ipointSlices[0], false)
+                                  }
+                                }}
+                              />
+                              Keep separate — add back to the combined row if unchecked
+                            </label>
                           ) : null}
                         </td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
