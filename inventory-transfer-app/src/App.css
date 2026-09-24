@@ -375,15 +375,15 @@
   font-weight: 400;
 }
 
-.xfer-col-problem { width: 7%; }
-.xfer-col-pn { width: 6%; }
-.xfer-col-item { width: 6%; }
-.xfer-col-via { width: 6%; }
-.xfer-col-similar { width: 7%; }
-.xfer-col-qty { width: 5%; }
-.xfer-col-diff { width: 4%; }
-.xfer-col-decision { width: 7%; }
-.xfer-col-notes { width: 35%; }
+.xfer-col-problem { width: 9%; }
+.xfer-col-pn { width: 8%; }
+.xfer-col-item { width: 8%; }
+.xfer-col-via { width: 7%; }
+.xfer-col-similar { width: 8%; }
+.xfer-col-qty { width: 6%; }
+.xfer-col-diff { width: 5%; }
+.xfer-col-decision { width: 9%; }
+.xfer-col-notes { width: 18%; }
 
 .xfer-table th,
 .xfer-table td {
