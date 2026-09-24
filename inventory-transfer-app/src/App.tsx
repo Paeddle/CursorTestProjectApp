@@ -495,6 +495,9 @@ export function App() {
           </div>
 
           <div className="xfer-toolbar">
+            <span className="xfer-showing">
+              Showing {visible.length.toLocaleString()} {visible.length === 1 ? 'row' : 'rows'}
+            </span>
             <input
               className="xfer-search"
               value={query}
