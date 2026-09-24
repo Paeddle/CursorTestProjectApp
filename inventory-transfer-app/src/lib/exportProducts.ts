@@ -10,9 +10,8 @@ export function exportUpdatedProductsCsv(
 ): string {
   const qtyBySourceIndex = new Map<number, number>()
   for (const line of lines) {
-    if (line.match !== 'both' || line.dtoolsSourceIndex == null) continue
     if (choices[line.id] !== 'use-ipoint') continue
-    if (line.ipointQty == null) continue
+    if (line.dtoolsSourceIndex == null || line.ipointQty == null) continue
     qtyBySourceIndex.set(line.dtoolsSourceIndex, line.ipointQty)
   }
 
@@ -25,7 +24,11 @@ export function exportUpdatedProductsCsv(
     return next
   })
 
-  return Papa.unparse(rows, { columns: products.headers, header: true })
+  return Papa.unparse(rows, {
+    columns: products.headers,
+    header: true,
+    newline: '\r\n',
+  })
 }
 
 export function countOverrides(choices: Record<string, QtyChoice>): number {

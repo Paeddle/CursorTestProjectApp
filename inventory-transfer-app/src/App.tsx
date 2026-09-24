@@ -404,8 +404,10 @@ export function App() {
             D-Tools row. Rows that only appear in one file stay <em>Only in iPoint</em> or <em>Only in D-Tools</em>.
           </li>
           <li>
-            <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes the
-            downloaded Products.csv for that row. Original files are never modified.
+            <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
+            <code>Quantity on Hand</code> on that same D-Tools row in the downloaded Products.csv. Every original
+            Products row stays, in the same order — rows are never combined or dropped. Original files are never
+            modified.
           </li>
         </ol>
       </section>
