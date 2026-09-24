@@ -359,10 +359,6 @@ export default function PortalPage() {
     <div className="app portal app-wide">
       <header className="app-header">
         <h1><a href="/" className="home-title-link">Re-order Portal</a></h1>
-        <p className="app-subtitle">
-          Warehouse handles Consumables and Security - Non Inventory.
-          Purchasing reviews Security - Inventory, Stock - Inventory, and Stock - Non Inventory.
-        </p>
         <Link to="/" className="nav-link">
           ← New re-order request
         </Link>
