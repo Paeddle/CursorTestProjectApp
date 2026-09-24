@@ -17,13 +17,13 @@
 .xfer-header h1 {
   margin: 0 0 0.3rem;
   font-size: 1.7rem;
-  color: #f4f6f8;
+  color: #f0f4f8;
 }
 
 .xfer-lead {
   margin: 0;
   max-width: 52rem;
-  color: #c5cbd6;
+  color: #b7c4d4;
   font-size: 0.92rem;
   line-height: 1.45;
 }
@@ -31,21 +31,21 @@
 .xfer-algorithm {
   margin: 0 0 1.15rem;
   padding: 0.95rem 1.05rem 1.05rem;
-  border: 1px solid #6b7380;
-  background: #565e6c;
+  border: 1px solid #4d6480;
+  background: #35485e;
   border-radius: 12px;
 }
 
 .xfer-algorithm h2 {
   margin: 0 0 0.55rem;
   font-size: 1.02rem;
-  color: #f4f6f8;
+  color: #f0f4f8;
 }
 
 .xfer-algorithm ol {
   margin: 0;
   padding-left: 1.2rem;
-  color: #e4e7ec;
+  color: #d5deea;
   font-size: 0.86rem;
   line-height: 1.5;
 }
@@ -86,8 +86,8 @@
 }
 
 .xfer-card {
-  border: 1px solid #6b7380;
-  background: #565e6c;
+  border: 1px solid #4d6480;
+  background: #35485e;
   border-radius: 12px;
   padding: 0.95rem 1rem;
   min-width: 0;
@@ -96,12 +96,12 @@
 .xfer-card h2 {
   margin: 0 0 0.6rem;
   font-size: 1.02rem;
-  color: #f4f6f8;
+  color: #f0f4f8;
 }
 
 .xfer-card p {
   margin: 0 0 0.7rem;
-  color: #c5cbd6;
+  color: #b7c4d4;
   font-size: 0.82rem;
   line-height: 1.4;
 }
@@ -134,9 +134,9 @@
 }
 
 .xfer-btn-secondary {
-  background: #6b7380;
-  border-color: #808895;
-  color: #f4f6f8;
+  background: #3d5670;
+  border-color: #5a7390;
+  color: #f0f4f8;
 }
 
 .xfer-btn-danger {
@@ -158,7 +158,7 @@
 .xfer-file-name {
   flex: 1 1 12rem;
   min-width: 0;
-  color: #e4e7ec;
+  color: #d5deea;
   font-size: 0.82rem;
   line-height: 1.35;
   word-break: break-word;
@@ -169,11 +169,11 @@
   display: grid;
   gap: 0.2rem;
   font-size: 0.78rem;
-  color: #e4e7ec;
+  color: #d5deea;
 }
 
 .xfer-meta strong {
-  color: #c5cbd6;
+  color: #b7c4d4;
   font-weight: 600;
 }
 
@@ -201,15 +201,15 @@
 }
 
 .xfer-stat {
-  background: #565e6c;
-  border: 1px solid #6b7380;
+  background: #35485e;
+  border: 1px solid #4d6480;
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
 }
 
 .xfer-stat span {
   display: block;
-  color: #c5cbd6;
+  color: #b7c4d4;
   font-size: 0.72rem;
   font-weight: 650;
   text-transform: uppercase;
@@ -218,15 +218,15 @@
 
 .xfer-stat b {
   font-size: 1.15rem;
-  color: #f4f6f8;
+  color: #f0f4f8;
 }
 
 .xfer-row-similar td {
-  background: #635e4f;
+  background: #4a4638;
 }
 
 .xfer-row-grouped td {
-  background: #4e5a68;
+  background: #355060;
 }
 
 .xfer-flag-grouped {
@@ -252,7 +252,7 @@
 .xfer-group ul {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;
-  color: #eef0f3;
+  color: #e8eef5;
   font-size: 0.74rem;
   font-weight: 500;
 }
@@ -296,9 +296,9 @@
 }
 
 .xfer-tab {
-  border: 1px solid #6b7380;
-  background: #5a6270;
-  color: #f4f6f8;
+  border: 1px solid #4d6480;
+  background: #3d5670;
+  color: #f0f4f8;
   border-radius: 8px;
   padding: 0.4rem 0.65rem;
   font: inherit;
@@ -316,9 +316,9 @@
 .xfer-search {
   flex: 1 1 14rem;
   min-width: 0;
-  border: 1px solid #6b7380;
-  background: #3d4450;
-  color: #eef0f3;
+  border: 1px solid #4d6480;
+  background: #243344;
+  color: #e8eef5;
   border-radius: 8px;
   padding: 0.45rem 0.65rem;
   font: inherit;
@@ -327,9 +327,9 @@
 
 .xfer-table-wrap {
   overflow-x: hidden;
-  border: 1px solid #6b7380;
+  border: 1px solid #4d6480;
   border-radius: 10px;
-  background: #565e6c;
+  background: #35485e;
   max-height: min(78vh, 52rem);
 }
 
@@ -343,7 +343,7 @@
 .xfer-table th,
 .xfer-table td {
   padding: 0.35rem 0.4rem;
-  border-bottom: 1px solid #6b7380;
+  border-bottom: 1px solid #4d6480;
   text-align: left;
   vertical-align: top;
   word-break: break-word;
@@ -353,8 +353,8 @@
 .xfer-table th {
   position: sticky;
   top: 0;
-  background: #6b7380;
-  color: #f4f6f8;
+  background: #3d5670;
+  color: #f0f4f8;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -393,15 +393,15 @@
   white-space: normal;
   font-size: 0.76rem;
   font-weight: 650;
-  color: #eef0f3;
+  color: #e8eef5;
 }
 
 .xfer-table tr:hover td {
-  background: #646c7a;
+  background: #3f5470;
 }
 
 .xfer-row-diff td {
-  background: #6a5f58;
+  background: #4e4540;
 }
 
 .xfer-num {
@@ -454,11 +454,11 @@
 
 .xfer-empty {
   margin: 0.75rem 0;
-  color: #c5cbd6;
+  color: #b7c4d4;
 }
 
 .xfer-muted {
-  color: #b0b7c2;
+  color: #9aabbd;
 }
 
 @media (max-width: 800px) {
