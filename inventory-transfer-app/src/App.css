@@ -17,13 +17,13 @@
 .xfer-header h1 {
   margin: 0 0 0.3rem;
   font-size: 1.7rem;
-  color: #f8fafc;
+  color: #f4f6f8;
 }
 
 .xfer-lead {
   margin: 0;
   max-width: 52rem;
-  color: #94a3b8;
+  color: #c5cbd6;
   font-size: 0.92rem;
   line-height: 1.45;
 }
@@ -31,21 +31,21 @@
 .xfer-algorithm {
   margin: 0 0 1.15rem;
   padding: 0.95rem 1.05rem 1.05rem;
-  border: 1px solid #334155;
-  background: #0b1220;
+  border: 1px solid #6b7380;
+  background: #565e6c;
   border-radius: 12px;
 }
 
 .xfer-algorithm h2 {
   margin: 0 0 0.55rem;
   font-size: 1.02rem;
-  color: #f1f5f9;
+  color: #f4f6f8;
 }
 
 .xfer-algorithm ol {
   margin: 0;
   padding-left: 1.2rem;
-  color: #cbd5e1;
+  color: #e4e7ec;
   font-size: 0.86rem;
   line-height: 1.5;
 }
@@ -65,17 +65,17 @@
 
 .xfer-algorithm code {
   font-size: 0.8em;
-  color: #a5f3fc;
+  color: #d7f6fb;
 }
 
 .xfer-home {
-  color: #7dd3fc;
+  color: #b8e7f4;
   font-weight: 600;
   text-decoration: none;
 }
 
 .xfer-home:hover {
-  color: #bae6fd;
+  color: #e8f7fb;
 }
 
 .xfer-uploads {
@@ -86,8 +86,8 @@
 }
 
 .xfer-card {
-  border: 1px solid #334155;
-  background: #111827;
+  border: 1px solid #6b7380;
+  background: #565e6c;
   border-radius: 12px;
   padding: 0.95rem 1rem;
   min-width: 0;
@@ -96,12 +96,12 @@
 .xfer-card h2 {
   margin: 0 0 0.6rem;
   font-size: 1.02rem;
-  color: #f1f5f9;
+  color: #f4f6f8;
 }
 
 .xfer-card p {
   margin: 0 0 0.7rem;
-  color: #94a3b8;
+  color: #c5cbd6;
   font-size: 0.82rem;
   line-height: 1.4;
 }
@@ -118,9 +118,9 @@
   display: inline-block;
   flex: 0 0 auto;
   appearance: none;
-  border: 1px solid #0e7490;
-  background: #155e75;
-  color: #f0f9ff;
+  border: 1px solid #3d8fa3;
+  background: #3a7d90;
+  color: #f4fbff;
   font: inherit;
   font-weight: 650;
   font-size: 0.85rem;
@@ -134,9 +134,9 @@
 }
 
 .xfer-btn-secondary {
-  background: #1e293b;
-  border-color: #475569;
-  color: #e2e8f0;
+  background: #6b7380;
+  border-color: #808895;
+  color: #f4f6f8;
 }
 
 .xfer-btn-danger {
@@ -158,7 +158,7 @@
 .xfer-file-name {
   flex: 1 1 12rem;
   min-width: 0;
-  color: #cbd5e1;
+  color: #e4e7ec;
   font-size: 0.82rem;
   line-height: 1.35;
   word-break: break-word;
@@ -169,11 +169,11 @@
   display: grid;
   gap: 0.2rem;
   font-size: 0.78rem;
-  color: #cbd5e1;
+  color: #e4e7ec;
 }
 
 .xfer-meta strong {
-  color: #94a3b8;
+  color: #c5cbd6;
   font-weight: 600;
 }
 
@@ -193,21 +193,6 @@
   font-size: 0.88rem;
 }
 
-.xfer-coverage {
-  margin: 0 0 0.85rem;
-  padding: 0.7rem 0.85rem;
-  border-radius: 10px;
-  border: 1px solid #0e7490;
-  background: #0b3a44;
-  color: #e0f2fe;
-  font-size: 0.88rem;
-  line-height: 1.45;
-}
-
-.xfer-coverage strong {
-  color: #f0fdfa;
-}
-
 .xfer-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
@@ -216,15 +201,15 @@
 }
 
 .xfer-stat {
-  background: #0b1220;
-  border: 1px solid #334155;
+  background: #565e6c;
+  border: 1px solid #6b7380;
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
 }
 
 .xfer-stat span {
   display: block;
-  color: #94a3b8;
+  color: #c5cbd6;
   font-size: 0.72rem;
   font-weight: 650;
   text-transform: uppercase;
@@ -233,15 +218,15 @@
 
 .xfer-stat b {
   font-size: 1.15rem;
-  color: #f8fafc;
+  color: #f4f6f8;
 }
 
 .xfer-row-similar td {
-  background: #1c1910;
+  background: #635e4f;
 }
 
 .xfer-row-grouped td {
-  background: #0f1f2e;
+  background: #4e5a68;
 }
 
 .xfer-flag-grouped {
@@ -249,8 +234,8 @@
   margin: 0.25rem 0 0.2rem;
   padding: 0.08rem 0.35rem;
   border-radius: 4px;
-  background: #155e75;
-  color: #a5f3fc;
+  background: #3a7d90;
+  color: #d7f6fb;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -267,14 +252,14 @@
 .xfer-group ul {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;
-  color: #e2e8f0;
+  color: #eef0f3;
   font-size: 0.74rem;
   font-weight: 500;
 }
 
 .xfer-group-total {
   margin-top: 0.2rem;
-  color: #67e8f9;
+  color: #c8f0f6;
   font-size: 0.74rem;
   font-weight: 700;
 }
@@ -311,9 +296,9 @@
 }
 
 .xfer-tab {
-  border: 1px solid #334155;
-  background: #1e293b;
-  color: #e2e8f0;
+  border: 1px solid #6b7380;
+  background: #5a6270;
+  color: #f4f6f8;
   border-radius: 8px;
   padding: 0.4rem 0.65rem;
   font: inherit;
@@ -331,9 +316,9 @@
 .xfer-search {
   flex: 1 1 14rem;
   min-width: 0;
-  border: 1px solid #475569;
-  background: #020617;
-  color: #e2e8f0;
+  border: 1px solid #6b7380;
+  background: #3d4450;
+  color: #eef0f3;
   border-radius: 8px;
   padding: 0.45rem 0.65rem;
   font: inherit;
@@ -342,9 +327,9 @@
 
 .xfer-table-wrap {
   overflow-x: hidden;
-  border: 1px solid #334155;
+  border: 1px solid #6b7380;
   border-radius: 10px;
-  background: #0b1220;
+  background: #565e6c;
   max-height: min(78vh, 52rem);
 }
 
@@ -358,7 +343,7 @@
 .xfer-table th,
 .xfer-table td {
   padding: 0.35rem 0.4rem;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #6b7380;
   text-align: left;
   vertical-align: top;
   word-break: break-word;
@@ -368,8 +353,8 @@
 .xfer-table th {
   position: sticky;
   top: 0;
-  background: #172554;
-  color: #e0f2fe;
+  background: #6b7380;
+  color: #f4f6f8;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -399,7 +384,7 @@
 }
 
 .xfer-sort-arrow {
-  color: #67e8f9;
+  color: #c8f0f6;
   font-size: 0.72rem;
 }
 
@@ -408,15 +393,15 @@
   white-space: normal;
   font-size: 0.76rem;
   font-weight: 650;
-  color: #e2e8f0;
+  color: #eef0f3;
 }
 
 .xfer-table tr:hover td {
-  background: #111827;
+  background: #646c7a;
 }
 
 .xfer-row-diff td {
-  background: #1c1917;
+  background: #6a5f58;
 }
 
 .xfer-num {
@@ -469,11 +454,11 @@
 
 .xfer-empty {
   margin: 0.75rem 0;
-  color: #94a3b8;
+  color: #c5cbd6;
 }
 
 .xfer-muted {
-  color: #64748b;
+  color: #b0b7c2;
 }
 
 @media (max-width: 800px) {

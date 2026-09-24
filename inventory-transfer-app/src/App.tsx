@@ -413,16 +413,9 @@ export function App() {
 
       {result && ipoint && dtools ? (
         <>
-          <p className="xfer-coverage">
-            <strong>{stats.discrepancyCount.toLocaleString()} problems</strong> in one list. Exact matches:{' '}
-            {result.matchedKeys.toLocaleString()} of {dtools.comparedCount.toLocaleString()} D-Tools parts and{' '}
-            {ipoint.comparedCount.toLocaleString()} iPoint parts. Similar SKUs are near-misses unless you check Treat
-            as same part.
-          </p>
-
           <div className="xfer-stats">
             <div className="xfer-stat xfer-stat-alert">
-              <span>Problems</span>
+              <span>Rows to review</span>
               <b>{stats.discrepancyCount}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
@@ -446,7 +439,7 @@ export function App() {
               <b>{stats.dtoolsOnly}</b>
             </div>
             <div className="xfer-stat">
-              <span>Matched</span>
+              <span>Same in both</span>
               <b>{stats.matchedKeys}</b>
             </div>
             <div className="xfer-stat">
@@ -462,7 +455,7 @@ export function App() {
                 checked={view === 'all'}
                 onChange={(e) => setView(e.target.checked ? 'all' : 'problems')}
               />
-              Show matching parts too
+              Show matching rows too
             </label>
             <input
               className="xfer-search"
@@ -490,7 +483,7 @@ export function App() {
           ) : null}
 
           {visible.length === 0 ? (
-            <p className="xfer-empty">{query.trim() ? 'Nothing matches that search.' : 'No problems found.'}</p>
+            <p className="xfer-empty">{query.trim() ? 'Nothing matches that search.' : 'No rows to review.'}</p>
           ) : (
             <div className="xfer-table-wrap">
               <table className="xfer-table">
