@@ -332,6 +332,14 @@ export default function PortalPage() {
     () => openRequests.filter((row) => portalDeskForCategory(row.category_name) === 'purchasing'),
     [openRequests],
   )
+  const warehousePending = useMemo(
+    () => warehouseOpen.filter((row) => row.status === 'pending').length,
+    [warehouseOpen],
+  )
+  const purchasingPending = useMemo(
+    () => purchasingOpen.filter((row) => row.status === 'pending').length,
+    [purchasingOpen],
+  )
   const warehouseHistory = useMemo(
     () => history.filter((row) => portalDeskForCategory(row.category_name) === 'warehouse'),
     [history],
@@ -379,6 +387,8 @@ export default function PortalPage() {
             onClick={() => setDesk('warehouse')}
           >
             Warehouse ({warehouseOpen.length})
+            <span className="portal-tab-sep"> - </span>
+            <span className="portal-tab-pending">Pending ({warehousePending})</span>
           </button>
           <button
             type="button"
@@ -386,6 +396,8 @@ export default function PortalPage() {
             onClick={() => setDesk('purchasing')}
           >
             Purchasing ({purchasingOpen.length})
+            <span className="portal-tab-sep"> - </span>
+            <span className="portal-tab-pending">Pending ({purchasingPending})</span>
           </button>
         </div>
       </div>

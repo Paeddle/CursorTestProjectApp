@@ -50,6 +50,15 @@
   color: #e0f2fe;
 }
 
+.portal-tab-sep {
+  font-weight: 500;
+}
+
+.portal-tab-pending {
+  font-size: 0.82em;
+  font-weight: 650;
+}
+
 .portal-desk-tabs .portal-tab-active {
   z-index: 2;
   background: #0e7490;
