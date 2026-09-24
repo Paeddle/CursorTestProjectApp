@@ -1,7 +1,8 @@
 .xfer-page {
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 1.25rem 1.1rem 2.5rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 1rem 0.85rem 2rem;
 }
 
 .xfer-header {
@@ -340,25 +341,28 @@
 }
 
 .xfer-table-wrap {
-  overflow: auto;
+  overflow-x: hidden;
   border: 1px solid #334155;
   border-radius: 10px;
   background: #0b1220;
-  max-height: min(70vh, 44rem);
+  max-height: min(78vh, 52rem);
 }
 
 .xfer-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
 }
 
 .xfer-table th,
 .xfer-table td {
-  padding: 0.45rem 0.55rem;
+  padding: 0.35rem 0.4rem;
   border-bottom: 1px solid #1e293b;
   text-align: left;
   vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .xfer-table th {
@@ -366,10 +370,45 @@
   top: 0;
   background: #172554;
   color: #e0f2fe;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   z-index: 1;
+}
+
+.xfer-sort {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0;
+  width: 100%;
+}
+
+.xfer-sort:hover {
+  color: #fff;
+}
+
+.xfer-sort-arrow {
+  color: #67e8f9;
+  font-size: 0.72rem;
+}
+
+.xfer-treat {
+  margin-top: 0.35rem;
+  white-space: normal;
+  font-size: 0.76rem;
+  font-weight: 650;
+  color: #e2e8f0;
 }
 
 .xfer-table tr:hover td {
@@ -405,6 +444,10 @@
   font-size: 0.85rem;
 }
 
+.xfer-choice.xfer-treat {
+  white-space: normal;
+}
+
 .xfer-choice-stack {
   display: flex;
   flex-direction: column;
@@ -414,9 +457,9 @@
 .xfer-choice-stack label {
   display: flex;
   gap: 0.35rem;
-  align-items: center;
+  align-items: flex-start;
   cursor: pointer;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .xfer-notes {

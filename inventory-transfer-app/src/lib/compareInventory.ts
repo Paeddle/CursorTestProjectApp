@@ -32,6 +32,13 @@ export type CompareLine = {
   qtyDiffers: boolean
   similarTo: string
   isSimilar: boolean
+  similarPeerId: string
+  similarIpointQty: number | null
+  similarIpointRaw: string
+  similarDtoolsQty: number | null
+  similarDtoolsRaw: string
+  similarDtoolsSourceIndex: number | null
+  treatedAsSame: boolean
   ipointSlices: QtySlice[]
   isGrouped: boolean
   groupDetail: string
@@ -92,10 +99,9 @@ function similarReason(left: string, right: string, leftLabel: string, rightLabe
 
 function bestSimilar(
   keys: string[],
-  others: { keys: string[]; partNumber: string; item: string }[],
-): { partNumber: string; item: string; label: string; reason: string } | null {
-  let best: { score: number; partNumber: string; item: string; label: string; left: string; right: string } | null =
-    null
+  others: { keys: string[]; item: ParsedItem; label: string }[],
+): { item: ParsedItem; label: string; reason: string } | null {
+  let best: { score: number; item: ParsedItem; label: string; left: string; right: string } | null = null
   for (const key of keys) {
     for (const other of others) {
       for (const otherKey of other.keys) {
@@ -103,9 +109,8 @@ function bestSimilar(
         if (score > (best?.score || 0)) {
           best = {
             score,
-            partNumber: other.partNumber,
             item: other.item,
-            label: other.partNumber || other.item,
+            label: other.label,
             left: key,
             right: otherKey,
           }
@@ -114,12 +119,10 @@ function bestSimilar(
     }
   }
   if (!best) return null
-  const label = best.partNumber || best.item
   return {
-    partNumber: best.partNumber,
     item: best.item,
-    label,
-    reason: similarReason(best.left, best.right, 'this SKU', label),
+    label: best.label,
+    reason: similarReason(best.left, best.right, 'this SKU', best.label),
   }
 }
 
@@ -182,7 +185,20 @@ function groupDetail(slices: QtySlice[], total: number): string {
 }
 
 export function lineIsDiscrepancy(line: CompareLine): boolean {
+  if (line.treatedAsSame) return line.qtyDiffers || line.isGrouped
   return line.qtyDiffers || line.isSimilar || line.match !== 'both' || line.isGrouped
+}
+
+const blankSimilar = {
+  similarTo: '',
+  isSimilar: false,
+  similarPeerId: '',
+  similarIpointQty: null as number | null,
+  similarIpointRaw: '',
+  similarDtoolsQty: null as number | null,
+  similarDtoolsRaw: '',
+  similarDtoolsSourceIndex: null as number | null,
+  treatedAsSame: false,
 }
 
 function indexByKey(items: ParsedItem[], keysFor: (item: ParsedItem) => string[]): {
@@ -215,13 +231,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
   const iIndex = indexByKey(ipoint.items, ipointKeys)
   const iSimilar = ipoint.items.map((item) => ({
     keys: unique([compactKey(item.partNumber), compactKey(item.itemName)]),
-    partNumber: item.partNumber,
-    item: item.itemName,
+    item,
+    label: item.partNumber || item.itemName,
   }))
   const dSimilar = dtools.items.map((item) => ({
     keys: unique([compactKey(item.partNumber), compactKey(item.model)]),
-    partNumber: item.partNumber,
-    item: item.model,
+    item,
+    label: item.partNumber || item.model,
   }))
   const matchedD = new Map<number, DtoolsMatch>()
   const matchedI = new Set<number>()
@@ -292,8 +308,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsSourceIndex: dr.sourceIndex,
       notes,
       qtyDiffers,
-      similarTo: '',
-      isSimilar: false,
+      ...blankSimilar,
       ipointSlices: slices,
       isGrouped,
       groupDetail: isGrouped ? groupDetail(slices, ipointQty) : '',
@@ -309,13 +324,15 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     const similarTo = similar?.label || ''
     const notes = ['In iPoint only — no exact D-Tools Model or Part Number match']
     if (similar) {
-      notes.push(`Flagged similar to D-Tools ${similar.label}. ${similar.reason}. Quantity is not compared.`)
+      notes.push(
+        `Flagged similar to D-Tools ${similar.label}. ${similar.reason}. Quantity is not compared unless you treat them as the same part.`,
+      )
     }
     lines.push({
       id: `i-${ir.sourceIndex}`,
       partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
       ipointPartNumber: ir.partNumber,
-      dtoolsPartNumber: similar?.partNumber || '',
+      dtoolsPartNumber: similar?.item.partNumber || '',
       match: 'ipoint-only',
       matchVia: similar ? `Similar only — ${similar.reason}` : '',
       ipointQty: ir.qty,
@@ -324,8 +341,8 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsRaw: '',
       ipointItem: ir.itemName,
       ipointManufacturer: ir.manufacturer,
-      dtoolsBrand: '',
-      dtoolsModel: similar?.item || '',
+      dtoolsBrand: similar?.item.brand || '',
+      dtoolsModel: similar?.item.model || '',
       ipointRows: 1,
       dtoolsRowsForKey: 0,
       dtoolsSourceIndex: null,
@@ -333,6 +350,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       qtyDiffers: false,
       similarTo,
       isSimilar: Boolean(similarTo),
+      similarPeerId: similar ? `d-${similar.item.sourceIndex}` : '',
+      similarIpointQty: ir.qty,
+      similarIpointRaw: ir.qtyRaw,
+      similarDtoolsQty: similar ? similar.item.qty : null,
+      similarDtoolsRaw: similar?.item.qtyRaw || '',
+      similarDtoolsSourceIndex: similar ? similar.item.sourceIndex : null,
+      treatedAsSame: false,
       ipointSlices: [sliceFrom(ir)],
       isGrouped: false,
       groupDetail: '',
@@ -349,13 +373,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
     if (similar) {
       notes.push(
-        `Flagged similar to iPoint ${similar.label}. ${similar.reason}. Shown in the iPoint columns for comparison only — not a match, quantity is not compared.`,
+        `Flagged similar to iPoint ${similar.label}. ${similar.reason}. Shown in the iPoint columns for comparison only — not a match unless you treat them as the same part.`,
       )
     }
     lines.push({
       id: `d-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
-      ipointPartNumber: similar?.partNumber || '',
+      ipointPartNumber: similar?.item.partNumber || '',
       dtoolsPartNumber: dr.partNumber,
       match: 'dtools-only',
       matchVia: similar ? `Similar only — ${similar.reason}` : '',
@@ -363,8 +387,8 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsQty: dr.qty,
       ipointRaw: '',
       dtoolsRaw: dr.qtyRaw,
-      ipointItem: similar ? `${similar.item || similar.partNumber} (similar, not a match)` : '',
-      ipointManufacturer: '',
+      ipointItem: similar ? `${similar.item.itemName || similar.item.partNumber} (similar, not a match)` : '',
+      ipointManufacturer: similar?.item.manufacturer || '',
       dtoolsBrand: dr.brand,
       dtoolsModel: dr.model,
       ipointRows: 0,
@@ -374,6 +398,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       qtyDiffers: false,
       similarTo,
       isSimilar: Boolean(similarTo),
+      similarPeerId: similar ? `i-${similar.item.sourceIndex}` : '',
+      similarIpointQty: similar ? similar.item.qty : null,
+      similarIpointRaw: similar?.item.qtyRaw || '',
+      similarDtoolsQty: dr.qty,
+      similarDtoolsRaw: dr.qtyRaw,
+      similarDtoolsSourceIndex: dr.sourceIndex,
+      treatedAsSame: false,
       ipointSlices: [],
       isGrouped: false,
       groupDetail: '',
@@ -392,6 +423,51 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     groupedCount: lines.filter((l) => l.isGrouped).length,
     discrepancyCount: lines.filter(lineIsDiscrepancy).length,
   }
+}
+
+export function applyTreatedSimilar(
+  lines: CompareLine[],
+  treatedIds: Record<string, boolean>,
+): CompareLine[] {
+  const byId = new Map(lines.map((line) => [line.id, line]))
+  const isTreated = (line: CompareLine) =>
+    Boolean(treatedIds[line.id] || (line.similarPeerId && treatedIds[line.similarPeerId]))
+
+  const out: CompareLine[] = []
+  for (const line of lines) {
+    const treated = line.isSimilar && isTreated(line)
+    if (treated && line.match === 'ipoint-only') {
+      const peer = line.similarPeerId ? byId.get(line.similarPeerId) : undefined
+      if (peer?.match === 'dtools-only') continue
+    }
+    if (!treated) {
+      out.push(line)
+      continue
+    }
+
+    const ipointQty = line.ipointQty ?? line.similarIpointQty
+    const dtoolsQty = line.dtoolsQty ?? line.similarDtoolsQty
+    const qtyDiffers = ipointQty != null && dtoolsQty != null && ipointQty !== dtoolsQty
+    const ipointItem = line.ipointItem.replace(' (similar, not a match)', '')
+    out.push({
+      ...line,
+      match: line.similarDtoolsSourceIndex != null && ipointQty != null ? 'both' : line.match,
+      ipointQty,
+      dtoolsQty,
+      ipointRaw: line.ipointRaw || line.similarIpointRaw,
+      dtoolsRaw: line.dtoolsRaw || line.similarDtoolsRaw,
+      ipointItem,
+      dtoolsSourceIndex: line.dtoolsSourceIndex ?? line.similarDtoolsSourceIndex,
+      qtyDiffers,
+      treatedAsSame: true,
+      matchVia: `Treated as the same part${line.similarTo ? ` — ${line.similarTo}` : ''}`,
+      notes: [
+        'You chose to treat these similar SKUs as the same part.',
+        qtyDiffers ? 'Quantity differs' : 'Counts match',
+      ],
+    })
+  }
+  return out
 }
 
 export function defaultChoices(lines: CompareLine[]): Record<string, QtyChoice> {

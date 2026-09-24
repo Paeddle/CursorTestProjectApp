@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
+  applyTreatedSimilar,
   compareInventories,
   defaultChoices,
   lineIsDiscrepancy,
@@ -11,6 +12,20 @@ import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/
 import './App.css'
 
 type ViewMode = 'problems' | 'all'
+type SortCol =
+  | 'problem'
+  | 'ipointPn'
+  | 'ipointItem'
+  | 'dtoolsPn'
+  | 'dtoolsModel'
+  | 'matchVia'
+  | 'similar'
+  | 'ipointQty'
+  | 'dtoolsQty'
+  | 'diff'
+  | 'decision'
+  | 'notes'
+type SortDir = 'asc' | 'desc'
 
 function formatQty(n: number | null, raw: string): string {
   if (n == null) return '—'
@@ -19,6 +34,8 @@ function formatQty(n: number | null, raw: string): string {
 }
 
 function problemLabel(line: CompareLine): string {
+  if (line.treatedAsSame && line.qtyDiffers) return 'Different counts'
+  if (line.treatedAsSame) return 'Treated as the same'
   if (line.qtyDiffers) return 'Different counts'
   if (line.isGrouped) return 'Added together'
   if (line.isSimilar) return 'Looks similar, not the same'
@@ -59,6 +76,60 @@ function downloadText(filename: string, text: string) {
   URL.revokeObjectURL(url)
 }
 
+function sortValue(line: CompareLine, col: SortCol, choice: QtyChoice | undefined): string | number {
+  switch (col) {
+    case 'problem':
+      return problemLabel(line)
+    case 'ipointPn':
+      return line.ipointPartNumber
+    case 'ipointItem':
+      return line.ipointItem
+    case 'dtoolsPn':
+      return line.dtoolsPartNumber
+    case 'dtoolsModel':
+      return line.dtoolsModel
+    case 'matchVia':
+      return line.matchVia
+    case 'similar':
+      return `${line.treatedAsSame ? '1' : '0'}${line.similarTo}`
+    case 'ipointQty':
+      return line.ipointQty ?? Number.NEGATIVE_INFINITY
+    case 'dtoolsQty':
+      return line.dtoolsQty ?? Number.NEGATIVE_INFINITY
+    case 'diff':
+      if (line.ipointQty == null || line.dtoolsQty == null) return Number.NEGATIVE_INFINITY
+      return line.ipointQty - line.dtoolsQty
+    case 'decision':
+      return choice === 'use-ipoint' ? 1 : 0
+    case 'notes':
+      return line.notes.join(' ')
+  }
+}
+
+function SortHeader({
+  id,
+  label,
+  sortCol,
+  sortDir,
+  onCycle,
+}: {
+  id: SortCol
+  label: string
+  sortCol: SortCol | null
+  sortDir: SortDir
+  onCycle: (id: SortCol) => void
+}) {
+  const arrow = sortCol === id ? (sortDir === 'asc' ? '▲' : '▼') : ''
+  return (
+    <th>
+      <button type="button" className="xfer-sort" onClick={() => onCycle(id)}>
+        <span>{label}</span>
+        {arrow ? <span className="xfer-sort-arrow">{arrow}</span> : null}
+      </button>
+    </th>
+  )
+}
+
 export function App() {
   const [ipoint, setIpoint] = useState<ParsedWorkbook | null>(null)
   const [dtools, setDtools] = useState<ParsedWorkbook | null>(null)
@@ -67,6 +138,9 @@ export function App() {
   const [view, setView] = useState<ViewMode>('problems')
   const [query, setQuery] = useState('')
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
+  const [treatedSimilar, setTreatedSimilar] = useState<Record<string, boolean>>({})
+  const [sortCol, setSortCol] = useState<SortCol | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const result = useMemo(() => {
     if (!ipoint || !dtools) return null
@@ -81,6 +155,8 @@ export function App() {
       if (kind === 'ipoint') setIpoint(parsed)
       else setDtools(parsed)
       setChoices({})
+      setTreatedSimilar({})
+      setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read that file.')
     } finally {
@@ -103,6 +179,8 @@ export function App() {
       setIpoint(ipParsed)
       setDtools(dtParsed)
       setChoices({})
+      setTreatedSimilar({})
+      setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load example files.')
     } finally {
@@ -110,15 +188,19 @@ export function App() {
     }
   }
 
+  const effectiveLines = useMemo(() => {
+    if (!result) return []
+    return applyTreatedSimilar(result.lines, treatedSimilar)
+  }, [result, treatedSimilar])
+
   const resolvedChoices = useMemo(() => {
-    if (!result) return {}
-    return { ...defaultChoices(result.lines), ...choices }
-  }, [choices, result])
+    if (!effectiveLines.length) return {}
+    return { ...defaultChoices(effectiveLines), ...choices }
+  }, [choices, effectiveLines])
 
   const visible = useMemo(() => {
-    if (!result) return []
     const q = query.trim().toUpperCase()
-    return result.lines.filter((line) => {
+    const filtered = effectiveLines.filter((line) => {
       if (view === 'problems' && !lineIsDiscrepancy(line)) return false
       if (!q) return true
       return [
@@ -136,7 +218,30 @@ export function App() {
         .toUpperCase()
         .includes(q)
     })
-  }, [query, result, view])
+    if (!sortCol) return filtered
+    return [...filtered].sort((a, b) => {
+      const av = sortValue(a, sortCol, resolvedChoices[a.id])
+      const bv = sortValue(b, sortCol, resolvedChoices[b.id])
+      const cmp =
+        typeof av === 'number' && typeof bv === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [effectiveLines, query, resolvedChoices, sortCol, sortDir, view])
+
+  const stats = useMemo(
+    () => ({
+      discrepancyCount: effectiveLines.filter(lineIsDiscrepancy).length,
+      qtyDifferences: effectiveLines.filter((line) => line.qtyDiffers).length,
+      groupedCount: effectiveLines.filter((line) => line.isGrouped).length,
+      similarCount: effectiveLines.filter((line) => line.isSimilar && !line.treatedAsSame).length,
+      ipointOnly: effectiveLines.filter((line) => line.match === 'ipoint-only').length,
+      dtoolsOnly: effectiveLines.filter((line) => line.match === 'dtools-only').length,
+      matchedKeys: effectiveLines.filter((line) => line.match === 'both').length,
+    }),
+    [effectiveLines],
+  )
 
   const overrideCount = countOverrides(resolvedChoices)
 
@@ -144,10 +249,35 @@ export function App() {
     setChoices((prev) => ({ ...prev, [id]: choice }))
   }
 
+  const cycleSort = (id: SortCol) => {
+    if (sortCol !== id) {
+      setSortCol(id)
+      setSortDir('asc')
+      return
+    }
+    if (sortDir === 'asc') {
+      setSortDir('desc')
+      return
+    }
+    setSortCol(null)
+    setSortDir('asc')
+  }
+
+  const toggleTreatAsSame = (line: CompareLine, checked: boolean) => {
+    setTreatedSimilar((prev) => {
+      const next = { ...prev }
+      const ids = [line.id, line.similarPeerId].filter(Boolean)
+      for (const id of ids) {
+        if (checked) next[id] = true
+        else delete next[id]
+      }
+      return next
+    })
+  }
+
   const applyIpointToDiffs = () => {
-    if (!result) return
     const next = { ...resolvedChoices }
-    for (const line of result.lines) {
+    for (const line of effectiveLines) {
       if (line.qtyDiffers) next[line.id] = 'use-ipoint'
     }
     setChoices(next)
@@ -156,8 +286,8 @@ export function App() {
   const resetChoices = () => setChoices({})
 
   const exportCsv = () => {
-    if (!dtools || !result) return
-    const csv = exportUpdatedProductsCsv(dtools, result.lines, resolvedChoices)
+    if (!dtools) return
+    const csv = exportUpdatedProductsCsv(dtools, effectiveLines, resolvedChoices)
     const stamp = new Date().toISOString().slice(0, 10)
     downloadText(`Products-qty-from-ipoint-${stamp}.csv`, csv)
   }
@@ -215,9 +345,10 @@ export function App() {
             <em>Different counts</em> means the iPoint stock is not the same number as D-Tools qty on hand.
           </li>
           <li>
-            <strong>Close SKUs are not treated as the same part.</strong> Related names like <code>C4-CA1</code> vs{' '}
-            <code>C4-CA1-V2</code> are labeled <em>Looks similar, not the same</em>. Quantity is not copied from
-            those. Rows that only appear in one file stay <em>Only in iPoint</em> or <em>Only in D-Tools</em>.
+            <strong>Close SKUs are not treated as the same part unless you say so.</strong> Related names like{' '}
+            <code>C4-CA1</code> vs <code>C4-CA1-V2</code> are labeled <em>Looks similar, not the same</em>. Check{' '}
+            <em>Treat as same part</em> to compare their counts and, if you want, copy the iPoint count onto that
+            D-Tools row. Rows that only appear in one file stay <em>Only in iPoint</em> or <em>Only in D-Tools</em>.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes the
@@ -283,40 +414,40 @@ export function App() {
       {result && ipoint && dtools ? (
         <>
           <p className="xfer-coverage">
-            <strong>{result.discrepancyCount.toLocaleString()} problems</strong> in one list. Exact matches:{' '}
+            <strong>{stats.discrepancyCount.toLocaleString()} problems</strong> in one list. Exact matches:{' '}
             {result.matchedKeys.toLocaleString()} of {dtools.comparedCount.toLocaleString()} D-Tools parts and{' '}
-            {ipoint.comparedCount.toLocaleString()} iPoint parts. Similar SKUs are near-misses, not missed exact
-            matches.
+            {ipoint.comparedCount.toLocaleString()} iPoint parts. Similar SKUs are near-misses unless you check Treat
+            as same part.
           </p>
 
           <div className="xfer-stats">
             <div className="xfer-stat xfer-stat-alert">
               <span>Problems</span>
-              <b>{result.discrepancyCount}</b>
+              <b>{stats.discrepancyCount}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
               <span>Different counts</span>
-              <b>{result.qtyDifferences}</b>
+              <b>{stats.qtyDifferences}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
               <span>Added together</span>
-              <b>{result.groupedCount}</b>
+              <b>{stats.groupedCount}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
               <span>Looks similar</span>
-              <b>{result.similarCount}</b>
+              <b>{stats.similarCount}</b>
             </div>
             <div className="xfer-stat">
               <span>Only in iPoint</span>
-              <b>{result.ipointOnly}</b>
+              <b>{stats.ipointOnly}</b>
             </div>
             <div className="xfer-stat">
               <span>Only in D-Tools</span>
-              <b>{result.dtoolsOnly}</b>
+              <b>{stats.dtoolsOnly}</b>
             </div>
             <div className="xfer-stat">
               <span>Matched</span>
-              <b>{result.matchedKeys}</b>
+              <b>{stats.matchedKeys}</b>
             </div>
             <div className="xfer-stat">
               <span>Use iPoint count</span>
@@ -339,7 +470,7 @@ export function App() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search part number, item, brand…"
             />
-            <button type="button" className="xfer-btn" onClick={applyIpointToDiffs} disabled={result.qtyDifferences === 0}>
+            <button type="button" className="xfer-btn" onClick={applyIpointToDiffs} disabled={stats.qtyDifferences === 0}>
               Use iPoint count for all differences
             </button>
             <button type="button" className="xfer-btn xfer-btn-secondary" onClick={resetChoices} disabled={overrideCount === 0}>
@@ -365,18 +496,18 @@ export function App() {
               <table className="xfer-table">
                 <thead>
                   <tr>
-                    <th>What is different</th>
-                    <th>iPoint part number</th>
-                    <th>iPoint item</th>
-                    <th>D-Tools part number</th>
-                    <th>D-Tools model</th>
-                    <th>Matched via</th>
-                    <th>Similar SKU</th>
-                    <th>iPoint stock</th>
-                    <th>D-Tools qty</th>
-                    <th>Difference</th>
-                    <th>Decision</th>
-                    <th>Notes</th>
+                    <SortHeader id="problem" label="What is different" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="ipointPn" label="iPoint part number" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="ipointItem" label="iPoint item" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="dtoolsPn" label="D-Tools part number" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="dtoolsModel" label="D-Tools model" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="matchVia" label="Matched via" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="similar" label="Similar SKU" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="ipointQty" label="iPoint stock" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="dtoolsQty" label="D-Tools qty" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="diff" label="Difference" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="decision" label="Decision" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="notes" label="Notes" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
                   </tr>
                 </thead>
                 <tbody>
@@ -404,7 +535,7 @@ export function App() {
                           ) : (
                             <span className="xfer-muted">—</span>
                           )}
-                          {line.isSimilar && line.match === 'dtools-only' ? (
+                          {line.isSimilar && line.match === 'dtools-only' && !line.treatedAsSame ? (
                             <div className="xfer-muted">Nearby iPoint SKU — not a match</div>
                           ) : null}
                         </td>
@@ -421,7 +552,7 @@ export function App() {
                             <span className="xfer-muted">—</span>
                           )}
                           {line.dtoolsBrand ? <div className="xfer-muted">{line.dtoolsBrand}</div> : null}
-                          {line.isSimilar && line.match === 'ipoint-only' ? (
+                          {line.isSimilar && line.match === 'ipoint-only' && !line.treatedAsSame ? (
                             <div className="xfer-muted">Nearby D-Tools SKU — not a match</div>
                           ) : null}
                         </td>
@@ -434,6 +565,16 @@ export function App() {
                           ) : (
                             <span className="xfer-muted">—</span>
                           )}
+                          {line.isSimilar && line.similarDtoolsSourceIndex != null ? (
+                            <label className="xfer-choice xfer-treat">
+                              <input
+                                type="checkbox"
+                                checked={line.treatedAsSame}
+                                onChange={(e) => toggleTreatAsSame(line, e.target.checked)}
+                              />
+                              Treat as same part
+                            </label>
+                          ) : null}
                         </td>
                         <td className="xfer-num">
                           {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
