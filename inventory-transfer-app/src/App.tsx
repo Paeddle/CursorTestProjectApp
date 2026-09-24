@@ -518,6 +518,20 @@ export function App() {
           ) : (
             <div className="xfer-table-wrap">
               <table className="xfer-table">
+                <colgroup>
+                  <col className="xfer-col-problem" />
+                  <col className="xfer-col-pn" />
+                  <col className="xfer-col-item" />
+                  <col className="xfer-col-pn" />
+                  <col className="xfer-col-item" />
+                  <col className="xfer-col-via" />
+                  <col className="xfer-col-similar" />
+                  <col className="xfer-col-qty" />
+                  <col className="xfer-col-qty" />
+                  <col className="xfer-col-diff" />
+                  <col className="xfer-col-decision" />
+                  <col className="xfer-col-notes" />
+                </colgroup>
                 <thead>
                   <tr>
                     <SortHeader id="problem" label="What is different" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />

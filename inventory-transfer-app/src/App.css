@@ -356,6 +356,16 @@
   font-weight: 400;
 }
 
+.xfer-col-problem { width: 8%; }
+.xfer-col-pn { width: 8%; }
+.xfer-col-item { width: 8%; }
+.xfer-col-via { width: 7%; }
+.xfer-col-similar { width: 8%; }
+.xfer-col-qty { width: 6%; }
+.xfer-col-diff { width: 5%; }
+.xfer-col-decision { width: 8%; }
+.xfer-col-notes { width: 20%; }
+
 .xfer-table th,
 .xfer-table td {
   padding: 0.5rem 0.45rem;
