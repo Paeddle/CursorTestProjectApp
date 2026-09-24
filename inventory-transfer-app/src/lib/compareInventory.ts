@@ -23,6 +23,7 @@ export type CompareLine = {
   dtoolsSourceIndex: number | null
   notes: string[]
   qtyDiffers: boolean
+  similarTo: string
 }
 
 export type CompareResult = {
@@ -41,6 +42,35 @@ function usableKey(value: string): string {
   const key = normalizePartKey(value)
   if (key.length < 2 || SKIP_KEYS.has(key)) return ''
   return key
+}
+
+function compactKey(value: string): string {
+  return usableKey(value).replace(/[^A-Z0-9]/g, '')
+}
+
+function similarScore(a: string, b: string): number {
+  if (!a || !b || a === b) return 0
+  const shorter = a.length <= b.length ? a : b
+  const longer = a.length > b.length ? a : b
+  if (shorter.length < 6) return 0
+  if (longer.startsWith(shorter)) return shorter.length
+  return 0
+}
+
+function bestSimilarLabel(
+  keys: string[],
+  others: { keys: string[]; label: string }[],
+): string {
+  let best = { score: 0, label: '' }
+  for (const key of keys) {
+    for (const other of others) {
+      for (const otherKey of other.keys) {
+        const score = similarScore(key, otherKey)
+        if (score > best.score) best = { score, label: other.label }
+      }
+    }
+  }
+  return best.label
 }
 
 function unique(values: string[]): string[] {
@@ -106,6 +136,14 @@ type DtoolsMatch = {
 export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkbook): CompareResult {
   const dIndex = indexByKey(dtools.items, dtoolsKeys)
   const iIndex = indexByKey(ipoint.items, ipointKeys)
+  const iSimilar = ipoint.items.map((item) => ({
+    keys: unique([compactKey(item.partNumber), compactKey(item.itemName)]),
+    label: item.partNumber || item.itemName,
+  }))
+  const dSimilar = dtools.items.map((item) => ({
+    keys: unique([compactKey(item.partNumber), compactKey(item.model)]),
+    label: item.partNumber || item.model,
+  }))
   const matchedD = new Map<number, DtoolsMatch>()
   const matchedI = new Set<number>()
 
@@ -164,11 +202,18 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsSourceIndex: dr.sourceIndex,
       notes,
       qtyDiffers,
+      similarTo: '',
     })
   }
 
   for (const ir of ipoint.items) {
     if (matchedI.has(ir.sourceIndex)) continue
+    const similarTo = bestSimilarLabel(
+      unique([compactKey(ir.partNumber), compactKey(ir.itemName)]),
+      dSimilar,
+    )
+    const notes = ['In iPoint only — no exact D-Tools Model or Part Number match']
+    if (similarTo) notes.push(`Closest D-Tools SKU (not counted as a match): ${similarTo}`)
     lines.push({
       id: `i-${ir.sourceIndex}`,
       partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
@@ -187,13 +232,20 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       ipointRows: 1,
       dtoolsRowsForKey: 0,
       dtoolsSourceIndex: null,
-      notes: ['In iPoint Item List only — no D-Tools part number or model matched item or part number'],
+      notes,
       qtyDiffers: false,
+      similarTo,
     })
   }
 
   for (const dr of dtools.items) {
     if (matchedD.has(dr.sourceIndex)) continue
+    const similarTo = bestSimilarLabel(
+      unique([compactKey(dr.partNumber), compactKey(dr.model)]),
+      iSimilar,
+    )
+    const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
+    if (similarTo) notes.push(`Closest iPoint SKU (not counted as a match): ${similarTo}`)
     lines.push({
       id: `d-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
@@ -212,8 +264,9 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       ipointRows: 0,
       dtoolsRowsForKey: 1,
       dtoolsSourceIndex: dr.sourceIndex,
-      notes: ['In D-Tools Products only — no iPoint item or part number matched part number or model'],
+      notes,
       qtyDiffers: false,
+      similarTo,
     })
   }
 

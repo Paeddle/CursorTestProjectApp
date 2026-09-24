@@ -154,6 +154,7 @@ export function App() {
         line.dtoolsPartNumber,
         line.dtoolsModel,
         line.matchVia,
+        line.similarTo,
         ...line.notes,
       ]
         .join(' ')
@@ -241,7 +242,12 @@ export function App() {
             <strong>Quantities are numbers.</strong> Blank <code>stock_Available</code> or <code>Quantity on Hand</code>{' '}
             is treated as <strong>0</strong> and labeled <code>blank → 0</code>. Commas are stripped (<code>1,200</code>{' '}
             → 1200). A quantity difference is any matched pair where iPoint stock ≠ D-Tools qty on hand. Unmatched
-            rows (iPoint only / D-Tools only) are listed separately and are not treated as quantity differences.
+            Unmatched rows are listed as <strong>iPoint only</strong> or <strong>D-Tools only</strong>. That means
+            there was no exact field match. Related SKUs are not merged: <code>C4-CA1</code> is not the same as{' '}
+            <code>C4-CA1-V2</code>, and <code>PROA7PLUS</code> is not <code>PROA7PLUS-FA</code>. Those stay unmatched
+            on purpose so a different product’s quantity is never overwritten. If a nearby SKU exists, the notes show
+            it as “closest SKU (not counted as a match).” The iPoint export also has fewer items than the D-Tools
+            catalog, so many D-Tools-only rows simply are not in the iPoint file.
           </li>
           <li>
             <strong>Override is opt-in and local.</strong> Default for every matched line is Keep D-Tools. Choosing Use
@@ -356,8 +362,8 @@ export function App() {
                 [
                   ['differences', `Qty differences (${result.qtyDifferences})`],
                   ['matched', `Matched (${result.matchedKeys})`],
-                  ['ipoint-only', `iPoint only (${result.ipointOnly})`],
-                  ['dtools-only', `D-Tools only (${result.dtoolsOnly})`],
+                  ['ipoint-only', `iPoint only, no exact match (${result.ipointOnly})`],
+                  ['dtools-only', `D-Tools only, no exact match (${result.dtoolsOnly})`],
                   ['overrides', `Chosen overrides (${overrideCount})`],
                 ] as const
               ).map(([id, label]) => (
