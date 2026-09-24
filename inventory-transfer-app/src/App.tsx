@@ -551,7 +551,7 @@ export function App() {
                           .join(' ') || undefined}
                       >
                         <td>
-                          <strong>{problemLabel(line)}</strong>
+                          {problemLabel(line)}
                         </td>
                         <td>
                           {line.ipointPartNumber ? (
