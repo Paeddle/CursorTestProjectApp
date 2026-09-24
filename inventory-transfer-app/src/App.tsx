@@ -204,6 +204,54 @@ export function App() {
         </a>
       </header>
 
+      <section className="xfer-algorithm" aria-labelledby="xfer-algorithm-title">
+        <h2 id="xfer-algorithm-title">How the comparison works</h2>
+        <ol>
+          <li>
+            <strong>Read the files in the browser only.</strong> iPoint is read from <code>Item</code>,{' '}
+            <code>Part Number</code>, and <code>stock_Available</code> (Excel or CSV). D-Tools is read from{' '}
+            <code>Model</code>, <code>Part Number</code>, and <code>Quantity on Hand</code>. No data is uploaded to a
+            server or written back to iPoint or D-Tools Cloud.
+          </li>
+          <li>
+            <strong>Normalize text before matching.</strong> Leading/trailing spaces are stripped, internal spaces are
+            collapsed, and letters are compared in uppercase. So <code>tp13bk</code> and <code>TP13BK</code> are the
+            same key. Values shorter than 2 characters, and placeholders like <code>N/A</code>, <code>-</code>,{' '}
+            <code>NONE</code>, <code>NULL</code>, or <code>?</code>, are ignored so they cannot create fake matches.
+          </li>
+          <li>
+            <strong>A D-Tools row matches an iPoint row if any one of these equalities is true</strong> after
+            normalization:
+            <ul>
+              <li>iPoint Part Number = D-Tools Part Number</li>
+              <li>iPoint Part Number = D-Tools Model</li>
+              <li>iPoint Item = D-Tools Part Number</li>
+              <li>iPoint Item = D-Tools Model</li>
+            </ul>
+            Brand, description, UPC, and every other column are not used for matching. The <em>Matched via</em> column
+            lists which of those four checks succeeded.
+          </li>
+          <li>
+            <strong>Results are grouped by D-Tools product row.</strong> If several iPoint rows match the same D-Tools
+            row, their <code>stock_Available</code> values are added together and the note says they were summed. If
+            one iPoint row matches more than one D-Tools row, that iPoint quantity is shown on each matched D-Tools
+            line so you can decide per D-Tools product.
+          </li>
+          <li>
+            <strong>Quantities are numbers.</strong> Blank <code>stock_Available</code> or <code>Quantity on Hand</code>{' '}
+            is treated as <strong>0</strong> and labeled <code>blank → 0</code>. Commas are stripped (<code>1,200</code>{' '}
+            → 1200). A quantity difference is any matched pair where iPoint stock ≠ D-Tools qty on hand. Unmatched
+            rows (iPoint only / D-Tools only) are listed separately and are not treated as quantity differences.
+          </li>
+          <li>
+            <strong>Override is opt-in and local.</strong> Default for every matched line is Keep D-Tools. Choosing Use
+            iPoint qty only changes the downloaded CSV: that D-Tools row’s <code>Quantity on Hand</code> is replaced
+            with the iPoint stock used on that line. Every other Products column stays as it was, including rows you
+            did not override. The original uploaded files are never modified.
+          </li>
+        </ol>
+      </section>
+
       <div className="xfer-uploads">
         <section className="xfer-card">
           <h2>iPoint — Item List</h2>
