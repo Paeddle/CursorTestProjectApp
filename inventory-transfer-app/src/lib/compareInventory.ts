@@ -7,7 +7,9 @@ export type CompareLine = {
   id: string
   partKey: string
   partNumberDisplay: string
+  dtoolsPartNumber: string
   match: MatchKind
+  matchVia: string
   ipointQty: number | null
   dtoolsQty: number | null
   ipointRaw: string
@@ -33,14 +35,37 @@ export type CompareResult = {
   dtoolsDuplicates: number
 }
 
-function groupByKey(items: ParsedItem[]): Map<string, ParsedItem[]> {
-  const map = new Map<string, ParsedItem[]>()
-  for (const item of items) {
-    const list = map.get(item.partKey) || []
-    list.push(item)
-    map.set(item.partKey, list)
-  }
-  return map
+const SKIP_KEYS = new Set(['N/A', 'NA', '-', '--', 'NONE', 'NULL', '?', '#'])
+
+function usableKey(value: string): string {
+  const key = normalizePartKey(value)
+  if (key.length < 2 || SKIP_KEYS.has(key)) return ''
+  return key
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))]
+}
+
+function ipointKeys(item: ParsedItem): string[] {
+  return unique([usableKey(item.partNumber), usableKey(item.itemName)])
+}
+
+function dtoolsKeys(item: ParsedItem): string[] {
+  return unique([usableKey(item.partNumber), usableKey(item.model)])
+}
+
+function matchReasons(ipoint: ParsedItem, dtools: ParsedItem): string[] {
+  const iPart = usableKey(ipoint.partNumber)
+  const iItem = usableKey(ipoint.itemName)
+  const dPart = usableKey(dtools.partNumber)
+  const dModel = usableKey(dtools.model)
+  const reasons: string[] = []
+  if (iPart && dPart && iPart === dPart) reasons.push('iPoint part number = D-Tools part number')
+  if (iPart && dModel && iPart === dModel) reasons.push('iPoint part number = D-Tools model')
+  if (iItem && dPart && iItem === dPart) reasons.push('iPoint item = D-Tools part number')
+  if (iItem && dModel && iItem === dModel) reasons.push('iPoint item = D-Tools model')
+  return reasons
 }
 
 function sumQty(items: ParsedItem[]): number {
@@ -53,109 +78,153 @@ function qtyLabel(items: ParsedItem[]): string {
   return items.map((i) => i.qtyRaw || '0').join(' + ')
 }
 
-export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkbook): CompareResult {
-  const iBy = groupByKey(ipoint.items)
-  const dBy = groupByKey(dtools.items)
-  const keys = [...new Set([...iBy.keys(), ...dBy.keys()])].sort((a, b) => a.localeCompare(b))
+function indexByKey(items: ParsedItem[], keysFor: (item: ParsedItem) => string[]): {
+  byKey: Map<string, ParsedItem[]>
+  duplicateKeys: number
+} {
+  const byKey = new Map<string, ParsedItem[]>()
+  for (const item of items) {
+    for (const key of keysFor(item)) {
+      const list = byKey.get(key) || []
+      if (!list.some((row) => row.sourceIndex === item.sourceIndex)) list.push(item)
+      byKey.set(key, list)
+    }
+  }
+  let duplicateKeys = 0
+  for (const list of byKey.values()) {
+    if (list.length > 1) duplicateKeys += 1
+  }
+  return { byKey, duplicateKeys }
+}
 
-  let ipointDuplicates = 0
-  let dtoolsDuplicates = 0
+type DtoolsMatch = {
+  dtools: ParsedItem
+  ipoints: ParsedItem[]
+  reasons: Set<string>
+}
+
+export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkbook): CompareResult {
+  const dIndex = indexByKey(dtools.items, dtoolsKeys)
+  const iIndex = indexByKey(ipoint.items, ipointKeys)
+  const matchedD = new Map<number, DtoolsMatch>()
+  const matchedI = new Set<number>()
+
+  for (const ir of ipoint.items) {
+    const hits = new Map<number, ParsedItem>()
+    for (const key of ipointKeys(ir)) {
+      for (const dr of dIndex.byKey.get(key) || []) hits.set(dr.sourceIndex, dr)
+    }
+    for (const dr of hits.values()) {
+      const reasons = matchReasons(ir, dr)
+      if (reasons.length === 0) continue
+      matchedI.add(ir.sourceIndex)
+      let bucket = matchedD.get(dr.sourceIndex)
+      if (!bucket) {
+        bucket = { dtools: dr, ipoints: [], reasons: new Set() }
+        matchedD.set(dr.sourceIndex, bucket)
+      }
+      if (!bucket.ipoints.some((row) => row.sourceIndex === ir.sourceIndex)) bucket.ipoints.push(ir)
+      for (const reason of reasons) bucket.reasons.add(reason)
+    }
+  }
+
   const lines: CompareLine[] = []
 
-  for (const key of keys) {
-    const irows = iBy.get(key) || []
-    const drows = dBy.get(key) || []
-    if (irows.length > 1) ipointDuplicates += 1
-    if (drows.length > 1) dtoolsDuplicates += 1
+  const matchedDRows = [...matchedD.values()].sort((a, b) =>
+    (a.dtools.partNumber || a.dtools.model).localeCompare(b.dtools.partNumber || b.dtools.model),
+  )
 
-    if (irows.length === 0) {
-      drows.forEach((dr, n) => {
-        lines.push({
-          id: `${key}-d-${dr.sourceIndex}-${n}`,
-          partKey: key,
-          partNumberDisplay: dr.partNumber,
-          match: 'dtools-only',
-          ipointQty: null,
-          dtoolsQty: dr.qty,
-          ipointRaw: '',
-          dtoolsRaw: dr.qtyRaw,
-          ipointItem: '',
-          ipointManufacturer: '',
-          dtoolsBrand: dr.brand,
-          dtoolsModel: dr.model,
-          ipointRows: 0,
-          dtoolsRowsForKey: drows.length,
-          dtoolsSourceIndex: dr.sourceIndex,
-          notes: ['In D-Tools Products only', ...(drows.length > 1 ? [`${drows.length} D-Tools rows share this part number`] : [])],
-          qtyDiffers: false,
-        })
-      })
-      continue
-    }
-
-    if (drows.length === 0) {
-      irows.forEach((ir, n) => {
-        lines.push({
-          id: `${key}-i-${ir.sourceIndex}-${n}`,
-          partKey: key,
-          partNumberDisplay: ir.partNumber,
-          match: 'ipoint-only',
-          ipointQty: ir.qty,
-          dtoolsQty: null,
-          ipointRaw: ir.qtyRaw,
-          dtoolsRaw: '',
-          ipointItem: ir.itemName,
-          ipointManufacturer: ir.manufacturer,
-          dtoolsBrand: '',
-          dtoolsModel: '',
-          ipointRows: irows.length,
-          dtoolsRowsForKey: 0,
-          dtoolsSourceIndex: null,
-          notes: ['In iPoint Item List only', ...(irows.length > 1 ? [`${irows.length} iPoint rows share this part number`] : [])],
-          qtyDiffers: false,
-        })
-      })
-      continue
-    }
-
+  for (const bucket of matchedDRows) {
+    const dr = bucket.dtools
+    const irows = bucket.ipoints
     const ipointQty = sumQty(irows)
-    const ipointRaw = qtyLabel(irows)
     const notes: string[] = []
-    if (irows.length > 1) notes.push(`${irows.length} iPoint rows; stock available shown as the sum (${ipointQty})`)
-    if (drows.length > 1) notes.push(`${drows.length} D-Tools rows share this part number`)
+    if (irows.length > 1) {
+      notes.push(`${irows.length} iPoint rows matched this D-Tools row; stock available shown as the sum (${ipointQty})`)
+    }
+    const qtyDiffers = ipointQty !== dr.qty
+    if (qtyDiffers) notes.push('Quantity differs')
+    lines.push({
+      id: `b-${dr.sourceIndex}`,
+      partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
+      partNumberDisplay: irows.map((row) => row.partNumber || row.itemName).filter(Boolean).join(' / ') || dr.partNumber,
+      dtoolsPartNumber: dr.partNumber,
+      match: 'both',
+      matchVia: [...bucket.reasons].join('; '),
+      ipointQty,
+      dtoolsQty: dr.qty,
+      ipointRaw: qtyLabel(irows),
+      dtoolsRaw: dr.qtyRaw,
+      ipointItem: unique(irows.map((row) => row.itemName)).join(' / '),
+      ipointManufacturer: unique(irows.map((row) => row.manufacturer).filter(Boolean)).join(' / '),
+      dtoolsBrand: dr.brand,
+      dtoolsModel: dr.model,
+      ipointRows: irows.length,
+      dtoolsRowsForKey: 1,
+      dtoolsSourceIndex: dr.sourceIndex,
+      notes,
+      qtyDiffers,
+    })
+  }
 
-    drows.forEach((dr, n) => {
-      const qtyDiffers = ipointQty !== dr.qty
-      lines.push({
-        id: `${key}-b-${dr.sourceIndex}-${n}`,
-        partKey: key,
-        partNumberDisplay: dr.partNumber || irows[0].partNumber,
-        match: 'both',
-        ipointQty,
-        dtoolsQty: dr.qty,
-        ipointRaw,
-        dtoolsRaw: dr.qtyRaw,
-        ipointItem: irows.map((r) => r.itemName).filter(Boolean).join(' / ') || irows[0].itemName,
-        ipointManufacturer: irows[0].manufacturer,
-        dtoolsBrand: dr.brand,
-        dtoolsModel: dr.model,
-        ipointRows: irows.length,
-        dtoolsRowsForKey: drows.length,
-        dtoolsSourceIndex: dr.sourceIndex,
-        notes: qtyDiffers ? ['Quantity differs', ...notes] : notes,
-        qtyDiffers,
-      })
+  for (const ir of ipoint.items) {
+    if (matchedI.has(ir.sourceIndex)) continue
+    lines.push({
+      id: `i-${ir.sourceIndex}`,
+      partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
+      partNumberDisplay: ir.partNumber || ir.itemName,
+      dtoolsPartNumber: '',
+      match: 'ipoint-only',
+      matchVia: '',
+      ipointQty: ir.qty,
+      dtoolsQty: null,
+      ipointRaw: ir.qtyRaw,
+      dtoolsRaw: '',
+      ipointItem: ir.itemName,
+      ipointManufacturer: ir.manufacturer,
+      dtoolsBrand: '',
+      dtoolsModel: '',
+      ipointRows: 1,
+      dtoolsRowsForKey: 0,
+      dtoolsSourceIndex: null,
+      notes: ['In iPoint Item List only — no D-Tools part number or model matched item or part number'],
+      qtyDiffers: false,
+    })
+  }
+
+  for (const dr of dtools.items) {
+    if (matchedD.has(dr.sourceIndex)) continue
+    lines.push({
+      id: `d-${dr.sourceIndex}`,
+      partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
+      partNumberDisplay: dr.partNumber || dr.model,
+      dtoolsPartNumber: dr.partNumber,
+      match: 'dtools-only',
+      matchVia: '',
+      ipointQty: null,
+      dtoolsQty: dr.qty,
+      ipointRaw: '',
+      dtoolsRaw: dr.qtyRaw,
+      ipointItem: '',
+      ipointManufacturer: '',
+      dtoolsBrand: dr.brand,
+      dtoolsModel: dr.model,
+      ipointRows: 0,
+      dtoolsRowsForKey: 1,
+      dtoolsSourceIndex: dr.sourceIndex,
+      notes: ['In D-Tools Products only — no iPoint item or part number matched part number or model'],
+      qtyDiffers: false,
     })
   }
 
   return {
     lines,
-    matchedKeys: keys.filter((k) => iBy.has(k) && dBy.has(k)).length,
+    matchedKeys: matchedD.size,
     qtyDifferences: lines.filter((l) => l.qtyDiffers).length,
     ipointOnly: lines.filter((l) => l.match === 'ipoint-only').length,
     dtoolsOnly: lines.filter((l) => l.match === 'dtools-only').length,
-    ipointDuplicates,
-    dtoolsDuplicates,
+    ipointDuplicates: iIndex.duplicateKeys,
+    dtoolsDuplicates: dIndex.duplicateKeys,
   }
 }
 

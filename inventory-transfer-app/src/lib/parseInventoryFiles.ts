@@ -34,8 +34,10 @@ export type ParsedWorkbook = {
 }
 
 const IPOINT_PART_HEADERS = ['part number', 'partnumber', 'part_number', 'part', 'sku', 'item number']
+const IPOINT_ITEM_HEADERS = ['item', 'item name', 'itemname']
 const IPOINT_QTY_HEADERS = ['stock_available', 'stock available', 'stockavailable', 'available']
 const DTOOLS_PART_HEADERS = ['part number', 'partnumber', 'part_number']
+const DTOOLS_MODEL_HEADERS = ['model']
 const DTOOLS_QTY_HEADERS = ['quantity on hand', 'qty on hand', 'quantityonhand', 'qoh']
 
 export function normalizePartKey(value: string): string {
@@ -139,18 +141,32 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
   const partNumberHeader =
     pickHeader(headers, kind === 'ipoint' ? IPOINT_PART_HEADERS : DTOOLS_PART_HEADERS) ||
     pickHeader(headers, ['part number'])
+  const itemHeader = kind === 'ipoint' ? pickHeader(headers, IPOINT_ITEM_HEADERS) : null
+  const modelHeader = kind === 'dtools' ? pickHeader(headers, DTOOLS_MODEL_HEADERS) : null
   const qtyHeader =
     pickHeader(headers, kind === 'ipoint' ? IPOINT_QTY_HEADERS : DTOOLS_QTY_HEADERS)
 
   const warnings: string[] = []
-  if (!partNumberHeader) {
+  if (kind === 'ipoint' && !partNumberHeader && !itemHeader) {
     throw new Error(
-      `${file.name}: could not find a Part Number column. Headers were: ${headers.join(', ') || '(none)'}`,
+      `${file.name}: could not find a Part Number or Item column. Headers were: ${headers.join(', ') || '(none)'}`,
+    )
+  }
+  if (kind === 'dtools' && !partNumberHeader && !modelHeader) {
+    throw new Error(
+      `${file.name}: could not find a Part Number or Model column. Headers were: ${headers.join(', ') || '(none)'}`,
     )
   }
   if (!qtyHeader) {
     const expected = kind === 'ipoint' ? 'Stock available / stock_Available' : 'Quantity on Hand'
     throw new Error(`${file.name}: could not find ${expected}. Headers were: ${headers.join(', ') || '(none)'}`)
+  }
+  if (!partNumberHeader) {
+    warnings.push(
+      kind === 'ipoint'
+        ? 'No Part Number column; matching will use the Item column only.'
+        : 'No Part Number column; matching will use the Model column only.',
+    )
   }
 
   const items: ParsedItem[] = []
@@ -160,8 +176,14 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
     const sourceIndex = idx + 2
     const original = stringifyOriginal(row)
     originalRows.push({ sourceIndex, record: original })
-    const partNumber = cell(row, partNumberHeader)
-    if (!partNumber) {
+    const partNumber = partNumberHeader ? cell(row, partNumberHeader) : ''
+    const itemName = itemHeader
+      ? cell(row, itemHeader)
+      : pickAlt(row, ['item', 'description_customer', 'short description', 'description'])
+    const model = modelHeader ? cell(row, modelHeader) : pickAlt(row, ['model'])
+    const hasIdentity =
+      kind === 'ipoint' ? Boolean(partNumber || itemName) : Boolean(partNumber || model)
+    if (!hasIdentity) {
       blankPartRows += 1
       return
     }
@@ -172,16 +194,20 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
       partKey: normalizePartKey(partNumber),
       qtyRaw: raw,
       qty,
-      itemName: pickAlt(row, ['item', 'description_customer', 'short description', 'description']),
+      itemName,
       manufacturer: pickAlt(row, ['manufacturer']),
       brand: pickAlt(row, ['brand']),
-      model: pickAlt(row, ['model']),
+      model,
       original,
     })
   })
 
   if (blankPartRows) {
-    warnings.push(`${blankPartRows} row(s) had a blank part number and were skipped.`)
+    warnings.push(
+      kind === 'ipoint'
+        ? `${blankPartRows} row(s) had a blank part number and item and were skipped.`
+        : `${blankPartRows} row(s) had a blank part number and model and were skipped.`,
+    )
   }
   const sci = items.filter((i) => /^\d+\.\d+E\+\d+$/i.test(i.partNumber)).length
   if (sci) {
@@ -194,7 +220,7 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
     kind,
     fileName: file.name,
     headers,
-    partNumberHeader,
+    partNumberHeader: partNumberHeader || '(missing)',
     qtyHeader,
     items,
     originalRows,

@@ -116,7 +116,9 @@ export function App() {
         line.ipointItem,
         line.ipointManufacturer,
         line.dtoolsBrand,
+        line.dtoolsPartNumber,
         line.dtoolsModel,
+        line.matchVia,
         ...line.notes,
       ]
         .join(' ')
@@ -155,9 +157,11 @@ export function App() {
         <div>
           <h1>Inventory Transfer</h1>
           <p className="xfer-lead">
-            Compare iPoint <strong>Stock available</strong> to D-Tools Cloud <strong>Quantity on Hand</strong> for
-            every part number. Nothing is written back to either system — you review each difference, then download
-            an updated Products.csv if you want D-Tools to use the iPoint quantities.
+            Compare iPoint <strong>Item</strong> or <strong>Part Number</strong> to D-Tools Cloud{' '}
+            <strong>Model</strong> or <strong>Part Number</strong>. Any of those four fields matching counts as the
+            same part. Then compare iPoint <strong>Stock available</strong> to D-Tools <strong>Quantity on Hand</strong>
+            . Nothing is written back to either system — you review each difference, then download an updated
+            Products.csv if you want D-Tools to use the iPoint quantities.
           </p>
         </div>
         <a className="xfer-home" href="/">
@@ -169,8 +173,8 @@ export function App() {
         <section className="xfer-card">
           <h2>iPoint — Item List</h2>
           <p>
-            Current inventory export (example: <code>Item List24.xlsx</code>). Uses the <code>Part Number</code> and{' '}
-            <code>stock_Available</code> columns.
+            Current inventory export (example: <code>Item List24.xlsx</code>). Matches using the <code>Item</code> and{' '}
+            <code>Part Number</code> columns against D-Tools, and compares <code>stock_Available</code>.
           </p>
           <div className="xfer-file-row">
             <label className="xfer-file-btn">
@@ -211,8 +215,9 @@ export function App() {
         <section className="xfer-card">
           <h2>D-Tools Cloud — Products</h2>
           <p>
-            Destination inventory export (example: <code>Products.csv</code>). Uses <code>Part Number</code> and{' '}
-            <code>Quantity on Hand</code>. Other columns stay untouched on export.
+            Destination inventory export (example: <code>Products.csv</code>). Matches using <code>Model</code> and{' '}
+            <code>Part Number</code>, then compares <code>Quantity on Hand</code>. Other columns stay untouched on
+            export.
           </p>
           <div className="xfer-file-row">
             <label className="xfer-file-btn">
@@ -275,7 +280,7 @@ export function App() {
               <b>{dtools.items.length}</b>
             </div>
             <div className="xfer-stat">
-              <span>Matched part numbers</span>
+              <span>Matched D-Tools rows</span>
               <b>{result.matchedKeys}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
@@ -336,9 +341,9 @@ export function App() {
 
           {result.ipointDuplicates || result.dtoolsDuplicates ? (
             <p className="xfer-warn">
-              Duplicate part numbers: {result.ipointDuplicates} in iPoint, {result.dtoolsDuplicates} in D-Tools. Those
-              rows stay visible so nothing is silently merged except summed iPoint stock when the same part appears more
-              than once.
+              Duplicate identity values: {result.ipointDuplicates} iPoint item/part-number values and{' '}
+              {result.dtoolsDuplicates} D-Tools model/part-number values appear on more than one row. Those stay
+              visible. If several iPoint rows match one D-Tools row, stock available is summed.
             </p>
           ) : null}
 
@@ -349,9 +354,11 @@ export function App() {
               <table className="xfer-table">
                 <thead>
                   <tr>
-                    <th>Part number</th>
+                    <th>iPoint part number</th>
                     <th>iPoint item</th>
-                    <th>D-Tools brand / model</th>
+                    <th>D-Tools part number</th>
+                    <th>D-Tools model</th>
+                    <th>Matched via</th>
                     <th>iPoint stock available</th>
                     <th>D-Tools qty on hand</th>
                     <th>Difference</th>
@@ -375,14 +382,15 @@ export function App() {
                           ) : null}
                         </td>
                         <td>
-                          {line.dtoolsBrand || line.dtoolsModel ? (
-                            <>
-                              {line.dtoolsBrand} {line.dtoolsModel}
-                            </>
+                          {line.dtoolsPartNumber ? (
+                            <code>{line.dtoolsPartNumber}</code>
                           ) : (
                             <span className="xfer-muted">—</span>
                           )}
+                          {line.dtoolsBrand ? <div className="xfer-muted">{line.dtoolsBrand}</div> : null}
                         </td>
+                        <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
+                        <td className="xfer-notes">{line.matchVia || '—'}</td>
                         <td className="xfer-num">{formatQty(line.ipointQty, line.ipointRaw)}</td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
                         <td
