@@ -6,7 +6,7 @@ export type QtyChoice = 'keep-dtools' | 'use-ipoint'
 export type CompareLine = {
   id: string
   partKey: string
-  partNumberDisplay: string
+  ipointPartNumber: string
   dtoolsPartNumber: string
   match: MatchKind
   matchVia: string
@@ -185,7 +185,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     lines.push({
       id: `b-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
-      partNumberDisplay: irows.map((row) => row.partNumber || row.itemName).filter(Boolean).join(' / ') || dr.partNumber,
+      ipointPartNumber: unique(irows.map((row) => row.partNumber).filter(Boolean)).join(' / '),
       dtoolsPartNumber: dr.partNumber,
       match: 'both',
       matchVia: [...bucket.reasons].join('; '),
@@ -217,7 +217,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     lines.push({
       id: `i-${ir.sourceIndex}`,
       partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
-      partNumberDisplay: ir.partNumber || ir.itemName,
+      ipointPartNumber: ir.partNumber,
       dtoolsPartNumber: '',
       match: 'ipoint-only',
       matchVia: '',
@@ -245,11 +245,11 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       iSimilar,
     )
     const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
-    if (similarTo) notes.push(`Closest iPoint SKU (not counted as a match): ${similarTo}`)
+    if (similarTo) notes.push(`Looks similar to iPoint ${similarTo}, but it is not an exact match so this row stays D-Tools only`)
     lines.push({
       id: `d-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
-      partNumberDisplay: dr.partNumber || dr.model,
+      ipointPartNumber: '',
       dtoolsPartNumber: dr.partNumber,
       match: 'dtools-only',
       matchVia: '',

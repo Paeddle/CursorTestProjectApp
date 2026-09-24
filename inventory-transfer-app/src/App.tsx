@@ -147,7 +147,7 @@ export function App() {
       if (filter === 'overrides' && resolvedChoices[line.id] !== 'use-ipoint') return false
       if (!q) return true
       const hay = [
-        line.partNumberDisplay,
+        line.ipointPartNumber,
         line.ipointItem,
         line.ipointManufacturer,
         line.dtoolsBrand,
@@ -414,6 +414,7 @@ export function App() {
                     <th>D-Tools part number</th>
                     <th>D-Tools model</th>
                     <th>Matched via</th>
+                    <th>Similar SKU (not a match)</th>
                     <th>iPoint stock available</th>
                     <th>D-Tools qty on hand</th>
                     <th>Difference</th>
@@ -428,7 +429,11 @@ export function App() {
                     return (
                       <tr key={line.id} className={line.qtyDiffers ? 'xfer-row-diff' : undefined}>
                         <td>
-                          <code>{line.partNumberDisplay}</code>
+                          {line.ipointPartNumber ? (
+                            <code>{line.ipointPartNumber}</code>
+                          ) : (
+                            <span className="xfer-muted">—</span>
+                          )}
                         </td>
                         <td>
                           {line.ipointItem || <span className="xfer-muted">—</span>}
@@ -446,6 +451,7 @@ export function App() {
                         </td>
                         <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
                         <td className="xfer-notes">{line.matchVia || '—'}</td>
+                        <td className="xfer-notes">{line.similarTo || '—'}</td>
                         <td className="xfer-num">{formatQty(line.ipointQty, line.ipointRaw)}</td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
                         <td
