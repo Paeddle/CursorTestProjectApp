@@ -201,10 +201,20 @@
 }
 
 .xfer-stat {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
   background: #35485e;
   border: 1px solid #4d6480;
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
+}
+
+.xfer-stat:hover {
+  filter: brightness(1.08);
 }
 
 .xfer-stat span {
@@ -293,6 +303,15 @@
 
 .xfer-stat-alert b {
   color: #fbbf24;
+}
+
+.xfer-stat-on {
+  border-color: #7dd3fc;
+}
+
+.xfer-stat-on b,
+.xfer-stat-alert.xfer-stat-on b {
+  color: #7dd3fc;
 }
 
 .xfer-toolbar {

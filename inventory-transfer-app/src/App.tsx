@@ -14,7 +14,7 @@ import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
 import './App.css'
 
-type ViewMode = 'problems' | 'all'
+type StatFilter = 'review' | 'diff' | 'grouped' | 'similar' | 'ipoint' | 'dtools' | 'matched' | 'overrides'
 type SortCol =
   | 'problem'
   | 'ipointPn'
@@ -61,6 +61,22 @@ function ipointLabel(line: CompareLine): string {
 
 function dtoolsLabel(line: CompareLine): string {
   return [line.dtoolsPartNumber, line.dtoolsModel].filter(Boolean).join(' · ') || '—'
+}
+
+function lineMatchesFilter(
+  line: CompareLine,
+  filter: StatFilter | null,
+  choice: QtyChoice | undefined,
+): boolean {
+  if (filter === 'review') return true
+  if (filter === 'diff') return line.qtyDiffers
+  if (filter === 'grouped') return line.isGrouped
+  if (filter === 'similar') return line.isSimilar && !line.treatedAsSame
+  if (filter === 'ipoint') return line.match === 'ipoint-only'
+  if (filter === 'dtools') return line.match === 'dtools-only'
+  if (filter === 'matched') return line.match === 'both'
+  if (filter === 'overrides') return choice === 'use-ipoint'
+  return lineIsDiscrepancy(line)
 }
 
 async function fileFromSample(url: string, fallbackName: string): Promise<File> {
@@ -139,7 +155,7 @@ export function App() {
   const [dtools, setDtools] = useState<ParsedWorkbook | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [view, setView] = useState<ViewMode>('problems')
+  const [statFilter, setStatFilter] = useState<StatFilter | null>(null)
   const [query, setQuery] = useState('')
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
   const [treatedSimilar, setTreatedSimilar] = useState<Record<string, boolean>>({})
@@ -162,6 +178,7 @@ export function App() {
       setChoices({})
       setTreatedSimilar({})
       setUncombined({})
+      setStatFilter(null)
       setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read that file.')
@@ -187,6 +204,7 @@ export function App() {
       setChoices({})
       setTreatedSimilar({})
       setUncombined({})
+      setStatFilter(null)
       setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load example files.')
@@ -208,7 +226,7 @@ export function App() {
   const visible = useMemo(() => {
     const q = query.trim().toUpperCase()
     const filtered = effectiveLines.filter((line) => {
-      if (view === 'problems' && !lineIsDiscrepancy(line)) return false
+      if (!lineMatchesFilter(line, statFilter, resolvedChoices[line.id])) return false
       if (!q) return true
       return [
         ipointLabel(line),
@@ -235,7 +253,7 @@ export function App() {
           : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' })
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [effectiveLines, query, resolvedChoices, sortCol, sortDir, view])
+  }, [effectiveLines, query, resolvedChoices, sortCol, sortDir, statFilter])
 
   const stats = useMemo(
     () => ({
@@ -254,6 +272,10 @@ export function App() {
 
   const setChoice = (id: string, choice: QtyChoice) => {
     setChoices((prev) => ({ ...prev, [id]: choice }))
+  }
+
+  const toggleStatFilter = (id: StatFilter) => {
+    setStatFilter((prev) => (prev === id ? null : id))
   }
 
   const cycleSort = (id: SortCol) => {
@@ -445,49 +467,32 @@ export function App() {
       {result && ipoint && dtools ? (
         <>
           <div className="xfer-stats">
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Rows to review</span>
-              <b>{stats.discrepancyCount}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Different counts</span>
-              <b>{stats.qtyDifferences}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Added together</span>
-              <b>{stats.groupedCount}</b>
-            </div>
-            <div className="xfer-stat xfer-stat-alert">
-              <span>Looks similar</span>
-              <b>{stats.similarCount}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>Only in iPoint</span>
-              <b>{stats.ipointOnly}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>Only in D-Tools</span>
-              <b>{stats.dtoolsOnly}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>Same in both</span>
-              <b>{stats.matchedKeys}</b>
-            </div>
-            <div className="xfer-stat">
-              <span>Use iPoint count</span>
-              <b>{overrideCount}</b>
-            </div>
+            {(
+              [
+                ['review', 'Rows to review', stats.discrepancyCount, true],
+                ['diff', 'Different counts', stats.qtyDifferences, true],
+                ['grouped', 'Added together', stats.groupedCount, true],
+                ['similar', 'Looks similar', stats.similarCount, true],
+                ['ipoint', 'Only in iPoint', stats.ipointOnly, false],
+                ['dtools', 'Only in D-Tools', stats.dtoolsOnly, false],
+                ['matched', 'Same in both', stats.matchedKeys, false],
+                ['overrides', 'Use iPoint count', overrideCount, false],
+              ] as const
+            ).map(([id, label, value, alert]) => (
+              <button
+                key={id}
+                type="button"
+                className={`xfer-stat ${alert ? 'xfer-stat-alert' : ''} ${statFilter === id ? 'xfer-stat-on' : ''}`}
+                aria-pressed={statFilter === id}
+                onClick={() => toggleStatFilter(id)}
+              >
+                <span>{label}</span>
+                <b>{value}</b>
+              </button>
+            ))}
           </div>
 
           <div className="xfer-toolbar">
-            <label className="xfer-choice">
-              <input
-                type="checkbox"
-                checked={view === 'all'}
-                onChange={(e) => setView(e.target.checked ? 'all' : 'problems')}
-              />
-              Show matching rows too
-            </label>
             <input
               className="xfer-search"
               value={query}
@@ -514,7 +519,7 @@ export function App() {
           ) : null}
 
           {visible.length === 0 ? (
-            <p className="xfer-empty">{query.trim() ? 'Nothing matches that search.' : 'No rows to review.'}</p>
+            <p className="xfer-empty">{query.trim() ? 'Nothing matches that search.' : 'No rows in this view.'}</p>
           ) : (
             <div className="xfer-table-wrap">
               <table className="xfer-table">
