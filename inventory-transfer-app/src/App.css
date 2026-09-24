@@ -222,11 +222,11 @@
 }
 
 .xfer-row-similar td {
-  background: #454e5c;
+  background: #b3c4d4;
 }
 
 .xfer-row-grouped td {
-  background: #3e4f5c;
+  background: #aec6d0;
 }
 
 .xfer-flag-grouped {
@@ -252,15 +252,15 @@
 .xfer-group ul {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;
-  color: #e8eef5;
-  font-size: 0.74rem;
-  font-weight: 500;
+  color: #111827;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .xfer-group-total {
   margin-top: 0.2rem;
-  color: #9ee0ea;
-  font-size: 0.74rem;
+  color: #0f4c5c;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
@@ -327,9 +327,9 @@
 
 .xfer-table-wrap {
   overflow-x: hidden;
-  border: 1px solid #556575;
+  border: 1px solid #7a93a8;
   border-radius: 10px;
-  background: #3a4654;
+  background: #c5d4e0;
   max-height: min(78vh, 52rem);
 }
 
@@ -337,14 +337,15 @@
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 0.74rem;
-  color: #e8eef5;
+  font-size: 0.92rem;
+  color: #111827;
+  font-weight: 600;
 }
 
 .xfer-table th,
 .xfer-table td {
-  padding: 0.35rem 0.4rem;
-  border-bottom: 1px solid #556575;
+  padding: 0.5rem 0.45rem;
+  border-bottom: 1px solid #9aafc0;
   text-align: left;
   vertical-align: top;
   word-break: break-word;
@@ -354,11 +355,12 @@
 .xfer-table th {
   position: sticky;
   top: 0;
-  background: #455564;
-  color: #e8eef5;
-  font-size: 0.68rem;
+  background: #2f4558;
+  color: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   z-index: 1;
 }
 
@@ -381,28 +383,28 @@
 }
 
 .xfer-sort:hover {
-  color: #fff;
+  color: #dbeafe;
 }
 
 .xfer-sort-arrow {
-  color: #9ee0ea;
-  font-size: 0.72rem;
+  color: #ffffff;
+  font-size: 0.95rem;
 }
 
 .xfer-treat {
   margin-top: 0.35rem;
   white-space: normal;
-  font-size: 0.76rem;
-  font-weight: 650;
-  color: #e8eef5;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #111827;
 }
 
 .xfer-table tr:hover td {
-  background: #4a5868;
+  background: #adc0d2;
 }
 
 .xfer-row-diff td {
-  background: #434c58;
+  background: #b0c0d0;
 }
 
 .xfer-num {
@@ -411,13 +413,13 @@
 }
 
 .xfer-delta-up {
-  color: #7dcea0;
-  font-weight: 700;
+  color: #14532d;
+  font-weight: 800;
 }
 
 .xfer-delta-down {
-  color: #f0a0a8;
-  font-weight: 700;
+  color: #9f1239;
+  font-weight: 800;
 }
 
 .xfer-choice {
@@ -449,12 +451,13 @@
 }
 
 .xfer-notes {
-  color: #c5dce6;
-  font-size: 0.74rem;
+  color: #1e3a4a;
+  font-size: 0.86rem;
+  font-weight: 650;
 }
 
 .xfer-table .xfer-muted {
-  color: #9aabbd;
+  color: #334155;
 }
 
 .xfer-empty {
