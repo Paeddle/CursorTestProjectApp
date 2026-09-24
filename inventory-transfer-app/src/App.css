@@ -215,6 +215,45 @@
   background: #1c1910;
 }
 
+.xfer-row-grouped td {
+  background: #0f1f2e;
+}
+
+.xfer-flag-grouped {
+  display: inline-block;
+  margin: 0.25rem 0 0.2rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  background: #155e75;
+  color: #a5f3fc;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.xfer-group {
+  margin-top: 0.35rem;
+  text-align: left;
+  font-variant-numeric: normal;
+  white-space: normal;
+}
+
+.xfer-group ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+  color: #e2e8f0;
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.xfer-group-total {
+  margin-top: 0.2rem;
+  color: #67e8f9;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
 .xfer-flag-similar {
   display: inline-block;
   margin-right: 0.35rem;

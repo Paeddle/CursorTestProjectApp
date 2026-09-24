@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   compareInventories,
   defaultChoices,
+  lineIsDiscrepancy,
   type CompareLine,
   type QtyChoice,
 } from './lib/compareInventory'
@@ -9,7 +10,7 @@ import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
 import './App.css'
 
-type ListFilter = 'differences' | 'matched' | 'similar' | 'ipoint-only' | 'dtools-only' | 'overrides'
+type ListFilter = 'all' | 'differences' | 'grouped' | 'matched' | 'similar' | 'ipoint-only' | 'dtools-only' | 'overrides'
 
 function formatQty(n: number | null, raw: string): string {
   if (n == null) return '—'
@@ -81,7 +82,7 @@ export function App() {
   const [dtools, setDtools] = useState<ParsedWorkbook | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<ListFilter>('differences')
+  const [filter, setFilter] = useState<ListFilter>('all')
   const [query, setQuery] = useState('')
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
 
@@ -140,7 +141,9 @@ export function App() {
     if (!result) return []
     const q = query.trim().toUpperCase()
     return result.lines.filter((line) => {
+      if (filter === 'all' && !lineIsDiscrepancy(line)) return false
       if (filter === 'differences' && !line.qtyDiffers) return false
+      if (filter === 'grouped' && !line.isGrouped) return false
       if (filter === 'matched' && line.match !== 'both') return false
       if (filter === 'similar' && !line.isSimilar) return false
       if (filter === 'ipoint-only' && line.match !== 'ipoint-only') return false
@@ -156,6 +159,7 @@ export function App() {
         line.dtoolsModel,
         line.matchVia,
         line.similarTo,
+        line.groupDetail,
         ...line.notes,
       ]
         .join(' ')
@@ -235,9 +239,11 @@ export function App() {
           </li>
           <li>
             <strong>Results are grouped by D-Tools product row.</strong> If several iPoint rows match the same D-Tools
-            row, their <code>stock_Available</code> values are added together and the note says they were summed. If
-            one iPoint row matches more than one D-Tools row, that iPoint quantity is shown on each matched D-Tools
-            line so you can decide per D-Tools product.
+            row, their <code>stock_Available</code> values are <strong>added together</strong>. The row is flagged{' '}
+            <em>Grouped / added</em> and shows each iPoint line that went into the total, for example{' '}
+            <code>ABC (1) + DEF (2) = 3</code>. That grouping is treated as a discrepancy even when the total happens
+            to equal D-Tools qty, so it cannot be missed. If one iPoint row also matches more than one D-Tools product,
+            the same iPoint stock is shown on each of those D-Tools rows and noted as shared.
           </li>
           <li>
             <strong>Quantities are numbers.</strong> Blank <code>stock_Available</code> or <code>Quantity on Hand</code>{' '}
@@ -341,8 +347,16 @@ export function App() {
               <b>{result.matchedKeys}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
+              <span>All discrepancies</span>
+              <b>{result.discrepancyCount}</b>
+            </div>
+            <div className="xfer-stat xfer-stat-alert">
               <span>Qty differences</span>
               <b>{result.qtyDifferences}</b>
+            </div>
+            <div className="xfer-stat xfer-stat-alert">
+              <span>Grouped / added</span>
+              <b>{result.groupedCount}</b>
             </div>
             <div className="xfer-stat xfer-stat-alert">
               <span>Similar SKUs flagged</span>
@@ -366,7 +380,9 @@ export function App() {
             <div className="xfer-tabs">
               {(
                 [
+                  ['all', `All discrepancies (${result.discrepancyCount})`],
                   ['differences', `Qty differences (${result.qtyDifferences})`],
+                  ['grouped', `Grouped / added (${result.groupedCount})`],
                   ['matched', `Matched (${result.matchedKeys})`],
                   ['similar', `Similar SKUs (${result.similarCount})`],
                   ['ipoint-only', `iPoint only, no exact match (${result.ipointOnly})`],
@@ -436,7 +452,11 @@ export function App() {
                     return (
                       <tr
                         key={line.id}
-                        className={[line.qtyDiffers ? 'xfer-row-diff' : '', line.isSimilar ? 'xfer-row-similar' : '']
+                        className={[
+                          line.qtyDiffers ? 'xfer-row-diff' : '',
+                          line.isSimilar ? 'xfer-row-similar' : '',
+                          line.isGrouped ? 'xfer-row-grouped' : '',
+                        ]
                           .filter(Boolean)
                           .join(' ') || undefined}
                       >
@@ -471,7 +491,25 @@ export function App() {
                             <span className="xfer-muted">—</span>
                           )}
                         </td>
-                        <td className="xfer-num">{formatQty(line.ipointQty, line.ipointRaw)}</td>
+                        <td className="xfer-num">
+                          {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
+                          {line.isGrouped ? (
+                            <div className="xfer-group">
+                              <span className="xfer-flag-grouped">Grouped / added</span>
+                              <ul>
+                                {line.ipointSlices.map((slice, idx) => (
+                                  <li key={`${line.id}-s-${idx}`}>
+                                    <code>{slice.partNumber || slice.item || 'row'}</code>
+                                    {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
+                                    {': '}
+                                    {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className="xfer-group-total">{line.groupDetail}</div>
+                            </div>
+                          ) : null}
+                        </td>
                         <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
                         <td
                           className={`xfer-num ${delta > 0 ? 'xfer-delta-up' : delta < 0 ? 'xfer-delta-down' : ''}`}

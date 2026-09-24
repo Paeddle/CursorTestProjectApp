@@ -3,6 +3,13 @@ import { normalizePartKey, type ParsedItem, type ParsedWorkbook } from './parseI
 export type MatchKind = 'both' | 'ipoint-only' | 'dtools-only'
 export type QtyChoice = 'keep-dtools' | 'use-ipoint'
 
+export type QtySlice = {
+  partNumber: string
+  item: string
+  qty: number
+  qtyRaw: string
+}
+
 export type CompareLine = {
   id: string
   partKey: string
@@ -25,6 +32,9 @@ export type CompareLine = {
   qtyDiffers: boolean
   similarTo: string
   isSimilar: boolean
+  ipointSlices: QtySlice[]
+  isGrouped: boolean
+  groupDetail: string
 }
 
 export type CompareResult = {
@@ -36,6 +46,8 @@ export type CompareResult = {
   ipointDuplicates: number
   dtoolsDuplicates: number
   similarCount: number
+  groupedCount: number
+  discrepancyCount: number
 }
 
 const SKIP_KEYS = new Set(['N/A', 'NA', '-', '--', 'NONE', 'NULL', '?', '#'])
@@ -105,10 +117,22 @@ function sumQty(items: ParsedItem[]): number {
   return items.reduce((sum, item) => sum + item.qty, 0)
 }
 
-function qtyLabel(items: ParsedItem[]): string {
-  if (items.length === 0) return ''
-  if (items.length === 1) return items[0].qtyRaw
-  return items.map((i) => i.qtyRaw || '0').join(' + ')
+function sliceFrom(item: ParsedItem): QtySlice {
+  return {
+    partNumber: item.partNumber,
+    item: item.itemName,
+    qty: item.qty,
+    qtyRaw: item.qtyRaw,
+  }
+}
+
+function groupDetail(slices: QtySlice[], total: number): string {
+  const parts = slices.map((s) => `${s.partNumber || s.item || 'row'} (${s.qtyRaw === '' ? 'blank→0' : s.qtyRaw})`)
+  return `${parts.join(' + ')} = ${total}`
+}
+
+export function lineIsDiscrepancy(line: CompareLine): boolean {
+  return line.qtyDiffers || line.isSimilar || line.match !== 'both' || line.isGrouped
 }
 
 function indexByKey(items: ParsedItem[], keysFor: (item: ParsedItem) => string[]): {
@@ -150,14 +174,17 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
   const matchedD = new Map<number, DtoolsMatch>()
   const matchedI = new Set<number>()
 
+  const ipointHitCounts = new Map<number, number>()
   for (const ir of ipoint.items) {
     const hits = new Map<number, ParsedItem>()
     for (const key of ipointKeys(ir)) {
       for (const dr of dIndex.byKey.get(key) || []) hits.set(dr.sourceIndex, dr)
     }
+    ipointHitCounts.set(ir.sourceIndex, 0)
     for (const dr of hits.values()) {
       const reasons = matchReasons(ir, dr)
       if (reasons.length === 0) continue
+      ipointHitCounts.set(ir.sourceIndex, (ipointHitCounts.get(ir.sourceIndex) || 0) + 1)
       matchedI.add(ir.sourceIndex)
       let bucket = matchedD.get(dr.sourceIndex)
       if (!bucket) {
@@ -179,9 +206,17 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     const dr = bucket.dtools
     const irows = bucket.ipoints
     const ipointQty = sumQty(irows)
+    const slices = irows.map(sliceFrom)
+    const isGrouped = slices.length > 1
     const notes: string[] = []
-    if (irows.length > 1) {
-      notes.push(`${irows.length} iPoint rows matched this D-Tools row; stock available shown as the sum (${ipointQty})`)
+    if (isGrouped) {
+      notes.push(`GROUPED: ${slices.length} iPoint rows were added together: ${groupDetail(slices, ipointQty)}`)
+    }
+    const shared = Math.max(...irows.map((row) => ipointHitCounts.get(row.sourceIndex) || 1), 1)
+    if (shared > 1) {
+      notes.push(
+        `SHARED: at least one of these iPoint rows also matched ${shared} D-Tools products. The same iPoint stock is shown on each of those D-Tools rows so nothing is hidden.`,
+      )
     }
     const qtyDiffers = ipointQty !== dr.qty
     if (qtyDiffers) notes.push('Quantity differs')
@@ -194,19 +229,22 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       matchVia: [...bucket.reasons].join('; '),
       ipointQty,
       dtoolsQty: dr.qty,
-      ipointRaw: qtyLabel(irows),
+      ipointRaw: isGrouped ? groupDetail(slices, ipointQty) : slices[0]?.qtyRaw || '',
       dtoolsRaw: dr.qtyRaw,
       ipointItem: unique(irows.map((row) => row.itemName)).join(' / '),
       ipointManufacturer: unique(irows.map((row) => row.manufacturer).filter(Boolean)).join(' / '),
       dtoolsBrand: dr.brand,
       dtoolsModel: dr.model,
       ipointRows: irows.length,
-      dtoolsRowsForKey: 1,
+      dtoolsRowsForKey: shared,
       dtoolsSourceIndex: dr.sourceIndex,
       notes,
       qtyDiffers,
       similarTo: '',
       isSimilar: false,
+      ipointSlices: slices,
+      isGrouped,
+      groupDetail: isGrouped ? groupDetail(slices, ipointQty) : '',
     })
   }
 
@@ -240,6 +278,9 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       qtyDiffers: false,
       similarTo,
       isSimilar: Boolean(similarTo),
+      ipointSlices: [sliceFrom(ir)],
+      isGrouped: false,
+      groupDetail: '',
     })
   }
 
@@ -273,6 +314,9 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       qtyDiffers: false,
       similarTo,
       isSimilar: Boolean(similarTo),
+      ipointSlices: [],
+      isGrouped: false,
+      groupDetail: '',
     })
   }
 
@@ -285,6 +329,8 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     ipointDuplicates: iIndex.duplicateKeys,
     dtoolsDuplicates: dIndex.duplicateKeys,
     similarCount: lines.filter((l) => l.isSimilar).length,
+    groupedCount: lines.filter((l) => l.isGrouped).length,
+    discrepancyCount: lines.filter(lineIsDiscrepancy).length,
   }
 }
 
