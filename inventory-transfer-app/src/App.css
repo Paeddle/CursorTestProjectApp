@@ -405,6 +405,20 @@
   font-size: 0.85rem;
 }
 
+.xfer-choice-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.xfer-choice-stack label {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .xfer-notes {
   color: #fde68a;
   font-size: 0.74rem;

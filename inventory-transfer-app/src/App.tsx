@@ -121,7 +121,17 @@ export function App() {
     return result.lines.filter((line) => {
       if (view === 'problems' && !lineIsDiscrepancy(line)) return false
       if (!q) return true
-      return [ipointLabel(line), dtoolsLabel(line), problemLabel(line), line.similarTo, line.groupDetail]
+      return [
+        ipointLabel(line),
+        dtoolsLabel(line),
+        problemLabel(line),
+        line.ipointManufacturer,
+        line.dtoolsBrand,
+        line.matchVia,
+        line.similarTo,
+        line.groupDetail,
+        ...line.notes,
+      ]
         .join(' ')
         .toUpperCase()
         .includes(q)
@@ -129,6 +139,21 @@ export function App() {
   }, [query, result, view])
 
   const overrideCount = countOverrides(resolvedChoices)
+
+  const setChoice = (id: string, choice: QtyChoice) => {
+    setChoices((prev) => ({ ...prev, [id]: choice }))
+  }
+
+  const applyIpointToDiffs = () => {
+    if (!result) return
+    const next = { ...resolvedChoices }
+    for (const line of result.lines) {
+      if (line.qtyDiffers) next[line.id] = 'use-ipoint'
+    }
+    setChoices(next)
+  }
+
+  const resetChoices = () => setChoices({})
 
   const exportCsv = () => {
     if (!dtools || !result) return
@@ -258,12 +283,46 @@ export function App() {
       {result && ipoint && dtools ? (
         <>
           <p className="xfer-coverage">
-            <strong>{result.discrepancyCount.toLocaleString()} problems</strong>
-            {' · '}
-            {result.matchedKeys.toLocaleString()} parts match
-            {' · '}
-            {result.qtyDifferences.toLocaleString()} have different counts
+            <strong>{result.discrepancyCount.toLocaleString()} problems</strong> in one list. Exact matches:{' '}
+            {result.matchedKeys.toLocaleString()} of {dtools.comparedCount.toLocaleString()} D-Tools parts and{' '}
+            {ipoint.comparedCount.toLocaleString()} iPoint parts. Similar SKUs are near-misses, not missed exact
+            matches.
           </p>
+
+          <div className="xfer-stats">
+            <div className="xfer-stat xfer-stat-alert">
+              <span>Problems</span>
+              <b>{result.discrepancyCount}</b>
+            </div>
+            <div className="xfer-stat xfer-stat-alert">
+              <span>Different counts</span>
+              <b>{result.qtyDifferences}</b>
+            </div>
+            <div className="xfer-stat xfer-stat-alert">
+              <span>Added together</span>
+              <b>{result.groupedCount}</b>
+            </div>
+            <div className="xfer-stat xfer-stat-alert">
+              <span>Looks similar</span>
+              <b>{result.similarCount}</b>
+            </div>
+            <div className="xfer-stat">
+              <span>Only in iPoint</span>
+              <b>{result.ipointOnly}</b>
+            </div>
+            <div className="xfer-stat">
+              <span>Only in D-Tools</span>
+              <b>{result.dtoolsOnly}</b>
+            </div>
+            <div className="xfer-stat">
+              <span>Matched</span>
+              <b>{result.matchedKeys}</b>
+            </div>
+            <div className="xfer-stat">
+              <span>Use iPoint count</span>
+              <b>{overrideCount}</b>
+            </div>
+          </div>
 
           <div className="xfer-toolbar">
             <label className="xfer-choice">
@@ -278,12 +337,26 @@ export function App() {
               className="xfer-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search…"
+              placeholder="Search part number, item, brand…"
             />
+            <button type="button" className="xfer-btn" onClick={applyIpointToDiffs} disabled={result.qtyDifferences === 0}>
+              Use iPoint count for all differences
+            </button>
+            <button type="button" className="xfer-btn xfer-btn-secondary" onClick={resetChoices} disabled={overrideCount === 0}>
+              Keep all D-Tools counts
+            </button>
             <button type="button" className="xfer-btn" onClick={exportCsv} disabled={overrideCount === 0}>
-              Download D-Tools file ({overrideCount} count changes)
+              Download updated Products.csv
             </button>
           </div>
+
+          {result.ipointDuplicates || result.dtoolsDuplicates ? (
+            <p className="xfer-warn">
+              Duplicate IDs: {result.ipointDuplicates} iPoint item/part-number values and {result.dtoolsDuplicates}{' '}
+              D-Tools model/part-number values appear on more than one row. If several iPoint rows match one D-Tools
+              row, stock is added together.
+            </p>
+          ) : null}
 
           {visible.length === 0 ? (
             <p className="xfer-empty">{query.trim() ? 'Nothing matches that search.' : 'No problems found.'}</p>
@@ -293,16 +366,24 @@ export function App() {
                 <thead>
                   <tr>
                     <th>What is different</th>
-                    <th>iPoint</th>
-                    <th>D-Tools</th>
-                    <th>iPoint count</th>
-                    <th>D-Tools count</th>
-                    <th>Use iPoint count?</th>
+                    <th>iPoint part number</th>
+                    <th>iPoint item</th>
+                    <th>D-Tools part number</th>
+                    <th>D-Tools model</th>
+                    <th>Matched via</th>
+                    <th>Similar SKU</th>
+                    <th>iPoint stock</th>
+                    <th>D-Tools qty</th>
+                    <th>Difference</th>
+                    <th>Decision</th>
+                    <th>Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map((line) => {
                     const choice = resolvedChoices[line.id]
+                    const delta =
+                      line.ipointQty != null && line.dtoolsQty != null ? line.ipointQty - line.dtoolsQty : 0
                     return (
                       <tr
                         key={line.id}
@@ -316,42 +397,96 @@ export function App() {
                       >
                         <td>
                           <strong>{problemLabel(line)}</strong>
-                          {line.isSimilar && line.similarTo ? (
-                            <div className="xfer-muted">Close to {line.similarTo}</div>
+                        </td>
+                        <td>
+                          {line.ipointPartNumber ? (
+                            <code>{line.ipointPartNumber}</code>
+                          ) : (
+                            <span className="xfer-muted">—</span>
+                          )}
+                          {line.isSimilar && line.match === 'dtools-only' ? (
+                            <div className="xfer-muted">Nearby iPoint SKU — not a match</div>
                           ) : null}
-                          {line.isGrouped ? <div className="xfer-group-total">{line.groupDetail}</div> : null}
                         </td>
                         <td>
-                          {ipointLabel(line) === '—' ? <span className="xfer-muted">—</span> : ipointLabel(line)}
+                          {line.ipointItem || <span className="xfer-muted">—</span>}
+                          {line.ipointManufacturer ? (
+                            <div className="xfer-muted">{line.ipointManufacturer}</div>
+                          ) : null}
                         </td>
                         <td>
-                          {dtoolsLabel(line) === '—' ? <span className="xfer-muted">—</span> : dtoolsLabel(line)}
+                          {line.dtoolsPartNumber ? (
+                            <code>{line.dtoolsPartNumber}</code>
+                          ) : (
+                            <span className="xfer-muted">—</span>
+                          )}
+                          {line.dtoolsBrand ? <div className="xfer-muted">{line.dtoolsBrand}</div> : null}
+                          {line.isSimilar && line.match === 'ipoint-only' ? (
+                            <div className="xfer-muted">Nearby D-Tools SKU — not a match</div>
+                          ) : null}
                         </td>
-                        <td className="xfer-num">
-                          {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
-                        </td>
-                        <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
+                        <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
+                        <td className="xfer-notes">{line.matchVia || '—'}</td>
                         <td>
-                          {line.qtyDiffers ? (
-                            <label className="xfer-choice">
-                              <input
-                                type="checkbox"
-                                checked={choice === 'use-ipoint'}
-                                onChange={(e) =>
-                                  setChoices((prev) => ({
-                                    ...prev,
-                                    [line.id]: e.target.checked ? 'use-ipoint' : 'keep-dtools',
-                                  }))
-                                }
-                              />
-                              Yes ({deltaText(line)})
-                            </label>
-                          ) : line.match === 'both' ? (
-                            <span className="xfer-muted">Same</span>
+                          {line.isSimilar ? <span className="xfer-flag-similar">Similar</span> : null}
+                          {line.similarTo ? (
+                            <code>{line.similarTo}</code>
                           ) : (
                             <span className="xfer-muted">—</span>
                           )}
                         </td>
+                        <td className="xfer-num">
+                          {formatQty(line.ipointQty, line.isGrouped ? String(line.ipointQty) : line.ipointRaw)}
+                          {line.isGrouped ? (
+                            <div className="xfer-group">
+                              <span className="xfer-flag-grouped">Added together</span>
+                              <ul>
+                                {line.ipointSlices.map((slice, idx) => (
+                                  <li key={`${line.id}-s-${idx}`}>
+                                    <code>{slice.partNumber || slice.item || 'row'}</code>
+                                    {slice.item && slice.partNumber ? ` · ${slice.item}` : ''}
+                                    {': '}
+                                    {slice.qtyRaw === '' ? 'blank→0' : slice.qtyRaw}
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className="xfer-group-total">{line.groupDetail}</div>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="xfer-num">{formatQty(line.dtoolsQty, line.dtoolsRaw)}</td>
+                        <td
+                          className={`xfer-num ${delta > 0 ? 'xfer-delta-up' : delta < 0 ? 'xfer-delta-down' : ''}`}
+                        >
+                          {deltaText(line)}
+                        </td>
+                        <td>
+                          {line.match === 'both' ? (
+                            <div className="xfer-choice-stack">
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`choice-${line.id}`}
+                                  checked={choice !== 'use-ipoint'}
+                                  onChange={() => setChoice(line.id, 'keep-dtools')}
+                                />
+                                Keep D-Tools
+                              </label>
+                              <label>
+                                <input
+                                  type="radio"
+                                  name={`choice-${line.id}`}
+                                  checked={choice === 'use-ipoint'}
+                                  onChange={() => setChoice(line.id, 'use-ipoint')}
+                                />
+                                Use iPoint count
+                              </label>
+                            </div>
+                          ) : (
+                            <span className="xfer-muted">No D-Tools row to update</span>
+                          )}
+                        </td>
+                        <td className="xfer-notes">{line.notes.join('. ') || '—'}</td>
                       </tr>
                     )
                   })}
