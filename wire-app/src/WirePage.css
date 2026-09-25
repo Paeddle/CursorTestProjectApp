@@ -1708,8 +1708,9 @@
 
 @media (max-width: 768px) {
   .wire-page {
-    padding: 1rem 0.85rem 1.25rem;
+    padding: 1rem 0.85rem 0.55rem;
     max-width: 100%;
+    height: 100dvh;
   }
 
   .wire-header h1 {
@@ -1738,14 +1739,53 @@
   }
 
   .wire-list-scroll {
-    max-height: min(66vh, 48rem);
+    max-height: min(82vh, 56rem);
     touch-action: pan-y;
   }
 
   @supports (height: 1dvh) {
     .wire-list-scroll {
-      max-height: min(66dvh, 48rem);
+      max-height: min(82dvh, 56rem);
     }
+  }
+
+  .wire-workspace--boxes .wire-sheet-body {
+    padding-top: 0.65rem;
+    padding-bottom: 0.45rem;
+  }
+
+  .wire-sheet-panel--boxes .wire-boxes-section-nav {
+    margin-bottom: 0.5rem;
+  }
+
+  .wire-sheet-panel--boxes .wire-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+    gap: 0.45rem;
+  }
+
+  .wire-sheet-panel--boxes .wire-search-wrap {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .wire-sheet-panel--boxes .wire-toolbar-btn {
+    width: auto;
+    min-height: 40px;
+    flex: 1 1 calc(33.33% - 0.45rem);
+    padding: 0.45rem 0.7rem;
+  }
+
+  .wire-sheet-panel--boxes .wire-boxes-menu {
+    margin-left: 0;
+  }
+
+  .wire-sheet-panel--boxes .wire-list-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    height: auto;
   }
 
   .wire-report-section,
@@ -1925,16 +1965,24 @@
 
 @media (max-width: 480px) {
   .wire-page {
-    padding: 0.85rem 0.65rem 1rem;
+    padding: 0.85rem 0.65rem 0.45rem;
   }
 
   .wire-boxes-section-nav {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.45rem;
+  }
+
+  .wire-boxes-section-title {
+    font-size: 1rem;
   }
 
   .wire-boxes-mode-toggle {
-    width: 100%;
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .wire-boxes-mode-btn {
