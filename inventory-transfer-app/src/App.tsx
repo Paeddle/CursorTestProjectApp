@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  applySimilarSelection,
   applyTreatedSimilar,
   applyUncombined,
   compareInventories,
@@ -185,6 +186,7 @@ export function App() {
   const [treatedSimilar, setTreatedSimilar] = useState<Record<string, boolean>>({})
   const [uncombined, setUncombined] = useState<Record<string, boolean>>({})
   const [addNew, setAddNew] = useState<Record<string, boolean>>({})
+  const [similarPick, setSimilarPick] = useState<Record<string, string>>({})
   const [trackerCategories, setTrackerCategories] = useState<string[]>([])
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -219,6 +221,7 @@ export function App() {
       setTreatedSimilar({})
       setUncombined({})
       setAddNew({})
+      setSimilarPick({})
       setStatFilter(null)
       setSortCol(null)
     } catch (err) {
@@ -246,6 +249,7 @@ export function App() {
       setTreatedSimilar({})
       setUncombined({})
       setAddNew({})
+      setSimilarPick({})
       setStatFilter(null)
       setSortCol(null)
     } catch (err) {
@@ -257,8 +261,11 @@ export function App() {
 
   const effectiveLines = useMemo(() => {
     if (!result) return []
-    return applyUncombined(applyTreatedSimilar(result.lines, treatedSimilar), uncombined)
-  }, [result, treatedSimilar, uncombined])
+    return applyUncombined(
+      applyTreatedSimilar(applySimilarSelection(result.lines, similarPick), treatedSimilar),
+      uncombined,
+    )
+  }, [result, similarPick, treatedSimilar, uncombined])
 
   const resolvedChoices = useMemo(() => {
     if (!effectiveLines.length) return {}
@@ -479,10 +486,10 @@ export function App() {
           <li>
             <strong>Close SKUs are not treated as the same part unless you say so.</strong> Related names like{' '}
             <code>ARC ULTRA</code> vs <code>ARC ULTRA WALL MOUNT</code> are labeled <em>Looks similar, not the same</em>
-            because the D-Tools Model starts with the iPoint Item — not because of the D-Tools part number. Each
-            similar row is its own D-Tools product. Checking <em>Treat as same part</em> applies only to that one
-            row. <em>Add as new Products.csv row</em> adds the iPoint item as a new product and can be used on any
-            of those similar rows.
+            because names share words like <code>ARC</code> and <code>WALL MOUNT</code>, or one name starts with the
+            other. If several parts look similar, pick the right one from the Similar SKU menu. Checking{' '}
+            <em>Treat as same part</em> applies only to that one row. <em>Add as new Products.csv row</em> adds the
+            iPoint item as a new product.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
@@ -694,7 +701,22 @@ export function App() {
                         <td className="xfer-notes">{line.matchVia || '—'}</td>
                         <td>
                           {line.isSimilar ? <span className="xfer-flag-similar">Similar</span> : null}
-                          {line.similarTo ? (
+                          {line.similarCandidates.length > 1 ? (
+                            <select
+                              className="xfer-similar-select"
+                              value={similarPick[line.id] || line.similarCandidates[0].id}
+                              onChange={(e) =>
+                                setSimilarPick((prev) => ({ ...prev, [line.id]: e.target.value }))
+                              }
+                              aria-label="Choose similar part"
+                            >
+                              {line.similarCandidates.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.optionLabel}
+                                </option>
+                              ))}
+                            </select>
+                          ) : line.similarTo ? (
                             <code>{line.similarTo}</code>
                           ) : (
                             <span className="xfer-muted">—</span>

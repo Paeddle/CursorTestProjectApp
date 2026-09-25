@@ -318,6 +318,20 @@
   text-transform: uppercase;
 }
 
+.xfer-similar-select {
+  display: block;
+  width: 100%;
+  max-width: 16rem;
+  margin: 0.25rem 0 0.35rem;
+  padding: 0.28rem 0.4rem;
+  border: 1px solid #4b647c;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #111827;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
 .xfer-stat-alert b {
   color: #fbbf24;
 }

@@ -12,6 +12,27 @@ export type QtySlice = {
   qtyRaw: string
 }
 
+export type SimilarCandidate = {
+  id: string
+  sourceIndex: number
+  optionLabel: string
+  label: string
+  reason: string
+  score: number
+  partNumber: string
+  itemName: string
+  manufacturer: string
+  brand: string
+  model: string
+  qty: number
+  qtyRaw: string
+  category: string
+  itemType: string
+  descriptionCustomer: string
+  unitHardCost: string
+  unitPrice: string
+}
+
 export type CompareLine = {
   id: string
   partKey: string
@@ -40,6 +61,7 @@ export type CompareLine = {
   similarDtoolsQty: number | null
   similarDtoolsRaw: string
   similarDtoolsSourceIndex: number | null
+  similarCandidates: SimilarCandidate[]
   treatedAsSame: boolean
   ipointSlices: QtySlice[]
   groupSlices: QtySlice[]
@@ -91,6 +113,33 @@ function similarScore(a: string, b: string): number {
   return 0
 }
 
+function wordTokens(value: string): string[] {
+  return usableKey(value)
+    .split(/[^A-Z0-9]+/)
+    .filter((token) => token.length >= 3)
+}
+
+function sharedPhraseBonus(left: string[], right: string[]): number {
+  let best = 0
+  for (let i = 0; i < left.length; i += 1) {
+    for (let j = 0; j < right.length; j += 1) {
+      let n = 0
+      while (i + n < left.length && j + n < right.length && left[i + n] === right[j + n]) n += 1
+      if (n > best) best = n
+    }
+  }
+  return best >= 2 ? best * 20 : 0
+}
+
+function tokenOverlapScore(left: string, right: string): number {
+  const a = wordTokens(left)
+  const b = wordTokens(right)
+  if (!a.length || !b.length) return 0
+  const shared = [...new Set(a.filter((token) => b.includes(token)))]
+  if (shared.length < 2 || !shared.some((token) => token.length >= 4)) return 0
+  return shared.reduce((sum, token) => sum + token.length, 0) + sharedPhraseBonus(a, b)
+}
+
 type SimilarKey = {
   key: string
   field: string
@@ -139,27 +188,53 @@ function dtoolsSimilarKeys(item: ParsedItem): SimilarKey[] {
   ])
 }
 
-function bestSimilar(
+function findSimilarCandidates(
   selfKeys: SimilarKey[],
   others: { keys: SimilarKey[]; item: ParsedItem }[],
-): { item: ParsedItem; label: string; reason: string } | null {
-  let best: { score: number; item: ParsedItem; self: SimilarKey; other: SimilarKey } | null = null
-  for (const self of selfKeys) {
-    for (const other of others) {
+  side: 'i' | 'd',
+): SimilarCandidate[] {
+  const found: SimilarCandidate[] = []
+  for (const other of others) {
+    let best: { score: number; self: SimilarKey; other: SimilarKey; compact: number } | null = null
+    for (const self of selfKeys) {
       for (const otherKey of other.keys) {
-        const score = similarScore(self.key, otherKey.key)
-        if (score > (best?.score || 0)) {
-          best = { score, item: other.item, self, other: otherKey }
-        }
+        const compact = similarScore(self.key, otherKey.key)
+        const tokens = tokenOverlapScore(self.display, otherKey.display)
+        const score = compact * 10 + tokens
+        if (score > (best?.score || 0)) best = { score, self, other: otherKey, compact }
       }
     }
+    if (!best || best.score <= 0) continue
+    const item = other.item
+    found.push({
+      id: `${side}-${item.sourceIndex}`,
+      sourceIndex: item.sourceIndex,
+      optionLabel:
+        side === 'd'
+          ? [item.partNumber, item.model].filter(Boolean).join(' · ') || item.model
+          : [item.partNumber, item.itemName].filter(Boolean).join(' · ') || item.itemName,
+      label: best.other.display,
+      reason:
+        best.compact > 0
+          ? describeSimilar(best.self, best.other)
+          : `${best.self.field} ${best.self.display} shares words with ${best.other.field} ${best.other.display}`,
+      score: best.score,
+      partNumber: item.partNumber,
+      itemName: item.itemName,
+      manufacturer: item.manufacturer,
+      brand: item.brand,
+      model: item.model,
+      qty: item.qty,
+      qtyRaw: item.qtyRaw,
+      category: item.category,
+      itemType: item.itemType,
+      descriptionCustomer: item.descriptionCustomer,
+      unitHardCost: item.unitHardCost,
+      unitPrice: item.unitPrice,
+    })
   }
-  if (!best) return null
-  return {
-    item: best.item,
-    label: best.other.display,
-    reason: describeSimilar(best.self, best.other),
-  }
+  found.sort((a, b) => b.score - a.score || a.optionLabel.localeCompare(b.optionLabel))
+  return found.slice(0, 8)
 }
 
 function unique(values: string[]): string[] {
@@ -236,6 +311,7 @@ const blankSimilar = {
   similarDtoolsQty: null as number | null,
   similarDtoolsRaw: '',
   similarDtoolsSourceIndex: null as number | null,
+  similarCandidates: [] as SimilarCandidate[],
   treatedAsSame: false,
 }
 
@@ -363,19 +439,22 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
 
   for (const ir of ipoint.items) {
     if (matchedI.has(ir.sourceIndex)) continue
-    const similar = bestSimilar(ipointSimilarKeys(ir), dSimilar)
+    const candidates = findSimilarCandidates(ipointSimilarKeys(ir), dSimilar, 'd')
+    const similar = candidates[0]
     const similarTo = similar?.label || ''
     const notes = ['In iPoint only — no exact D-Tools Model or Part Number match']
     if (similar) {
       notes.push(
-        `${similar.reason}. This is not an exact match unless you treat this one row as the same part.`,
+        candidates.length > 1
+          ? `${candidates.length} similar D-Tools products. ${similar.reason}. Pick one in the Similar SKU menu — only the selected row is used.`
+          : `${similar.reason}. This is not an exact match unless you treat this one row as the same part.`,
       )
     }
     lines.push({
       id: `i-${ir.sourceIndex}`,
       partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
       ipointPartNumber: ir.partNumber,
-      dtoolsPartNumber: similar?.item.partNumber || '',
+      dtoolsPartNumber: similar?.partNumber || '',
       match: 'ipoint-only',
       matchVia: similar ? `Similar only — ${similar.reason}` : '',
       ipointQty: ir.qty,
@@ -384,8 +463,8 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsRaw: '',
       ipointItem: ir.itemName,
       ipointManufacturer: ir.manufacturer,
-      dtoolsBrand: similar?.item.brand || '',
-      dtoolsModel: similar?.item.model || '',
+      dtoolsBrand: similar?.brand || '',
+      dtoolsModel: similar?.model || '',
       ipointRows: 1,
       dtoolsRowsForKey: 0,
       dtoolsSourceIndex: null,
@@ -393,12 +472,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       qtyDiffers: false,
       similarTo,
       isSimilar: Boolean(similarTo),
-      similarPeerId: similar ? `d-${similar.item.sourceIndex}` : '',
+      similarPeerId: similar?.id || '',
       similarIpointQty: ir.qty,
       similarIpointRaw: ir.qtyRaw,
-      similarDtoolsQty: similar ? similar.item.qty : null,
-      similarDtoolsRaw: similar?.item.qtyRaw || '',
-      similarDtoolsSourceIndex: similar ? similar.item.sourceIndex : null,
+      similarDtoolsQty: similar?.qty ?? null,
+      similarDtoolsRaw: similar?.qtyRaw || '',
+      similarDtoolsSourceIndex: similar?.sourceIndex ?? null,
+      similarCandidates: candidates,
       treatedAsSame: false,
       ipointSlices: [sliceFrom(ir)],
       groupSlices: [sliceFrom(ir)],
@@ -418,18 +498,21 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
 
   for (const dr of dtools.items) {
     if (matchedD.has(dr.sourceIndex)) continue
-    const similar = bestSimilar(dtoolsSimilarKeys(dr), iSimilar)
+    const candidates = findSimilarCandidates(dtoolsSimilarKeys(dr), iSimilar, 'i')
+    const similar = candidates[0]
     const similarTo = similar?.label || ''
     const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
     if (similar) {
       notes.push(
-        `${similar.reason}. This D-Tools row already exists in Products.csv. Treat only this row as the same part, or add the iPoint item as a new row.`,
+        candidates.length > 1
+          ? `${candidates.length} similar iPoint products. ${similar.reason}. Pick one in the Similar SKU menu.`
+          : `${similar.reason}. This D-Tools row already exists in Products.csv. Treat only this row as the same part, or add the iPoint item as a new row.`,
       )
     }
     lines.push({
       id: `d-${dr.sourceIndex}`,
       partKey: usableKey(dr.partNumber) || usableKey(dr.model) || String(dr.sourceIndex),
-      ipointPartNumber: similar?.item.partNumber || '',
+      ipointPartNumber: similar?.partNumber || '',
       dtoolsPartNumber: dr.partNumber,
       match: 'dtools-only',
       matchVia: similar ? `Similar only — ${similar.reason}` : '',
@@ -437,8 +520,8 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsQty: dr.qty,
       ipointRaw: '',
       dtoolsRaw: dr.qtyRaw,
-      ipointItem: similar?.item.itemName || '',
-      ipointManufacturer: similar?.item.manufacturer || '',
+      ipointItem: similar?.itemName || '',
+      ipointManufacturer: similar?.manufacturer || '',
       dtoolsBrand: dr.brand,
       dtoolsModel: dr.model,
       ipointRows: 0,
@@ -448,12 +531,13 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       qtyDiffers: false,
       similarTo,
       isSimilar: Boolean(similarTo),
-      similarPeerId: similar ? `i-${similar.item.sourceIndex}` : '',
-      similarIpointQty: similar ? similar.item.qty : null,
-      similarIpointRaw: similar?.item.qtyRaw || '',
+      similarPeerId: similar?.id || '',
+      similarIpointQty: similar?.qty ?? null,
+      similarIpointRaw: similar?.qtyRaw || '',
       similarDtoolsQty: dr.qty,
       similarDtoolsRaw: dr.qtyRaw,
       similarDtoolsSourceIndex: dr.sourceIndex,
+      similarCandidates: candidates,
       treatedAsSame: false,
       ipointSlices: [],
       groupSlices: [],
@@ -462,12 +546,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       splitFromGroup: false,
       splitParentId: '',
       quantitiesCombined: true,
-      ipointSourceIndex: similar?.item.sourceIndex ?? null,
-      ipointCategory: similar?.item.category || '',
-      ipointType: similar?.item.itemType || '',
-      ipointDescription: similar?.item.descriptionCustomer || '',
-      ipointUnitCost: similar?.item.unitHardCost || '',
-      ipointUnitPrice: similar?.item.unitPrice || '',
+      ipointSourceIndex: similar?.sourceIndex ?? null,
+      ipointCategory: similar?.category || '',
+      ipointType: similar?.itemType || '',
+      ipointDescription: similar?.descriptionCustomer || '',
+      ipointUnitCost: similar?.unitHardCost || '',
+      ipointUnitPrice: similar?.unitPrice || '',
     })
   }
 
@@ -483,6 +567,51 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
     groupedCount: lines.filter((l) => l.isGrouped).length,
     discrepancyCount: lines.filter(lineIsDiscrepancy).length,
   }
+}
+
+export function applySimilarSelection(
+  lines: CompareLine[],
+  picks: Record<string, string>,
+): CompareLine[] {
+  return lines.map((line) => {
+    if (line.similarCandidates.length === 0) return line
+    const chosen =
+      line.similarCandidates.find((candidate) => candidate.id === picks[line.id]) || line.similarCandidates[0]
+    if (line.match === 'ipoint-only') {
+      return {
+        ...line,
+        dtoolsPartNumber: chosen.partNumber,
+        dtoolsModel: chosen.model,
+        dtoolsBrand: chosen.brand,
+        similarTo: chosen.label,
+        similarPeerId: chosen.id,
+        similarDtoolsQty: chosen.qty,
+        similarDtoolsRaw: chosen.qtyRaw,
+        similarDtoolsSourceIndex: chosen.sourceIndex,
+        matchVia: `Similar only — ${chosen.reason}`,
+      }
+    }
+    if (line.match === 'dtools-only') {
+      return {
+        ...line,
+        ipointPartNumber: chosen.partNumber,
+        ipointItem: chosen.itemName,
+        ipointManufacturer: chosen.manufacturer,
+        similarTo: chosen.label,
+        similarPeerId: chosen.id,
+        similarIpointQty: chosen.qty,
+        similarIpointRaw: chosen.qtyRaw,
+        ipointSourceIndex: chosen.sourceIndex,
+        ipointCategory: chosen.category,
+        ipointType: chosen.itemType,
+        ipointDescription: chosen.descriptionCustomer,
+        ipointUnitCost: chosen.unitHardCost,
+        ipointUnitPrice: chosen.unitPrice,
+        matchVia: `Similar only — ${chosen.reason}`,
+      }
+    }
+    return line
+  })
 }
 
 export function applyTreatedSimilar(
