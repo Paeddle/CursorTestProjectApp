@@ -206,16 +206,19 @@ input {
 .history { display: grid; gap: 14px; }
 .day {
   padding: 14px 0;
-  border-top: 1px solid #2a3140;
+  border-top: 2px solid #3d4658;
 }
 .day ul {
   list-style: none;
   margin: 10px 0 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
-.day li { align-items: flex-start; }
+.day li { align-items: flex-start; padding: 12px 0; }
+.day li + li {
+  border-top: 2px solid #4b5568;
+}
 .day strong, .day span { display: block; }
 .day span { margin-top: 2px; font-size: 0.92rem; }
 

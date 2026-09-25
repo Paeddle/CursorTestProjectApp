@@ -69,6 +69,8 @@ export function formatTablePlain(sessions: Session[]): string {
 }
 
 export function formatTableHtml(sessions: Session[]): string {
+  const cell = 'border:2px solid #444;padding:8px 10px'
+  const head = 'border:2px solid #222;padding:8px 10px;background:#eee'
   const body = orderedSessions(sessions)
     .map((session) => {
       const key = dayKey(session.start.punchedAt)
@@ -77,10 +79,10 @@ export function formatTableHtml(sessions: Session[]): string {
       const clockOut = session.dayOnly
         ? 'NA'
         : escapeHtml(session.end ? formatClock(session.end.punchedAt) : '—')
-      return `<tr><td>${escapeHtml(formatTableDate(key))}</td><td>${job}</td><td>${clockIn}</td><td>${clockOut}</td></tr>`
+      return `<tr><td style="${cell}">${escapeHtml(formatTableDate(key))}</td><td style="${cell}">${job}</td><td style="${cell}">${clockIn}</td><td style="${cell}">${clockOut}</td></tr>`
     })
     .join('')
-  return `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:14px"><thead><tr><th align="left">Date</th><th align="left">Job</th><th align="left">Clock-In</th><th align="left">Clock-Out</th></tr></thead><tbody>${body}</tbody></table>`
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:2px solid #222;font-family:Calibri,Arial,sans-serif;font-size:14px"><thead><tr><th align="left" style="${head}">Date</th><th align="left" style="${head}">Job</th><th align="left" style="${head}">Clock-In</th><th align="left" style="${head}">Clock-Out</th></tr></thead><tbody>${body}</tbody></table>`
 }
 
 export async function copyTimesheet(format: TimesheetFormat, sessions: Session[]): Promise<void> {
