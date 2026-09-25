@@ -23,7 +23,7 @@ import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/
 import { fetchPartsTrackerCategories } from './lib/partsCategories'
 import './App.css'
 
-type StatFilter = 'review' | 'diff' | 'grouped' | 'similar' | 'ipoint' | 'dtools' | 'matched' | 'overrides' | 'adds'
+type StatFilter = 'all' | 'review' | 'diff' | 'grouped' | 'similar' | 'ipoint' | 'dtools' | 'matched' | 'overrides' | 'adds'
 type SortCol =
   | 'problem'
   | 'ipointPn'
@@ -89,7 +89,8 @@ function lineMatchesFilter(
   choice: QtyChoice | undefined,
   addNew?: boolean,
 ): boolean {
-  if (filter === 'review') return true
+  if (filter === 'all' || filter == null) return true
+  if (filter === 'review') return lineIsDiscrepancy(line)
   if (filter === 'diff') return line.qtyDiffers
   if (filter === 'grouped') return line.groupSlices.length > 1
   if (filter === 'similar') return line.isSimilar && !line.treatedAsSame
@@ -180,7 +181,7 @@ export function App() {
   const [dtools, setDtools] = useState<ParsedWorkbook | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [statFilter, setStatFilter] = useState<StatFilter | null>(null)
+  const [statFilter, setStatFilter] = useState<StatFilter | null>('all')
   const [query, setQuery] = useState('')
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
   const [treatedSimilar, setTreatedSimilar] = useState<Record<string, boolean>>({})
@@ -222,7 +223,7 @@ export function App() {
       setUncombined({})
       setAddNew({})
       setSimilarPick({})
-      setStatFilter(null)
+      setStatFilter('all')
       setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read that file.')
@@ -250,7 +251,7 @@ export function App() {
       setUncombined({})
       setAddNew({})
       setSimilarPick({})
-      setStatFilter(null)
+      setStatFilter('all')
       setSortCol(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load example files.')
@@ -306,6 +307,7 @@ export function App() {
 
   const stats = useMemo(
     () => ({
+      allRows: effectiveLines.length,
       discrepancyCount: effectiveLines.filter(lineIsDiscrepancy).length,
       qtyDifferences: effectiveLines.filter((line) => line.qtyDiffers).length,
       groupedCount: effectiveLines.filter((line) => line.groupSlices.length > 1).length,
@@ -488,7 +490,8 @@ export function App() {
             truth — the same D-Tools part never appears twice. Similar SKU lists only iPoint items. Common words
             like <em>wall mount</em> are ignored by themselves; <code>ARC WALL MOUNT</code> can still look like{' '}
             <code>ARC ULTRA WALL MOUNT</code> because they share <code>ARC</code>. Checking{' '}
-            <em>Treat as same part</em> applies only to that one D-Tools row and the iPoint item you selected.
+            <em>Treat as same part</em> applies only to that one D-Tools row and the iPoint item you selected.{' '}
+            <em>Need review</em> hides D-Tools parts that already match iPoint with the same quantity.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
@@ -558,7 +561,8 @@ export function App() {
           <div className="xfer-stats">
             {(
               [
-                ['review', 'Rows to review', stats.discrepancyCount, true],
+                ['all', 'All D-Tools rows', stats.allRows, false],
+                ['review', 'Need review', stats.discrepancyCount, true],
                 ['diff', 'Different counts', stats.qtyDifferences, true],
                 ['grouped', 'Added together', stats.groupedCount, true],
                 ['similar', 'Looks similar', stats.similarCount, true],
