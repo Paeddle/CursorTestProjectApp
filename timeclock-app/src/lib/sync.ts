@@ -1,17 +1,19 @@
 import { loadPunches, savePunches } from './db'
 import { isSupabaseConfigured, supabase } from './supabase'
-import type { Punch, TimePunchRow } from './types'
+import { normalizePunch, type Punch, type TimePunchRow } from './types'
 
 function rowToPunch(row: TimePunchRow): Punch {
-  return {
+  return normalizePunch({
     id: row.id,
     action: row.action,
     punchedAt: row.punched_at,
     note: row.note ?? '',
+    job: row.job ?? '',
+    dayOnly: Boolean(row.day_only),
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     syncStatus: 'synced',
-  }
+  })
 }
 
 function punchToRow(punch: Punch): TimePunchRow {
@@ -20,6 +22,8 @@ function punchToRow(punch: Punch): TimePunchRow {
     action: punch.action,
     punched_at: punch.punchedAt,
     note: punch.note,
+    job: punch.job,
+    day_only: punch.dayOnly,
     updated_at: punch.updatedAt,
     deleted_at: punch.deletedAt,
   }
@@ -41,7 +45,7 @@ export async function syncPunches(): Promise<Punch[]> {
 
   const { data, error } = await supabase
     .from('time_punches')
-    .select('id, action, punched_at, note, updated_at, deleted_at')
+    .select('id, action, punched_at, note, job, day_only, updated_at, deleted_at')
   if (error) throw new Error(error.message)
 
   const remote = ((data ?? []) as TimePunchRow[]).map(rowToPunch)

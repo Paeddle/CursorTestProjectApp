@@ -6,6 +6,8 @@ create table if not exists public.time_punches (
   action text not null check (action in ('in', 'out')),
   punched_at timestamptz not null,
   note text not null default '',
+  job text not null default '',
+  day_only boolean not null default false,
   updated_at timestamptz not null default now(),
   deleted_at timestamptz
 );

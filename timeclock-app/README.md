@@ -12,6 +12,8 @@ https://shswebapp.site/timeclock/
 
 Run `supabase/add-time-punches.sql` in the Supabase SQL Editor.
 
+If the table already exists, also run `supabase/add-time-punches-job.sql` so job names and holiday / sick-day entries can sync.
+
 ## Local dev
 
 ```bash

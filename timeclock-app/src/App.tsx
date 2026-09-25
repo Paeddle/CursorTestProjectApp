@@ -1,26 +1,83 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { JobField } from './JobField'
 import { loadPunches, savePunch } from './lib/db'
+import {
+  copyTimesheet,
+  filterSessionsByRange,
+  formatCompactText,
+  formatTablePlain,
+  type TimesheetFormat,
+} from './lib/export'
+import { lastJob, listJobs, rememberJob } from './lib/jobs'
 import {
   clockedInSince,
   dayKey,
   formatClock,
   formatDayLabel,
   formatDuration,
+  fromLocalDateTime,
+  mondayOf,
   minutesBetween,
+  sessionJob,
+  toDateInput,
   toSessions,
+  toTimeInput,
 } from './lib/sessions'
 import { isSupabaseConfigured } from './lib/supabase'
 import { syncPunches } from './lib/sync'
-import type { Punch, PunchAction } from './lib/types'
+import { normalizePunch, type Punch, type PunchAction } from './lib/types'
+
+type Editor = {
+  mode: 'edit' | 'add'
+  startId: string | null
+  endId: string | null
+  job: string
+  date: string
+  clockIn: string
+  clockOut: string
+  note: string
+  dayOnly: boolean
+}
+
+function weekBounds(offsetWeeks = 0): { from: string; to: string } {
+  const start = mondayOf(new Date())
+  start.setDate(start.getDate() + offsetWeeks * 7)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 6)
+  return { from: toDateInput(start), to: toDateInput(end) }
+}
+
+function emptyEditor(job: string): Editor {
+  const now = new Date()
+  return {
+    mode: 'add',
+    startId: null,
+    endId: null,
+    job,
+    date: toDateInput(now),
+    clockIn: toTimeInput(now.toISOString()),
+    clockOut: '',
+    note: '',
+    dayOnly: false,
+  }
+}
 
 export function App() {
   const [punches, setPunches] = useState<Punch[]>([])
+  const [job, setJob] = useState(() => lastJob())
   const [note, setNote] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const [online, setOnline] = useState(() => navigator.onLine)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState('')
   const [ready, setReady] = useState(false)
+  const [editor, setEditor] = useState<Editor | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [range, setRange] = useState(() => weekBounds(0))
+  const [exportFormat, setExportFormat] = useState<TimesheetFormat>('table')
+  const [copyMessage, setCopyMessage] = useState('')
+
+  const jobs = useMemo(() => listJobs(punches), [punches])
 
   const refresh = useCallback(async () => {
     setPunches(await loadPunches())
@@ -81,31 +138,124 @@ export function App() {
   }, [sessions])
 
   const todayMinutes = sessions.reduce((total, session) => {
-    if (dayKey(session.start.punchedAt) !== today) return total
+    if (session.dayOnly || dayKey(session.start.punchedAt) !== today) return total
     if (session.minutes != null) return total + session.minutes
     return total + minutesBetween(session.start.punchedAt, now)
   }, 0)
 
+  const exportSessions = useMemo(
+    () => filterSessionsByRange(sessions, range.from, range.to),
+    [sessions, range],
+  )
+
+  async function persist(punch: Punch) {
+    const stamp = new Date().toISOString()
+    await savePunch({ ...punch, updatedAt: stamp, syncStatus: 'pending' })
+  }
+
   async function punch(action: PunchAction) {
     const stamp = new Date().toISOString()
-    const next: Punch = {
+    const jobName = rememberJob(job) || rememberJob(lastJob(punches))
+    const next = normalizePunch({
       id: crypto.randomUUID(),
       action,
       punchedAt: stamp,
       note: note.trim(),
+      job: action === 'out' && openPunch?.job ? openPunch.job : jobName,
+      dayOnly: false,
       updatedAt: stamp,
       deletedAt: null,
       syncStatus: 'pending',
-    }
+    })
+    if (jobName) setJob(jobName)
     await savePunch(next)
     setNote('')
     await sync()
   }
 
-  async function removePunch(punch: Punch) {
+  async function removePunch(target: Punch) {
     const stamp = new Date().toISOString()
-    await savePunch({ ...punch, deletedAt: stamp, updatedAt: stamp, syncStatus: 'pending' })
-    await sync()
+    await savePunch({ ...target, deletedAt: stamp, updatedAt: stamp, syncStatus: 'pending' })
+  }
+
+  function openEdit(session: (typeof sessions)[number]) {
+    setEditor({
+      mode: 'edit',
+      startId: session.start.id,
+      endId: session.end?.id ?? null,
+      job: sessionJob(session),
+      date: dayKey(session.start.punchedAt),
+      clockIn: toTimeInput(session.start.punchedAt),
+      clockOut: session.end ? toTimeInput(session.end.punchedAt) : '',
+      note: session.start.note || session.end?.note || '',
+      dayOnly: session.dayOnly,
+    })
+  }
+
+  async function saveEditor() {
+    if (!editor) return
+    const jobName = rememberJob(editor.job)
+    if (!jobName) return
+    setSaving(true)
+    try {
+      const startAt = editor.dayOnly
+        ? fromLocalDateTime(editor.date, '12:00')
+        : fromLocalDateTime(editor.date, editor.clockIn || '08:00')
+      let endAt = ''
+      if (!editor.dayOnly && editor.clockOut) {
+        endAt = fromLocalDateTime(editor.date, editor.clockOut)
+        if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
+          const nextDay = new Date(`${editor.date}T${editor.clockOut}:00`)
+          nextDay.setDate(nextDay.getDate() + 1)
+          endAt = nextDay.toISOString()
+        }
+      }
+
+      const start = normalizePunch({
+        id: editor.startId ?? crypto.randomUUID(),
+        action: 'in',
+        punchedAt: startAt,
+        note: editor.note.trim(),
+        job: jobName,
+        dayOnly: editor.dayOnly,
+        deletedAt: null,
+        syncStatus: 'pending',
+      })
+      await persist(start)
+
+      const existingEnd = editor.endId ? punches.find((item) => item.id === editor.endId) : undefined
+      if (endAt) {
+        const end = normalizePunch({
+          id: existingEnd?.id ?? crypto.randomUUID(),
+          action: 'out',
+          punchedAt: endAt,
+          note: editor.note.trim(),
+          job: jobName,
+          dayOnly: false,
+          deletedAt: null,
+          syncStatus: 'pending',
+        })
+        await persist(end)
+      } else if (existingEnd) {
+        await removePunch(existingEnd)
+      }
+
+      setJob(jobName)
+      setEditor(null)
+      await sync()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCopy() {
+    try {
+      await copyTimesheet(exportFormat, exportSessions)
+      setCopyMessage(exportSessions.length === 0 ? 'Nothing in that range to copy.' : 'Copied. Paste it into your email.')
+    } catch {
+      setCopyMessage('Copy failed. Select the preview and copy it manually.')
+    }
+    window.setTimeout(() => setCopyMessage(''), 4000)
   }
 
   const clockLabel = new Date(now).toLocaleTimeString([], {
@@ -133,7 +283,10 @@ export function App() {
             <p className="status-time">
               {formatDuration(minutesBetween(openPunch.punchedAt, now))}
             </p>
-            <p className="status-meta">Since {formatClock(openPunch.punchedAt)}</p>
+            <p className="status-meta">
+              Since {formatClock(openPunch.punchedAt)}
+              {openPunch.job ? ` · ${openPunch.job}` : ''}
+            </p>
           </>
         ) : (
           <>
@@ -143,6 +296,8 @@ export function App() {
           </>
         )}
       </section>
+
+      <JobField value={job} jobs={jobs} onChange={setJob} />
 
       <label className="note">
         Note
@@ -177,20 +332,76 @@ export function App() {
                   : 'Saved on this phone. They will sync when you have a connection.'}
       </p>
 
+      <section className="export">
+        <div className="history-head">
+          <h2>Email timesheet</h2>
+          <div className="row-actions">
+            <button type="button" className="text-btn" onClick={() => setRange(weekBounds(0))}>
+              This week
+            </button>
+            <button type="button" className="text-btn" onClick={() => setRange(weekBounds(-1))}>
+              Last week
+            </button>
+          </div>
+        </div>
+        <div className="range-row">
+          <label>
+            From
+            <input type="date" value={range.from} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
+          </label>
+          <label>
+            To
+            <input type="date" value={range.to} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
+          </label>
+        </div>
+        <div className="format-row">
+          <button
+            type="button"
+            className={exportFormat === 'table' ? 'chip on' : 'chip'}
+            onClick={() => setExportFormat('table')}
+          >
+            Table
+          </button>
+          <button
+            type="button"
+            className={exportFormat === 'compact' ? 'chip on' : 'chip'}
+            onClick={() => setExportFormat('compact')}
+          >
+            Compact
+          </button>
+        </div>
+        <pre className="export-preview">
+          {exportSessions.length === 0
+            ? 'No punches in this range.'
+            : exportFormat === 'compact'
+              ? formatCompactText(exportSessions)
+              : formatTablePlain(exportSessions)}
+        </pre>
+        <button type="button" className="copy-btn" onClick={() => void handleCopy()}>
+          Copy for email
+        </button>
+        {copyMessage ? <p className="copy-msg">{copyMessage}</p> : null}
+      </section>
+
       <section className="history">
         <div className="history-head">
           <h2>Recent</h2>
-          <button type="button" className="text-btn" onClick={() => void sync()}>
-            Sync now
-          </button>
+          <div className="row-actions">
+            <button type="button" className="text-btn" onClick={() => setEditor(emptyEditor(job || lastJob(punches)))}>
+              Add entry
+            </button>
+            <button type="button" className="text-btn" onClick={() => void sync()}>
+              Sync now
+            </button>
+          </div>
         </div>
         {groups.length === 0 ? (
           <p className="empty">No punches yet.</p>
         ) : (
           groups.map(([key, daySessions]) => {
             const closed = daySessions.reduce((sum, session) => sum + (session.minutes ?? 0), 0)
-            const running = daySessions.some((session) => session.end == null)
-            const extra = running && key === today ? minutesBetween(openPunch!.punchedAt, now) : 0
+            const running = daySessions.some((session) => !session.dayOnly && session.end == null)
+            const extra = running && key === today && openPunch ? minutesBetween(openPunch.punchedAt, now) : 0
             return (
               <article key={key} className="day">
                 <header>
@@ -202,30 +413,41 @@ export function App() {
                     <li key={session.id}>
                       <div>
                         <strong>
-                          {formatClock(session.start.punchedAt)}
-                          {' – '}
-                          {session.end ? formatClock(session.end.punchedAt) : 'now'}
+                          {session.dayOnly
+                            ? sessionJob(session) || 'Time off'
+                            : `${formatClock(session.start.punchedAt)} – ${session.end ? formatClock(session.end.punchedAt) : 'now'}`}
                         </strong>
                         <span>
-                          {session.minutes != null
-                            ? formatDuration(session.minutes)
-                            : formatDuration(minutesBetween(session.start.punchedAt, now))}
+                          {session.dayOnly
+                            ? 'No clock times'
+                            : session.minutes != null
+                              ? formatDuration(session.minutes)
+                              : formatDuration(minutesBetween(session.start.punchedAt, now))}
+                          {!session.dayOnly && sessionJob(session) ? ` · ${sessionJob(session)}` : ''}
                           {session.start.note ? ` · ${session.start.note}` : ''}
-                          {session.end?.note ? ` · ${session.end.note}` : ''}
+                          {session.end?.note && session.end.note !== session.start.note
+                            ? ` · ${session.end.note}`
+                            : ''}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="text-btn"
-                        onClick={() => {
-                          void (async () => {
-                            await removePunch(session.start)
-                            if (session.end) await removePunch(session.end)
-                          })()
-                        }}
-                      >
-                        Delete
-                      </button>
+                      <div className="row-actions">
+                        <button type="button" className="text-btn" onClick={() => openEdit(session)}>
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="text-btn"
+                          onClick={() => {
+                            void (async () => {
+                              await removePunch(session.start)
+                              if (session.end) await removePunch(session.end)
+                              await sync()
+                            })()
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -234,6 +456,71 @@ export function App() {
           })
         )}
       </section>
+
+      {editor ? (
+        <div className="sheet" role="dialog" aria-label={editor.mode === 'edit' ? 'Edit time' : 'Add entry'}>
+          <div className="sheet-card">
+            <div className="history-head">
+              <h2>{editor.mode === 'edit' ? 'Edit time' : 'Add entry'}</h2>
+              <button type="button" className="text-btn" onClick={() => setEditor(null)}>
+                Close
+              </button>
+            </div>
+            <JobField value={editor.job} jobs={jobs} onChange={(value) => setEditor({ ...editor, job: value })} />
+            <label className="note">
+              Date
+              <input
+                type="date"
+                value={editor.date}
+                onChange={(event) => setEditor({ ...editor, date: event.target.value })}
+              />
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={editor.dayOnly}
+                onChange={(event) => setEditor({ ...editor, dayOnly: event.target.checked })}
+              />
+              No clock times (holiday / sick day)
+            </label>
+            {!editor.dayOnly ? (
+              <div className="range-row">
+                <label>
+                  Clock in
+                  <input
+                    type="time"
+                    value={editor.clockIn}
+                    onChange={(event) => setEditor({ ...editor, clockIn: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Clock out
+                  <input
+                    type="time"
+                    value={editor.clockOut}
+                    onChange={(event) => setEditor({ ...editor, clockOut: event.target.value })}
+                  />
+                </label>
+              </div>
+            ) : null}
+            <label className="note">
+              Note
+              <input
+                value={editor.note}
+                onChange={(event) => setEditor({ ...editor, note: event.target.value })}
+                placeholder="Optional"
+                maxLength={200}
+              />
+            </label>
+            <button type="button" className="copy-btn" disabled={saving || !editor.job.trim()} onClick={() => void saveEditor()}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <p className="status-meta">
+              Changes save on this device right away, then sync when you are online.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

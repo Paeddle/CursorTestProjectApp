@@ -1,4 +1,4 @@
-import type { Punch } from './types'
+import { normalizePunch, type Punch } from './types'
 
 const DB_NAME = 'timeclock'
 const STORE = 'punches'
@@ -22,7 +22,8 @@ export async function loadPunches(): Promise<Punch[]> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readonly')
     const request = tx.objectStore(STORE).getAll()
-    request.onsuccess = () => resolve((request.result as Punch[]) ?? [])
+    request.onsuccess = () =>
+      resolve(((request.result as Punch[]) ?? []).map((punch) => normalizePunch(punch)))
     request.onerror = () => reject(request.error)
   })
 }

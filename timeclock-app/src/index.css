@@ -23,6 +23,13 @@ body {
 
 button, input { font: inherit; }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
 .page {
   width: min(440px, 100%);
   height: 100%;
@@ -86,11 +93,57 @@ h2, h3 { margin: 0; }
   font-variant-numeric: tabular-nums;
 }
 
-.note {
+.note, .export label, .sheet label.note, .range-row label {
   display: grid;
   gap: 8px;
   margin-bottom: 14px;
   color: #b7b1a6;
+}
+
+.job-field { position: relative; }
+
+.job-input-wrap { position: relative; }
+
+.job-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #d7b56a;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.job-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  margin: 6px 0 0;
+  padding: 6px 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: #252b38;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.job-list button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.job-list button:hover,
+.job-list button:focus {
+  background: #323a4c;
 }
 
 input {
@@ -100,6 +153,14 @@ input {
   border-radius: 14px;
   background: #1c212b;
   color: inherit;
+}
+
+.job-input-wrap input { padding-right: 42px; }
+
+.export input,
+.sheet input[type="date"],
+.sheet input[type="time"] {
+  background: #12151c;
 }
 
 .punch {
@@ -140,4 +201,92 @@ input {
   color: #d7b56a;
   cursor: pointer;
   padding: 0;
+}
+
+.export, .sheet-card {
+  margin: 8px 0 18px;
+  padding: 16px;
+  border-radius: 18px;
+  background: #1c212b;
+}
+
+.range-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.range-row label { margin-bottom: 12px; }
+
+.format-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chip, .copy-btn {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.chip {
+  padding: 8px 14px;
+  background: #2a3140;
+  color: #d7d2c8;
+}
+
+.chip.on {
+  background: #f2c14e;
+  color: #1a1408;
+}
+
+.export-preview {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #12151c;
+  color: #f4f1ea;
+  white-space: pre-wrap;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.copy-btn {
+  width: 100%;
+  min-height: 48px;
+  background: #f2c14e;
+  color: #1a1408;
+  font-weight: 700;
+}
+
+.copy-btn:disabled { opacity: 0.6; }
+
+.copy-msg, .check { color: #b7b1a6; }
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.check input { width: auto; }
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  align-items: end;
+  background: rgba(8, 10, 14, 0.62);
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.sheet-card {
+  margin: 0;
+  max-height: min(92dvh, 760px);
+  overflow-y: auto;
 }
