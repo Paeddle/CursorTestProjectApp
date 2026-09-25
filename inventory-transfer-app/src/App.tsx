@@ -369,19 +369,16 @@ export function App() {
   }
 
   const toggleTreatAsSame = (line: CompareLine, checked: boolean) => {
-    const ids = [line.id, line.similarPeerId].filter(Boolean)
     setTreatedSimilar((prev) => {
       const next = { ...prev }
-      for (const id of ids) {
-        if (checked) next[id] = true
-        else delete next[id]
-      }
+      if (checked) next[line.id] = true
+      else delete next[line.id]
       return next
     })
     if (checked) {
       setAddNew((prev) => {
         const next = { ...prev }
-        for (const id of ids) delete next[id]
+        delete next[line.id]
         return next
       })
     }
@@ -481,10 +478,11 @@ export function App() {
           </li>
           <li>
             <strong>Close SKUs are not treated as the same part unless you say so.</strong> Related names like{' '}
-            <code>C4-CA1</code> vs <code>C4-CA1-V2</code> are labeled <em>Looks similar, not the same</em>. The
-            iPoint item column still shows only the iPoint Item value. A D-Tools-only similar row shows that nearby
-            iPoint stock for comparison, but it is still a different Products.csv row until you check{' '}
-            <em>Treat as same part</em>. iPoint-only rows can be appended with <em>Add as new Products.csv row</em>.
+            <code>ARC ULTRA</code> vs <code>ARC ULTRA WALL MOUNT</code> are labeled <em>Looks similar, not the same</em>
+            because the D-Tools Model starts with the iPoint Item — not because of the D-Tools part number. Each
+            similar row is its own D-Tools product. Checking <em>Treat as same part</em> applies only to that one
+            row. <em>Add as new Products.csv row</em> adds the iPoint item as a new product and can be used on any
+            of those similar rows.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
@@ -795,7 +793,7 @@ export function App() {
                                   checked={Boolean(addNew[line.id])}
                                   onChange={(e) => toggleAddNew(line.id, e.target.checked)}
                                 />
-                                Add as new Products.csv row
+                                Add iPoint item as new Products.csv row
                               </label>
                               {addNew[line.id] ? (
                                 <div className="xfer-muted">

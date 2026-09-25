@@ -91,41 +91,65 @@ function similarScore(a: string, b: string): number {
   return 0
 }
 
-function similarReason(left: string, right: string, leftLabel: string, rightLabel: string): string {
-  if (!left || !right) return ''
-  if (left === right) {
-    return `${leftLabel} and ${rightLabel} match after ignoring hyphens and spaces`
+type SimilarKey = {
+  key: string
+  field: string
+  display: string
+}
+
+function describeSimilar(left: SimilarKey, right: SimilarKey): string {
+  const leftName = `${left.field} ${left.display}`
+  const rightName = `${right.field} ${right.display}`
+  if (left.key === right.key) {
+    return `${leftName} and ${rightName} match after ignoring hyphens and spaces`
   }
-  const shorter = left.length <= right.length ? left : right
-  const longer = left.length > right.length ? left : right
-  const shorterLabel = left.length <= right.length ? leftLabel : rightLabel
-  const longerLabel = left.length > right.length ? leftLabel : rightLabel
-  if (longer.startsWith(shorter)) {
-    return `${longerLabel} starts with ${shorterLabel}`
+  const shorter = left.key.length <= right.key.length ? left : right
+  const longer = left.key.length <= right.key.length ? right : left
+  if (longer.key.startsWith(shorter.key)) {
+    return `${longer.field} ${longer.display} starts with ${shorter.field} ${shorter.display}`
   }
-  if (longer.includes(shorter)) {
-    return `${shorterLabel} appears inside ${longerLabel}`
+  if (longer.key.includes(shorter.key)) {
+    return `${shorter.field} ${shorter.display} appears in ${longer.field} ${longer.display}`
   }
-  return `${leftLabel} is similar to ${rightLabel}`
+  return `${leftName} looks like ${rightName}`
+}
+
+function labeledKeys(fields: { value: string; field: string }[]): SimilarKey[] {
+  const out: SimilarKey[] = []
+  for (const field of fields) {
+    const usable = usableKey(field.value)
+    const compact = compactKey(field.value)
+    if (usable) out.push({ key: usable, field: field.field, display: field.value })
+    if (compact && compact !== usable) out.push({ key: compact, field: field.field, display: field.value })
+  }
+  return out
+}
+
+function ipointSimilarKeys(item: ParsedItem): SimilarKey[] {
+  return labeledKeys([
+    { value: item.partNumber, field: 'iPoint Part Number' },
+    { value: item.itemName, field: 'iPoint Item' },
+  ])
+}
+
+function dtoolsSimilarKeys(item: ParsedItem): SimilarKey[] {
+  return labeledKeys([
+    { value: item.partNumber, field: 'D-Tools Part Number' },
+    { value: item.model, field: 'D-Tools Model' },
+  ])
 }
 
 function bestSimilar(
-  keys: string[],
-  others: { keys: string[]; item: ParsedItem; label: string }[],
+  selfKeys: SimilarKey[],
+  others: { keys: SimilarKey[]; item: ParsedItem }[],
 ): { item: ParsedItem; label: string; reason: string } | null {
-  let best: { score: number; item: ParsedItem; label: string; left: string; right: string } | null = null
-  for (const key of keys) {
+  let best: { score: number; item: ParsedItem; self: SimilarKey; other: SimilarKey } | null = null
+  for (const self of selfKeys) {
     for (const other of others) {
       for (const otherKey of other.keys) {
-        const score = similarScore(key, otherKey)
+        const score = similarScore(self.key, otherKey.key)
         if (score > (best?.score || 0)) {
-          best = {
-            score,
-            item: other.item,
-            label: other.label,
-            left: key,
-            right: otherKey,
-          }
+          best = { score, item: other.item, self, other: otherKey }
         }
       }
     }
@@ -133,8 +157,8 @@ function bestSimilar(
   if (!best) return null
   return {
     item: best.item,
-    label: best.label,
-    reason: similarReason(best.left, best.right, 'this SKU', best.label),
+    label: best.other.display,
+    reason: describeSimilar(best.self, best.other),
   }
 }
 
@@ -244,14 +268,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
   const dIndex = indexByKey(dtools.items, dtoolsKeys)
   const iIndex = indexByKey(ipoint.items, ipointKeys)
   const iSimilar = ipoint.items.map((item) => ({
-    keys: unique([compactKey(item.partNumber), compactKey(item.itemName)]),
+    keys: ipointSimilarKeys(item),
     item,
-    label: item.partNumber || item.itemName,
   }))
   const dSimilar = dtools.items.map((item) => ({
-    keys: unique([compactKey(item.partNumber), compactKey(item.model)]),
+    keys: dtoolsSimilarKeys(item),
     item,
-    label: item.partNumber || item.model,
   }))
   const matchedD = new Map<number, DtoolsMatch>()
   const matchedI = new Set<number>()
@@ -341,15 +363,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
 
   for (const ir of ipoint.items) {
     if (matchedI.has(ir.sourceIndex)) continue
-    const similar = bestSimilar(
-      unique([compactKey(ir.partNumber), compactKey(ir.itemName)]),
-      dSimilar,
-    )
+    const similar = bestSimilar(ipointSimilarKeys(ir), dSimilar)
     const similarTo = similar?.label || ''
     const notes = ['In iPoint only — no exact D-Tools Model or Part Number match']
     if (similar) {
       notes.push(
-        `Flagged similar to D-Tools ${similar.label}. ${similar.reason}. Quantity is not compared unless you treat them as the same part.`,
+        `${similar.reason}. This is not an exact match unless you treat this one row as the same part.`,
       )
     }
     lines.push({
@@ -399,15 +418,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
 
   for (const dr of dtools.items) {
     if (matchedD.has(dr.sourceIndex)) continue
-    const similar = bestSimilar(
-      unique([compactKey(dr.partNumber), compactKey(dr.model)]),
-      iSimilar,
-    )
+    const similar = bestSimilar(dtoolsSimilarKeys(dr), iSimilar)
     const similarTo = similar?.label || ''
     const notes = ['In D-Tools only — no exact iPoint Item or Part Number match']
     if (similar) {
       notes.push(
-        `Flagged similar to iPoint ${similar.label}. ${similar.reason}. Shown in the iPoint columns for comparison only — not a match unless you treat them as the same part.`,
+        `${similar.reason}. This D-Tools row already exists in Products.csv. Treat only this row as the same part, or add the iPoint item as a new row.`,
       )
     }
     lines.push({
@@ -473,8 +489,7 @@ export function applyTreatedSimilar(
   lines: CompareLine[],
   treatedIds: Record<string, boolean>,
 ): CompareLine[] {
-  const isTreated = (line: CompareLine) =>
-    Boolean(treatedIds[line.id] || (line.similarPeerId && treatedIds[line.similarPeerId]))
+  const isTreated = (line: CompareLine) => Boolean(treatedIds[line.id])
 
   const out: CompareLine[] = []
   for (const line of lines) {

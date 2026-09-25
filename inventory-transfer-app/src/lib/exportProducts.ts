@@ -33,7 +33,9 @@ function blankRow(headers: string[]): Record<string, string> {
 }
 
 export function canAddAsNew(line: CompareLine): boolean {
-  return line.match === 'ipoint-only' && !line.treatedAsSame
+  if (line.treatedAsSame || line.ipointSourceIndex == null) return false
+  if (!line.ipointPartNumber && !line.ipointItem) return false
+  return line.match === 'ipoint-only' || (line.match === 'dtools-only' && line.isSimilar)
 }
 
 export function buildProductsExport(
