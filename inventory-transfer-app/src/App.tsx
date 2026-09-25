@@ -89,7 +89,7 @@ function lineMatchesFilter(
   choice: QtyChoice | undefined,
   addNew?: boolean,
 ): boolean {
-  if (filter === 'all' || filter == null) return true
+  if (filter === 'all' || filter == null) return line.match !== 'ipoint-only'
   if (filter === 'review') return lineIsDiscrepancy(line)
   if (filter === 'diff') return line.qtyDiffers
   if (filter === 'grouped') return line.groupSlices.length > 1
@@ -307,7 +307,7 @@ export function App() {
 
   const stats = useMemo(
     () => ({
-      allRows: effectiveLines.length,
+      allRows: effectiveLines.filter((line) => line.match !== 'ipoint-only').length,
       discrepancyCount: effectiveLines.filter(lineIsDiscrepancy).length,
       qtyDifferences: effectiveLines.filter((line) => line.qtyDiffers).length,
       groupedCount: effectiveLines.filter((line) => line.groupSlices.length > 1).length,
@@ -491,7 +491,8 @@ export function App() {
             like <em>wall mount</em> are ignored by themselves; <code>ARC WALL MOUNT</code> can still look like{' '}
             <code>ARC ULTRA WALL MOUNT</code> because they share <code>ARC</code>. Checking{' '}
             <em>Treat as same part</em> applies only to that one D-Tools row and the iPoint item you selected.{' '}
-            <em>Need review</em> hides D-Tools parts that already match iPoint with the same quantity.
+            <em>Need review</em> hides exact matches with the same quantity and D-Tools-only parts that have no
+            iPoint counterpart. Click <em>Only in iPoint</em> to see iPoint parts that are not in Products.csv.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}

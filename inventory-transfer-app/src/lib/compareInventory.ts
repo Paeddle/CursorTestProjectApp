@@ -380,7 +380,8 @@ function groupDetail(slices: QtySlice[], total: number): string {
 
 export function lineIsDiscrepancy(line: CompareLine): boolean {
   if (line.treatedAsSame) return true
-  return line.qtyDiffers || line.isSimilar || line.match !== 'both' || line.isGrouped
+  if (line.qtyDiffers || line.isSimilar || line.isGrouped) return true
+  return line.match === 'ipoint-only'
 }
 
 const blankSimilar = {
@@ -573,6 +574,45 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       ipointDescription: similar?.descriptionCustomer || '',
       ipointUnitCost: similar?.unitHardCost || '',
       ipointUnitPrice: similar?.unitPrice || '',
+    })
+  }
+
+  for (const ir of ipoint.items) {
+    if (matchedI.has(ir.sourceIndex)) continue
+    lines.push({
+      id: `i-${ir.sourceIndex}`,
+      partKey: usableKey(ir.partNumber) || usableKey(ir.itemName) || String(ir.sourceIndex),
+      ipointPartNumber: ir.partNumber,
+      dtoolsPartNumber: '',
+      match: 'ipoint-only',
+      matchVia: '',
+      ipointQty: ir.qty,
+      dtoolsQty: null,
+      ipointRaw: ir.qtyRaw,
+      dtoolsRaw: '',
+      ipointItem: ir.itemName,
+      ipointManufacturer: ir.manufacturer,
+      dtoolsBrand: '',
+      dtoolsModel: '',
+      ipointRows: 1,
+      dtoolsRowsForKey: 0,
+      dtoolsSourceIndex: null,
+      notes: ['In iPoint only — no exact D-Tools Model or Part Number match. Add it as a new Products.csv row if you want it in D-Tools.'],
+      qtyDiffers: false,
+      ...blankSimilar,
+      ipointSlices: [sliceFrom(ir)],
+      groupSlices: [sliceFrom(ir)],
+      isGrouped: false,
+      groupDetail: '',
+      splitFromGroup: false,
+      splitParentId: '',
+      quantitiesCombined: true,
+      ipointSourceIndex: ir.sourceIndex,
+      ipointCategory: ir.category,
+      ipointType: ir.itemType,
+      ipointDescription: ir.descriptionCustomer,
+      ipointUnitCost: ir.unitHardCost,
+      ipointUnitPrice: ir.unitPrice,
     })
   }
 
