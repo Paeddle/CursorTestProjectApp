@@ -824,6 +824,8 @@ export function App() {
                                 </div>
                               ) : null}
                             </div>
+                          ) : line.match === 'dtools-only' ? (
+                            <span className="xfer-muted">No iPoint part to match</span>
                           ) : (
                             <span className="xfer-muted">No D-Tools row to update</span>
                           )}
