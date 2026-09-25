@@ -1,0 +1,133 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #12151c;
+  color: #f4f1ea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, #2a2418 0%, transparent 42%),
+    #12151c;
+}
+
+button, input { font: inherit; }
+
+.page {
+  width: min(440px, 100%);
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+}
+
+.top, .history-head, .day header, .day li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow, .status-label, .status-meta, .sync-line, .empty, .day span {
+  color: #b7b1a6;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+h2, h3 { margin: 0; }
+
+.pill {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.pill-ok { background: #1d3a2a; color: #b7ebc8; }
+.pill-warn { background: #3d2e14; color: #f2c14e; }
+
+.status {
+  margin: 28px 0 18px;
+  padding: 22px;
+  border-radius: 22px;
+  background: #1c212b;
+}
+
+.status-in { background: #243024; }
+
+.status-label, .status-meta { margin: 0; }
+.status-time {
+  margin: 6px 0;
+  font-size: 2.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: #b7b1a6;
+}
+
+input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: #1c212b;
+  color: inherit;
+}
+
+.punch {
+  width: 100%;
+  min-height: 72px;
+  border: 0;
+  border-radius: 18px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.punch.in { background: #f2c14e; color: #1a1408; }
+.punch.out { background: #d7e2ea; color: #14202a; }
+.punch:disabled { opacity: 0.6; }
+
+.sync-line { min-height: 2.6em; }
+
+.history { display: grid; gap: 14px; }
+.day {
+  padding: 14px 0;
+  border-top: 1px solid #2a3140;
+}
+.day ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.day li { align-items: flex-start; }
+.day strong, .day span { display: block; }
+.day span { margin-top: 2px; font-size: 0.92rem; }
+
+.text-btn {
+  border: 0;
+  background: transparent;
+  color: #d7b56a;
+  cursor: pointer;
+  padding: 0;
+}
