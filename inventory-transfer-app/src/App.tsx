@@ -484,12 +484,11 @@ export function App() {
             <em>Different counts</em> means the iPoint stock is not the same number as D-Tools qty on hand.
           </li>
           <li>
-            <strong>Close SKUs are not treated as the same part unless you say so.</strong> Related names like{' '}
-            <code>ARC ULTRA</code> vs <code>ARC ULTRA WALL MOUNT</code> are labeled <em>Looks similar, not the same</em>
-            because names share words like <code>ARC</code> and <code>WALL MOUNT</code>, or one name starts with the
-            other. If several parts look similar, pick the right one from the Similar SKU menu. Checking{' '}
-            <em>Treat as same part</em> applies only to that one row. <em>Add as new Products.csv row</em> adds the
-            iPoint item as a new product.
+            <strong>The table is one row per D-Tools product.</strong> That Products.csv row is the source of
+            truth — the same D-Tools part never appears twice. Similar SKU lists only iPoint items. Common words
+            like <em>wall mount</em> are ignored by themselves; <code>ARC WALL MOUNT</code> can still look like{' '}
+            <code>ARC ULTRA WALL MOUNT</code> because they share <code>ARC</code>. Checking{' '}
+            <em>Treat as same part</em> applies only to that one D-Tools row and the iPoint item you selected.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
@@ -693,9 +692,6 @@ export function App() {
                             <span className="xfer-muted">—</span>
                           )}
                           {line.dtoolsBrand ? <div className="xfer-muted">{line.dtoolsBrand}</div> : null}
-                          {line.isSimilar && line.match === 'ipoint-only' && !line.treatedAsSame ? (
-                            <div className="xfer-muted">Nearby D-Tools SKU — not a match</div>
-                          ) : null}
                         </td>
                         <td>{line.dtoolsModel || <span className="xfer-muted">—</span>}</td>
                         <td className="xfer-notes">{line.matchVia || '—'}</td>
