@@ -118,15 +118,16 @@ export async function exportHighlightedProductsXlsx(built: ProductsExport): Prom
   headerRow.font = { bold: true }
 
   const qtyCol = built.headers.findIndex((header) => header === built.qtyHeader) + 1
+  const columnCount = built.headers.length
   const changedFill: Fill = {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: 'FFFFF2CC' },
+    fgColor: { argb: 'FFFFE599' },
   }
   const addedFill: Fill = {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: 'FFC6EFCE' },
+    fgColor: { argb: 'FF9BC2E6' },
   }
 
   for (const idx of built.changedQtyRowIndexes) {
@@ -135,9 +136,9 @@ export async function exportHighlightedProductsXlsx(built: ProductsExport): Prom
   }
   for (const idx of built.addedRowIndexes) {
     const excelRow = sheet.getRow(idx + 2)
-    excelRow.eachCell({ includeEmpty: true }, (cell) => {
-      cell.fill = addedFill
-    })
+    for (let col = 1; col <= columnCount; col += 1) {
+      excelRow.getCell(col).fill = addedFill
+    }
   }
 
   const buffer = await workbook.xlsx.writeBuffer()
