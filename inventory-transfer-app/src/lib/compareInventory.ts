@@ -48,6 +48,12 @@ export type CompareLine = {
   splitFromGroup: boolean
   splitParentId: string
   quantitiesCombined: boolean
+  ipointSourceIndex: number | null
+  ipointCategory: string
+  ipointType: string
+  ipointDescription: string
+  ipointUnitCost: string
+  ipointUnitPrice: string
 }
 
 export type CompareResult = {
@@ -324,6 +330,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       splitFromGroup: false,
       splitParentId: '',
       quantitiesCombined: true,
+      ipointSourceIndex: irows[0]?.sourceIndex ?? null,
+      ipointCategory: unique(irows.map((row) => row.category).filter(Boolean)).join(' / '),
+      ipointType: unique(irows.map((row) => row.itemType).filter(Boolean)).join(' / '),
+      ipointDescription: unique(irows.map((row) => row.descriptionCustomer).filter(Boolean)).join(' / '),
+      ipointUnitCost: irows[0]?.unitHardCost || '',
+      ipointUnitPrice: irows[0]?.unitPrice || '',
     })
   }
 
@@ -376,6 +388,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       splitFromGroup: false,
       splitParentId: '',
       quantitiesCombined: true,
+      ipointSourceIndex: ir.sourceIndex,
+      ipointCategory: ir.category,
+      ipointType: ir.itemType,
+      ipointDescription: ir.descriptionCustomer,
+      ipointUnitCost: ir.unitHardCost,
+      ipointUnitPrice: ir.unitPrice,
     })
   }
 
@@ -403,7 +421,7 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       dtoolsQty: dr.qty,
       ipointRaw: '',
       dtoolsRaw: dr.qtyRaw,
-      ipointItem: similar ? `${similar.item.itemName || similar.item.partNumber} (similar, not a match)` : '',
+      ipointItem: similar?.item.itemName || '',
       ipointManufacturer: similar?.item.manufacturer || '',
       dtoolsBrand: dr.brand,
       dtoolsModel: dr.model,
@@ -428,6 +446,12 @@ export function compareInventories(ipoint: ParsedWorkbook, dtools: ParsedWorkboo
       splitFromGroup: false,
       splitParentId: '',
       quantitiesCombined: true,
+      ipointSourceIndex: similar?.item.sourceIndex ?? null,
+      ipointCategory: similar?.item.category || '',
+      ipointType: similar?.item.itemType || '',
+      ipointDescription: similar?.item.descriptionCustomer || '',
+      ipointUnitCost: similar?.item.unitHardCost || '',
+      ipointUnitPrice: similar?.item.unitPrice || '',
     })
   }
 
@@ -463,7 +487,6 @@ export function applyTreatedSimilar(
     const ipointQty = line.ipointQty ?? line.similarIpointQty
     const dtoolsQty = line.dtoolsQty ?? line.similarDtoolsQty
     const qtyDiffers = ipointQty != null && dtoolsQty != null && ipointQty !== dtoolsQty
-    const ipointItem = line.ipointItem.replace(' (similar, not a match)', '')
     out.push({
       ...line,
       match: line.similarDtoolsSourceIndex != null && ipointQty != null ? 'both' : line.match,
@@ -471,7 +494,7 @@ export function applyTreatedSimilar(
       dtoolsQty,
       ipointRaw: line.ipointRaw || line.similarIpointRaw,
       dtoolsRaw: line.dtoolsRaw || line.similarDtoolsRaw,
-      ipointItem,
+      ipointItem: line.ipointItem,
       dtoolsSourceIndex: line.dtoolsSourceIndex ?? line.similarDtoolsSourceIndex,
       qtyDiffers,
       treatedAsSame: true,

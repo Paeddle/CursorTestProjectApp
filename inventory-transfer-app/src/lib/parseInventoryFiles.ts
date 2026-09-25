@@ -13,6 +13,11 @@ export type ParsedItem = {
   manufacturer: string
   brand: string
   model: string
+  category: string
+  itemType: string
+  descriptionCustomer: string
+  unitHardCost: string
+  unitPrice: string
   original: Record<string, string>
 }
 
@@ -203,6 +208,11 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
       manufacturer: pickAlt(row, ['manufacturer']),
       brand: pickAlt(row, ['brand']),
       model,
+      category: pickAlt(row, ['category']),
+      itemType: pickAlt(row, ['type']),
+      descriptionCustomer: pickAlt(row, ['description_customer', 'description customer', 'description']),
+      unitHardCost: pickAlt(row, ['unit hard cost', 'unithardcost', 'unit cost']),
+      unitPrice: pickAlt(row, ['unit price', 'unitprice']),
       original,
     })
   })

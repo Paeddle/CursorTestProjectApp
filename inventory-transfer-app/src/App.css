@@ -511,6 +511,11 @@
   white-space: normal;
 }
 
+.xfer-choice-stack .xfer-muted {
+  display: block;
+  margin-top: 0.15rem;
+}
+
 .xfer-choice-stack {
   display: flex;
   flex-direction: column;

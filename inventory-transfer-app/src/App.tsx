@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   applyTreatedSimilar,
   applyUncombined,
@@ -8,11 +8,21 @@ import {
   type CompareLine,
   type QtyChoice,
 } from './lib/compareInventory'
-import { countOverrides, exportUpdatedProductsCsv } from './lib/exportProducts'
+import { categoriesFromRecords } from './lib/categoryMatch'
+import {
+  canAddAsNew,
+  countAdds,
+  countOverrides,
+  buildProductsExport,
+  exportHighlightedProductsXlsx,
+  exportUpdatedProductsCsv,
+  previewAddCategory,
+} from './lib/exportProducts'
 import { parseInventoryFile, type ParsedWorkbook, type SourceKind } from './lib/parseInventoryFiles'
+import { fetchPartsTrackerCategories } from './lib/partsCategories'
 import './App.css'
 
-type StatFilter = 'review' | 'diff' | 'grouped' | 'similar' | 'ipoint' | 'dtools' | 'matched' | 'overrides'
+type StatFilter = 'review' | 'diff' | 'grouped' | 'similar' | 'ipoint' | 'dtools' | 'matched' | 'overrides' | 'adds'
 type SortCol =
   | 'problem'
   | 'ipointPn'
@@ -46,9 +56,20 @@ function problemLabel(line: CompareLine): string {
   return 'Match'
 }
 
+function lineIpointQty(line: CompareLine): number | null {
+  return line.ipointQty ?? line.similarIpointQty
+}
+
+function lineIpointRaw(line: CompareLine): string {
+  if (line.quantitiesCombined && line.isGrouped && line.ipointQty != null) return String(line.ipointQty)
+  return line.ipointRaw || line.similarIpointRaw
+}
+
 function deltaText(line: CompareLine): string {
-  if (line.ipointQty == null || line.dtoolsQty == null) return '—'
-  const d = line.ipointQty - line.dtoolsQty
+  const ipointQty = lineIpointQty(line)
+  const dtoolsQty = line.dtoolsQty
+  if (ipointQty == null || dtoolsQty == null) return '—'
+  const d = ipointQty - dtoolsQty
   if (d === 0) return '0'
   return d > 0 ? `+${d}` : String(d)
 }
@@ -65,6 +86,7 @@ function lineMatchesFilter(
   line: CompareLine,
   filter: StatFilter | null,
   choice: QtyChoice | undefined,
+  addNew?: boolean,
 ): boolean {
   if (filter === 'review') return true
   if (filter === 'diff') return line.qtyDiffers
@@ -74,6 +96,7 @@ function lineMatchesFilter(
   if (filter === 'dtools') return line.match === 'dtools-only'
   if (filter === 'matched') return line.match === 'both'
   if (filter === 'overrides') return choice === 'use-ipoint'
+  if (filter === 'adds') return Boolean(addNew && canAddAsNew(line))
   return lineIsDiscrepancy(line)
 }
 
@@ -84,14 +107,17 @@ async function fileFromSample(url: string, fallbackName: string): Promise<File> 
   return new File([blob], fallbackName, { type: blob.type })
 }
 
-function downloadText(filename: string, text: string) {
-  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' })
+function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function downloadText(filename: string, text: string) {
+  downloadBlob(filename, new Blob([text], { type: 'text/csv;charset=utf-8' }))
 }
 
 function sortValue(line: CompareLine, col: SortCol, choice: QtyChoice | undefined): string | number {
@@ -158,8 +184,24 @@ export function App() {
   const [choices, setChoices] = useState<Record<string, QtyChoice>>({})
   const [treatedSimilar, setTreatedSimilar] = useState<Record<string, boolean>>({})
   const [uncombined, setUncombined] = useState<Record<string, boolean>>({})
+  const [addNew, setAddNew] = useState<Record<string, boolean>>({})
+  const [trackerCategories, setTrackerCategories] = useState<string[]>([])
   const [sortCol, setSortCol] = useState<SortCol | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchPartsTrackerCategories()
+      .then((cats) => {
+        if (!cancelled) setTrackerCategories(cats)
+      })
+      .catch(() => {
+        if (!cancelled) setTrackerCategories([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const result = useMemo(() => {
     if (!ipoint || !dtools) return null
@@ -176,6 +218,7 @@ export function App() {
       setChoices({})
       setTreatedSimilar({})
       setUncombined({})
+      setAddNew({})
       setStatFilter(null)
       setSortCol(null)
     } catch (err) {
@@ -202,6 +245,7 @@ export function App() {
       setChoices({})
       setTreatedSimilar({})
       setUncombined({})
+      setAddNew({})
       setStatFilter(null)
       setSortCol(null)
     } catch (err) {
@@ -224,7 +268,7 @@ export function App() {
   const visible = useMemo(() => {
     const q = query.trim().toUpperCase()
     const filtered = effectiveLines.filter((line) => {
-      if (!lineMatchesFilter(line, statFilter, resolvedChoices[line.id])) return false
+      if (!lineMatchesFilter(line, statFilter, resolvedChoices[line.id], addNew[line.id])) return false
       if (!q) return true
       return [
         ipointLabel(line),
@@ -251,7 +295,7 @@ export function App() {
           : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' })
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [effectiveLines, query, resolvedChoices, sortCol, sortDir, statFilter])
+  }, [addNew, effectiveLines, query, resolvedChoices, sortCol, sortDir, statFilter])
 
   const stats = useMemo(
     () => ({
@@ -267,9 +311,33 @@ export function App() {
   )
 
   const overrideCount = countOverrides(resolvedChoices)
+  const addCount = countAdds(effectiveLines, addNew)
+  const catalogCategories = useMemo(() => {
+    const fromFile = dtools
+      ? categoriesFromRecords(
+          dtools.originalRows.map((row) => row.record),
+          dtools.headers,
+        )
+      : []
+    return [...new Set([...trackerCategories, ...fromFile])]
+  }, [dtools, trackerCategories])
+
+  const builtExport = useMemo(() => {
+    if (!dtools) return null
+    return buildProductsExport(dtools, effectiveLines, resolvedChoices, addNew, catalogCategories)
+  }, [addNew, catalogCategories, dtools, effectiveLines, resolvedChoices])
 
   const setChoice = (id: string, choice: QtyChoice) => {
     setChoices((prev) => ({ ...prev, [id]: choice }))
+  }
+
+  const toggleAddNew = (lineId: string, checked: boolean) => {
+    setAddNew((prev) => {
+      const next = { ...prev }
+      if (checked) next[lineId] = true
+      else delete next[lineId]
+      return next
+    })
   }
 
   const toggleStatFilter = (id: StatFilter) => {
@@ -301,15 +369,22 @@ export function App() {
   }
 
   const toggleTreatAsSame = (line: CompareLine, checked: boolean) => {
+    const ids = [line.id, line.similarPeerId].filter(Boolean)
     setTreatedSimilar((prev) => {
       const next = { ...prev }
-      const ids = [line.id, line.similarPeerId].filter(Boolean)
       for (const id of ids) {
         if (checked) next[id] = true
         else delete next[id]
       }
       return next
     })
+    if (checked) {
+      setAddNew((prev) => {
+        const next = { ...prev }
+        for (const id of ids) delete next[id]
+        return next
+      })
+    }
   }
 
   const applyIpointToDiffs = () => {
@@ -323,10 +398,24 @@ export function App() {
   const resetChoices = () => setChoices({})
 
   const exportCsv = () => {
-    if (!dtools) return
-    const csv = exportUpdatedProductsCsv(dtools, effectiveLines, resolvedChoices)
+    if (!builtExport) return
     const stamp = new Date().toISOString().slice(0, 10)
-    downloadText(`Products-qty-from-ipoint-${stamp}.csv`, csv)
+    downloadText(`Products-qty-from-ipoint-${stamp}.csv`, exportUpdatedProductsCsv(builtExport))
+  }
+
+  const exportXlsx = async () => {
+    if (!builtExport) return
+    setBusy('Building highlighted workbook…')
+    setError(null)
+    try {
+      const stamp = new Date().toISOString().slice(0, 10)
+      const blob = await exportHighlightedProductsXlsx(builtExport)
+      downloadBlob(`Products-highlighted-${stamp}.xlsx`, blob)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not build the highlighted workbook.')
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (
@@ -392,15 +481,16 @@ export function App() {
           </li>
           <li>
             <strong>Close SKUs are not treated as the same part unless you say so.</strong> Related names like{' '}
-            <code>C4-CA1</code> vs <code>C4-CA1-V2</code> are labeled <em>Looks similar, not the same</em>. Check{' '}
-            <em>Treat as same part</em> to compare their counts and, if you want, copy the iPoint count onto that
-            D-Tools row. Rows that only appear in one file stay <em>Only in iPoint</em> or <em>Only in D-Tools</em>.
+            <code>C4-CA1</code> vs <code>C4-CA1-V2</code> are labeled <em>Looks similar, not the same</em>. The
+            iPoint item column still shows only the iPoint Item value. A D-Tools-only similar row shows that nearby
+            iPoint stock for comparison, but it is still a different Products.csv row until you check{' '}
+            <em>Treat as same part</em>. iPoint-only rows can be appended with <em>Add as new Products.csv row</em>.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
-            <code>Quantity on Hand</code> on that same D-Tools row in the downloaded Products.csv. Every original
-            Products row stays, in the same order — rows are never combined or dropped. Original files are never
-            modified.
+            <code>Quantity on Hand</code> on that same D-Tools row in the downloaded Products.csv. Checking{' '}
+            <em>Add as new Products.csv row</em> appends a new product built from the iPoint file. Every original
+            Products row stays, in the same order — original files are never modified.
           </li>
         </ol>
       </section>
@@ -472,6 +562,7 @@ export function App() {
                 ['dtools', 'Only in D-Tools', stats.dtoolsOnly, false],
                 ['matched', 'Same in both', stats.matchedKeys, false],
                 ['overrides', 'Use iPoint count', overrideCount, false],
+                ['adds', 'Add as new row', addCount, false],
               ] as const
             ).map(([id, label, value, alert]) => (
               <button
@@ -503,8 +594,16 @@ export function App() {
             <button type="button" className="xfer-btn xfer-btn-secondary" onClick={resetChoices} disabled={overrideCount === 0}>
               Keep all D-Tools counts
             </button>
-            <button type="button" className="xfer-btn" onClick={exportCsv} disabled={overrideCount === 0}>
+            <button type="button" className="xfer-btn" onClick={exportCsv} disabled={overrideCount === 0 && addCount === 0}>
               Download updated Products.csv
+            </button>
+            <button
+              type="button"
+              className="xfer-btn"
+              onClick={() => void exportXlsx()}
+              disabled={overrideCount === 0 && addCount === 0}
+            >
+              Download highlighted xlsx
             </button>
           </div>
 
@@ -554,8 +653,9 @@ export function App() {
                 <tbody>
                   {visible.map((line) => {
                     const choice = resolvedChoices[line.id]
+                    const ipointShown = lineIpointQty(line)
                     const delta =
-                      line.ipointQty != null && line.dtoolsQty != null ? line.ipointQty - line.dtoolsQty : 0
+                      ipointShown != null && line.dtoolsQty != null ? ipointShown - line.dtoolsQty : 0
                     return (
                       <tr
                         key={line.id}
@@ -580,12 +680,7 @@ export function App() {
                             <div className="xfer-muted">Nearby iPoint SKU — not a match</div>
                           ) : null}
                         </td>
-                        <td>
-                          {line.ipointItem || <span className="xfer-muted">—</span>}
-                          {line.ipointManufacturer ? (
-                            <div className="xfer-muted">{line.ipointManufacturer}</div>
-                          ) : null}
-                        </td>
+                        <td>{line.ipointItem || <span className="xfer-muted">—</span>}</td>
                         <td>
                           {line.dtoolsPartNumber ? (
                             <code>{line.dtoolsPartNumber}</code>
@@ -621,10 +716,7 @@ export function App() {
                           ) : null}
                         </td>
                         <td className="xfer-num">
-                          {formatQty(
-                            line.ipointQty,
-                            line.quantitiesCombined && line.isGrouped ? String(line.ipointQty) : line.ipointRaw,
-                          )}
+                          {formatQty(ipointShown, lineIpointRaw(line))}
                           {line.groupSlices.length > 1 ? (
                             <div className="xfer-group">
                               <div className="xfer-choice-stack">
@@ -695,6 +787,22 @@ export function App() {
                             </div>
                           ) : line.match === 'both' ? (
                             <span className="xfer-muted">Combine quantities first to change this Products.csv row</span>
+                          ) : canAddAsNew(line) ? (
+                            <div className="xfer-choice-stack">
+                              <label className="xfer-choice xfer-treat">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(addNew[line.id])}
+                                  onChange={(e) => toggleAddNew(line.id, e.target.checked)}
+                                />
+                                Add as new Products.csv row
+                              </label>
+                              {addNew[line.id] ? (
+                                <div className="xfer-muted">
+                                  Category: {previewAddCategory(line, catalogCategories) || '—'}
+                                </div>
+                              ) : null}
+                            </div>
                           ) : (
                             <span className="xfer-muted">No D-Tools row to update</span>
                           )}

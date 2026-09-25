@@ -37,6 +37,7 @@ function sampleFilesPlugin(): Plugin {
 
 export default defineConfig({
   base: process.env.NODE_ENV === 'production' ? '/inventory-transfer/' : '/',
+  envDir: repoRoot,
   plugins: [react(), sampleFilesPlugin()],
   server: {
     port: 5181,
