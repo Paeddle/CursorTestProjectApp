@@ -40,6 +40,12 @@ button, input { font: inherit; }
   -webkit-overflow-scrolling: touch;
 }
 
+.layout,
+.clock-pane,
+.records-pane {
+  display: block;
+}
+
 .top, .history-head, .day header, .day li {
   display: flex;
   align-items: center;
@@ -289,4 +295,31 @@ input {
   margin: 0;
   max-height: min(92dvh, 760px);
   overflow-y: auto;
+}
+
+@media (min-width: 800px) and (hover: hover) and (pointer: fine) {
+  .page {
+    width: min(1120px, calc(100% - 48px));
+    padding: 36px 24px 48px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(300px, 400px) minmax(360px, 1fr);
+    gap: 8px 36px;
+    align-items: start;
+  }
+
+  .export-preview {
+    max-height: 320px;
+  }
+
+  .sheet {
+    align-items: center;
+    justify-items: center;
+  }
+
+  .sheet-card {
+    width: min(520px, 100%);
+  }
 }

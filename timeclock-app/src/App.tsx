@@ -276,6 +276,8 @@ export function App() {
         </p>
       </header>
 
+      <div className="layout">
+      <div className="clock-pane">
       <section className={`status ${openPunch ? 'status-in' : ''}`}>
         {openPunch ? (
           <>
@@ -331,7 +333,9 @@ export function App() {
                   ? 'Synced.'
                   : 'Saved on this phone. They will sync when you have a connection.'}
       </p>
+      </div>
 
+      <div className="records-pane">
       <section className="export">
         <div className="history-head">
           <h2>Email timesheet</h2>
@@ -456,6 +460,8 @@ export function App() {
           })
         )}
       </section>
+      </div>
+      </div>
 
       {editor ? (
         <div className="sheet" role="dialog" aria-label={editor.mode === 'edit' ? 'Edit time' : 'Add entry'}>
