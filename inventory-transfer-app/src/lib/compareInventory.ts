@@ -380,8 +380,7 @@ function groupDetail(slices: QtySlice[], total: number): string {
 
 export function lineIsDiscrepancy(line: CompareLine): boolean {
   if (line.treatedAsSame) return true
-  if (line.qtyDiffers || line.isSimilar || line.isGrouped) return true
-  return line.match === 'ipoint-only'
+  return line.qtyDiffers || line.isSimilar || line.isGrouped
 }
 
 const blankSimilar = {

@@ -491,8 +491,8 @@ export function App() {
             like <em>wall mount</em> are ignored by themselves; <code>ARC WALL MOUNT</code> can still look like{' '}
             <code>ARC ULTRA WALL MOUNT</code> because they share <code>ARC</code>. Checking{' '}
             <em>Treat as same part</em> applies only to that one D-Tools row and the iPoint item you selected.{' '}
-            <em>Need review</em> hides exact matches with the same quantity and D-Tools-only parts that have no
-            iPoint counterpart. Click <em>Only in iPoint</em> to see iPoint parts that are not in Products.csv.
+            <em>Need review</em> is only quantity differences, grouped iPoint lines, and similar SKUs. Click{' '}
+            <em>Only in iPoint</em> to see iPoint parts that are not in Products.csv.
           </li>
           <li>
             <strong>Override is optional and local.</strong> Checking <em>Use iPoint count</em> only changes{' '}
