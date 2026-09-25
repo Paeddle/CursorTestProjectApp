@@ -43,7 +43,7 @@ export type ParsedWorkbook = {
 
 const IPOINT_PART_HEADERS = ['part number', 'partnumber', 'part_number', 'part', 'sku', 'item number']
 const IPOINT_ITEM_HEADERS = ['item', 'item name', 'itemname']
-const IPOINT_QTY_HEADERS = ['stock_available', 'stock available', 'stockavailable', 'available']
+const IPOINT_QTY_HEADERS = ['stock_total', 'stock total', 'stocktotal']
 const DTOOLS_PART_HEADERS = ['part number', 'partnumber', 'part_number']
 const DTOOLS_MODEL_HEADERS = ['model']
 const DTOOLS_QTY_HEADERS = ['quantity on hand', 'qty on hand', 'quantityonhand', 'qoh']
@@ -166,7 +166,7 @@ export async function parseInventoryFile(file: File, kind: SourceKind): Promise<
     )
   }
   if (!qtyHeader) {
-    const expected = kind === 'ipoint' ? 'Stock available / stock_Available' : 'Quantity on Hand'
+    const expected = kind === 'ipoint' ? 'stock_Total / Stock Total' : 'Quantity on Hand'
     throw new Error(`${file.name}: could not find ${expected}. Headers were: ${headers.join(', ') || '(none)'}`)
   }
   if (!partNumberHeader) {

@@ -439,7 +439,7 @@ export function App() {
           <p className="xfer-lead">
             Compare iPoint <strong>Item</strong> or <strong>Part Number</strong> to D-Tools Cloud{' '}
             <strong>Model</strong> or <strong>Part Number</strong>. Matching parts then compare iPoint{' '}
-            <strong>Stock available</strong> to D-Tools <strong>Quantity on Hand</strong>. Nothing is written back
+            <strong>stock_Total</strong> to D-Tools <strong>Quantity on Hand</strong>. Nothing is written back
             to either system — you review differences, then download an updated Products.csv if you want D-Tools to
             use the iPoint quantities.
           </p>
@@ -454,7 +454,7 @@ export function App() {
         <ol>
           <li>
             <strong>Files stay in the browser.</strong> iPoint is read from <code>Item</code>,{' '}
-            <code>Part Number</code>, and <code>stock_Available</code>. D-Tools is read from <code>Model</code>,{' '}
+            <code>Part Number</code>, and <code>stock_Total</code>. D-Tools is read from <code>Model</code>,{' '}
             <code>Part Number</code>, and <code>Quantity on Hand</code>. Nothing is uploaded to a server or written
             back to iPoint or D-Tools Cloud.
           </li>
@@ -651,7 +651,7 @@ export function App() {
                     <SortHeader id="dtoolsModel" label="D-Tools model" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
                     <SortHeader id="matchVia" label="Matched via" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
                     <SortHeader id="similar" label="Similar SKU" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
-                    <SortHeader id="ipointQty" label="iPoint stock" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
+                    <SortHeader id="ipointQty" label="iPoint stock_Total" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
                     <SortHeader id="dtoolsQty" label="D-Tools qty" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
                     <SortHeader id="diff" label="Difference" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
                     <SortHeader id="decision" label="Decision" sortCol={sortCol} sortDir={sortDir} onCycle={cycleSort} />
