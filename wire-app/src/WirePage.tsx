@@ -2009,17 +2009,37 @@ export function WirePage() {
               const checked = selectedWireTypeIds.has(preset.id)
               const disabled = loading || wireTypesWorking
               return (
-                <div key={preset.id} className="wire-jobs-item wire-inline-select wire-inline-select--end">
+                <button
+                  key={preset.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={checked}
+                  aria-label={`Select ${preset.label}`}
+                  title={SELECT_HINT}
+                  disabled={disabled}
+                  className={[
+                    'wire-jobs-item',
+                    'wire-inline-select',
+                    'wire-inline-select--end',
+                    checked ? 'wire-jobs-item--selected' : '',
+                    disabled ? 'wire-jobs-item--disabled' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={(e) => {
+                    if (disabled) return
+                    e.preventDefault()
+                    const orderedIds = wireTypes.map((p) => p.id)
+                    setSelectedWireTypeIds((prev) =>
+                      nextListSelection(e, index, preset.id, orderedIds, prev, wireTypesAnchorIndexRef),
+                    )
+                  }}
+                >
                   <span className="wire-jobs-item-label">
                     {preset.label}
                     <span className="wire-types-cap"> · {preset.defaultCapacityFt} ft</span>
                   </span>
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={checked}
-                    aria-label={`Select ${preset.label}`}
-                    title={SELECT_HINT}
+                  <span
                     className={[
                       'wire-card-select',
                       checked ? 'wire-card-select--on' : '',
@@ -2027,19 +2047,11 @@ export function WirePage() {
                     ]
                       .filter(Boolean)
                       .join(' ')}
-                    disabled={disabled}
-                    onClick={(e) => {
-                      if (disabled) return
-                      e.preventDefault()
-                      const orderedIds = wireTypes.map((p) => p.id)
-                      setSelectedWireTypeIds((prev) =>
-                        nextListSelection(e, index, preset.id, orderedIds, prev, wireTypesAnchorIndexRef),
-                      )
-                    }}
+                    aria-hidden="true"
                   >
-                    <span className="wire-card-select-face" aria-hidden="true" />
-                  </button>
-                </div>
+                    <span className="wire-card-select-face" />
+                  </span>
+                </button>
               )
             })}
           </div>
