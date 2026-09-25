@@ -143,6 +143,15 @@ export function App() {
     return total + minutesBetween(session.start.punchedAt, now)
   }, 0)
 
+  const thisWeek = weekBounds(0)
+  const weekMinutes = sessions.reduce((total, session) => {
+    if (session.dayOnly) return total
+    const key = dayKey(session.start.punchedAt)
+    if (key < thisWeek.from || key > thisWeek.to) return total
+    if (session.minutes != null) return total + session.minutes
+    return total + minutesBetween(session.start.punchedAt, now)
+  }, 0)
+
   const exportSessions = useMemo(
     () => filterSessionsByRange(sessions, range.from, range.to),
     [sessions, range],
@@ -297,6 +306,10 @@ export function App() {
             <p className="status-meta">Today</p>
           </>
         )}
+        <p className="week-total">
+          <span>Hours this week</span>
+          <strong>{formatDuration(weekMinutes)}</strong>
+        </p>
       </section>
 
       <JobField value={job} jobs={jobs} onChange={setJob} />

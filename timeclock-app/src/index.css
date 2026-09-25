@@ -99,6 +99,24 @@ h2, h3 { margin: 0; }
   font-variant-numeric: tabular-nums;
 }
 
+.week-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid #2a3140;
+  color: #b7b1a6;
+}
+
+.status-in .week-total { border-top-color: #3a4a3a; }
+
+.week-total strong {
+  color: #f4f1ea;
+  font-variant-numeric: tabular-nums;
+}
+
 .note, .export label, .sheet label.note, .range-row label {
   display: grid;
   gap: 8px;
