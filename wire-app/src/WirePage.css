@@ -410,6 +410,29 @@
   line-height: 1.25;
 }
 
+.wire-edit-box {
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: 0.45rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #e2e8f0;
+  background: #1e3a5f;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.wire-edit-box:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.wire-edit-box:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .wire-delete-box {
   flex-shrink: 0;
   align-self: center;
@@ -772,6 +795,71 @@
   border-top: 1px solid #334155;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.wire-box-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem 0.8rem;
+  border-top: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.wire-box-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem 0.7rem;
+}
+
+.wire-box-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.wire-box-editor-label {
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.wire-box-editor-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.wire-box-editor-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.wire-box-editor-note {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.wire-box-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.wire-box-editor-actions .wire-report-primary,
+.wire-box-editor-actions .wire-report-secondary {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
 }
 
 .wire-type-inline-editor {
@@ -1822,6 +1910,17 @@
     flex: 1 1 calc(50% - 0.35rem);
     min-width: 0;
   }
+
+  .wire-box-editor-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wire-box-editor-actions .wire-report-primary,
+  .wire-box-editor-actions .wire-report-secondary {
+    width: auto;
+    min-height: 36px;
+    flex: 1 1 auto;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1851,6 +1950,10 @@
   .wire-card-title-block {
     flex-wrap: wrap;
     white-space: normal;
+  }
+
+  .wire-box-editor-grid {
+    grid-template-columns: 1fr;
   }
 
   .wire-card-meta {

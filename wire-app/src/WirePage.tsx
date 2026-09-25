@@ -58,6 +58,19 @@ function isConfigured(): boolean {
   return typeof url === 'string' && url.length > 0 && typeof key === 'string' && key.length > 0
 }
 
+type BoxEditDraft = {
+  boxId: string
+  wireTypeId: string
+  defaultFt: string
+  remainingFt: string
+}
+
+function footageDraftValue(raw: string | null | undefined): string {
+  const n = parseFootage(String(raw ?? ''))
+  if (n === null) return String(raw ?? '').trim()
+  return Number.isInteger(n) ? String(n) : String(n)
+}
+
 function formatDateTime(iso: string) {
   try {
     const d = new Date(iso)
@@ -277,8 +290,9 @@ export function WirePage() {
   const [managedJobs, setManagedJobs] = useState<string[]>([])
   const [newManagedJob, setNewManagedJob] = useState('')
   const [jobsWorking, setJobsWorking] = useState(false)
-  const [editingTypeBoxKey, setEditingTypeBoxKey] = useState<string | null>(null)
-  const [updatingTypeBoxKey, setUpdatingTypeBoxKey] = useState<string | null>(null)
+  const [editingBoxKey, setEditingBoxKey] = useState<string | null>(null)
+  const [boxEditDraft, setBoxEditDraft] = useState<BoxEditDraft | null>(null)
+  const [savingBoxEdit, setSavingBoxEdit] = useState(false)
   const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(() =>
     [...WIRE_TYPE_PRESETS].sort((a, b) =>
       a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
@@ -1284,51 +1298,152 @@ export function WirePage() {
     }
   }
 
-  const handleUpdateBoxWireType = async (summary: WireBoxSummary, presetId: string) => {
+  const closeBoxEditor = () => {
+    setEditingBoxKey(null)
+    setBoxEditDraft(null)
+  }
+
+  const beginBoxEdit = (summary: WireBoxSummary) => {
     if (isBoxRetired(summary.scans)) {
-      setError('Retired boxes are locked. Wire type cannot be changed until the box is deleted or restored to Active.')
-      setEditingTypeBoxKey(null)
+      setError('Retired boxes are locked. Edit is blocked until the box is deleted or restored to Active.')
+      closeBoxEditor()
       return
     }
-    const key = summary.box_id.toLowerCase()
-    const trimmedId = presetId.trim()
-    if (!trimmedId) return
+    const profile = boxHeaderProfileScan(summary.scans)
+    const newest = summary.scans[0]
+    const storedDefault = (profile?.spool_capacity_ft || '').trim()
+    const catalogDefault = profile ? wireTypeIdToDefaultFt(profile.wire_type) : ''
+    setEditingBoxKey(summary.box_id.toLowerCase())
+    setBoxEditDraft({
+      boxId: summary.box_id,
+      wireTypeId: String(profile?.wire_type ?? '').trim(),
+      defaultFt: storedDefault
+        ? footageDraftValue(storedDefault)
+        : catalogDefault
+          ? String(catalogDefault)
+          : '',
+      remainingFt: newest ? footageDraftValue(newest.current_footage) : '',
+    })
+    setError(null)
+  }
 
-    const preset = getWireTypePreset(trimmedId, wireTypes)
-    if (!preset) {
+  const toggleBoxEditor = (summary: WireBoxSummary) => {
+    const key = summary.box_id.toLowerCase()
+    if (editingBoxKey === key) {
+      closeBoxEditor()
+      return
+    }
+    beginBoxEdit(summary)
+  }
+
+  const handleSaveBoxEdit = async (summary: WireBoxSummary) => {
+    if (!boxEditDraft) return
+    if (isBoxRetired(summary.scans)) {
+      setError('Retired boxes are locked. Edit is blocked until the box is deleted or restored to Active.')
+      closeBoxEditor()
+      return
+    }
+
+    const nextId = boxEditDraft.boxId.trim()
+    if (!nextId) {
+      setError('Box ID is required.')
+      return
+    }
+
+    const wireTypeId = boxEditDraft.wireTypeId.trim()
+    if (!wireTypeId) {
+      setError('Choose a wire type.')
+      return
+    }
+
+    const profile = boxHeaderProfileScan(summary.scans)
+    const preset = getWireTypePreset(wireTypeId, wireTypes)
+    const sameType = wireTypeId === String(profile?.wire_type ?? '').trim()
+    const wireTypeLabel = preset?.label
+      ?? (sameType ? (profile?.wire_type_label || '').trim() || boxHeaderWireType(summary.scans) : '')
+    if (!wireTypeLabel || wireTypeLabel === '—') {
       setError('Unknown wire type selected.')
       return
     }
 
-    const boxId = summary.box_id.trim()
-    if (!boxId) return
+    const defaultFt = parseFootage(boxEditDraft.defaultFt)
+    if (defaultFt === null || defaultFt < 0) {
+      setError('Enter a default footage in feet.')
+      return
+    }
+    const remainingFt = parseFootage(boxEditDraft.remainingFt)
+    if (remainingFt === null || remainingFt < 0) {
+      setError('Enter the remaining footage in feet.')
+      return
+    }
 
-    setUpdatingTypeBoxKey(key)
+    const currentKey = summary.box_id.toLowerCase()
+    const nextKey = nextId.toLowerCase()
+    if (nextKey !== currentKey && summaries.some((s) => s.box_id.toLowerCase() === nextKey)) {
+      setError(`Box ${nextId} already exists.`)
+      return
+    }
+
+    const scanIds = summary.scans.map((s) => s.id).filter(Boolean)
+    const newest = summary.scans[0]
+    if (!scanIds.length || !newest?.id) {
+      setError('This box has no scans to update.')
+      return
+    }
+
+    const storedDefault = Number.isInteger(defaultFt) ? String(defaultFt) : String(defaultFt)
+    const storedRemaining = Number.isInteger(remainingFt) ? String(remainingFt) : String(remainingFt)
+
+    setSavingBoxEdit(true)
     setError(null)
     try {
       const { data, error: upErr } = await supabase
         .from('wire_box_scans')
         .update({
-          wire_type: preset.id,
-          wire_type_label: preset.label,
-          spool_capacity_ft: String(preset.defaultCapacityFt),
+          box_id: nextId,
+          wire_type: wireTypeId,
+          wire_type_label: wireTypeLabel,
+          spool_capacity_ft: storedDefault,
         })
-        .eq('box_id', boxId)
+        .in('id', scanIds)
         .select('id')
 
       if (upErr) throw new Error(upErr.message)
       if (!data?.length) {
         throw new Error(
-          'Wire type was not saved (no rows updated). Supabase may be missing an UPDATE policy on wire_box_scans. Run supabase/fix-wire-box-scans-update-rls.sql in the SQL Editor, then try again.'
+          'Box was not saved (no rows updated). Supabase may be missing an UPDATE policy on wire_box_scans. Run supabase/fix-wire-box-scans-update-rls.sql in the SQL Editor, then try again.',
         )
       }
 
-      setEditingTypeBoxKey(null)
+      const { error: footageErr } = await supabase
+        .from('wire_box_scans')
+        .update({ current_footage: storedRemaining })
+        .eq('id', newest.id)
+      if (footageErr) throw new Error(footageErr.message)
+
+      if (nextKey !== currentKey) {
+        setSelectedBoxKeys((prev) => {
+          if (!prev.has(currentKey)) return prev
+          const next = new Set(prev)
+          next.delete(currentKey)
+          next.add(nextKey)
+          return next
+        })
+        setExpandedBox((prev) => {
+          if (!prev.has(currentKey)) return prev
+          const next = new Set(prev)
+          next.delete(currentKey)
+          next.add(nextKey)
+          return next
+        })
+      }
+
+      closeBoxEditor()
       await load({ silent: true })
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not update wire type')
+      setError(e instanceof Error ? e.message : 'Could not save box')
     } finally {
-      setUpdatingTypeBoxKey(null)
+      setSavingBoxEdit(false)
     }
   }
 
@@ -2060,6 +2175,23 @@ export function WirePage() {
                   type="button"
                   role="menuitem"
                   className="wire-boxes-menu-item"
+                  disabled={savingBoxEdit || selectedBoxKeys.size !== 1 || boxListMode === 'inactive'}
+                  onClick={() => {
+                    const selectedKey = [...selectedBoxKeys][0]
+                    const summary =
+                      filtered.find((s) => s.box_id.toLowerCase() === selectedKey) ??
+                      summaries.find((s) => s.box_id.toLowerCase() === selectedKey)
+                    setBoxesMenuOpen(false)
+                    setBoxesMenuCheckoutOpen(false)
+                    if (summary) beginBoxEdit(summary)
+                  }}
+                >
+                  Edit Box
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item"
                   disabled={statusWorking || selectedBoxKeys.size === 0}
                   onClick={() => void handleMenuSetActive()}
                 >
@@ -2145,12 +2277,12 @@ export function WirePage() {
               const isExpanded = expandedBox.has(key)
               const profile = boxHeaderProfileScan(summary.scans)
               const currentWireTypeId = String(profile?.wire_type ?? '').trim()
-              const showTypeEditor = editingTypeBoxKey === key
               const headerWire = boxHeaderWireType(summary.scans)
               const headerDefault = boxHeaderDefaultWireDisplay(summary.scans)
               const headerRemaining = boxHeaderRemainingFootage(summary.scans)
               const nScans = summary.scans.length
               const boxActive = isBoxActive(summary.scans)
+              const showBoxEditor = editingBoxKey === key && boxEditDraft !== null && boxActive
               const inWarehouse = isBoxInInventory(summary.scans)
               return (
                 <div
@@ -2212,17 +2344,17 @@ export function WirePage() {
                             className="wire-card-wire-type wire-card-wire-type-editable"
                             role="button"
                             tabIndex={0}
-                            title="Click to change wire type"
+                            title="Click to edit this box"
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              setEditingTypeBoxKey((prev) => (prev === key ? null : key))
+                              toggleBoxEditor(summary)
                             }}
                             onKeyDown={(e) => {
                               if (e.key !== 'Enter' && e.key !== ' ') return
                               e.preventDefault()
                               e.stopPropagation()
-                              setEditingTypeBoxKey((prev) => (prev === key ? null : key))
+                              toggleBoxEditor(summary)
                             }}
                           >
                             {headerWire}
@@ -2251,6 +2383,23 @@ export function WirePage() {
                       <span className="wire-card-chevron">{isExpanded ? '▾' : '▸'}</span>
                     </button>
                     </div>
+                    <button
+                      type="button"
+                      className="wire-edit-box"
+                      title={
+                        boxActive
+                          ? 'Edit box ID, wire type, default length, and remaining footage'
+                          : 'Retired boxes are locked'
+                      }
+                      disabled={!boxActive || deleting || statusWorking || savingBoxEdit}
+                      aria-expanded={showBoxEditor}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleBoxEditor(summary)
+                      }}
+                    >
+                      Edit
+                    </button>
                   </div>
                   {!boxActive && (
                     <div className="wire-card-retired-note" role="status">
@@ -2258,32 +2407,121 @@ export function WirePage() {
                       ID, or use Set Active to restore.
                     </div>
                   )}
-                  {showTypeEditor && boxActive && (                    <div className="wire-type-inline-editor">
-                      <label className="wire-type-inline-label" htmlFor={`wire-type-edit-${key}`}>
-                        Wire type
-                      </label>
-                      <select
-                        id={`wire-type-edit-${key}`}
-                        className="wire-type-inline-select"
-                        value={currentWireTypeId}
-                        disabled={updatingTypeBoxKey === key}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => void handleUpdateBoxWireType(summary, e.target.value)}
-                      >
-                        <option value="">Select wire type…</option>
-                        {currentWireTypeId &&
-                          !wireTypes.some((p) => p.id === currentWireTypeId) && (
-                            <option value={currentWireTypeId}>
-                              {headerWire || currentWireTypeId} (hidden from catalog)
-                            </option>
-                          )}
-                        {wireTypes.map((preset) => (
-                          <option key={preset.id} value={preset.id}>
-                            {preset.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                  {showBoxEditor && boxEditDraft && (
+                    <form
+                      className="wire-box-editor"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        void handleSaveBoxEdit(summary)
+                      }}
+                    >
+                      <div className="wire-box-editor-grid">
+                        <label className="wire-box-editor-field" htmlFor={`box-edit-id-${key}`}>
+                          <span className="wire-box-editor-label">Box ID</span>
+                          <input
+                            id={`box-edit-id-${key}`}
+                            className="wire-box-editor-input"
+                            value={boxEditDraft.boxId}
+                            disabled={savingBoxEdit}
+                            autoComplete="off"
+                            onChange={(e) =>
+                              setBoxEditDraft((prev) =>
+                                prev ? { ...prev, boxId: e.target.value } : prev,
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="wire-box-editor-field" htmlFor={`box-edit-type-${key}`}>
+                          <span className="wire-box-editor-label">Wire type</span>
+                          <select
+                            id={`box-edit-type-${key}`}
+                            className="wire-box-editor-input"
+                            value={boxEditDraft.wireTypeId}
+                            disabled={savingBoxEdit}
+                            onChange={(e) => {
+                              const id = e.target.value
+                              const preset = getWireTypePreset(id, wireTypes)
+                              setBoxEditDraft((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      wireTypeId: id,
+                                      defaultFt: preset
+                                        ? String(preset.defaultCapacityFt)
+                                        : prev.defaultFt,
+                                    }
+                                  : prev,
+                              )
+                            }}
+                          >
+                            <option value="">Select wire type…</option>
+                            {currentWireTypeId &&
+                              !wireTypes.some((p) => p.id === currentWireTypeId) && (
+                                <option value={currentWireTypeId}>
+                                  {headerWire || currentWireTypeId} (hidden from catalog)
+                                </option>
+                              )}
+                            {wireTypes.map((preset) => (
+                              <option key={preset.id} value={preset.id}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="wire-box-editor-field" htmlFor={`box-edit-default-${key}`}>
+                          <span className="wire-box-editor-label">Default ft</span>
+                          <input
+                            id={`box-edit-default-${key}`}
+                            className="wire-box-editor-input"
+                            inputMode="decimal"
+                            value={boxEditDraft.defaultFt}
+                            disabled={savingBoxEdit}
+                            onChange={(e) =>
+                              setBoxEditDraft((prev) =>
+                                prev ? { ...prev, defaultFt: e.target.value } : prev,
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="wire-box-editor-field" htmlFor={`box-edit-remaining-${key}`}>
+                          <span className="wire-box-editor-label">Remaining ft</span>
+                          <input
+                            id={`box-edit-remaining-${key}`}
+                            className="wire-box-editor-input"
+                            inputMode="decimal"
+                            value={boxEditDraft.remainingFt}
+                            disabled={savingBoxEdit}
+                            onChange={(e) =>
+                              setBoxEditDraft((prev) =>
+                                prev ? { ...prev, remainingFt: e.target.value } : prev,
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                      <p className="wire-box-editor-note">
+                        Remaining updates the latest scan. Box ID, wire type, and default apply to every
+                        scan on this box. Changing wire type fills default from the catalog; you can edit
+                        it before saving.
+                      </p>
+                      <div className="wire-box-editor-actions">
+                        <button
+                          type="submit"
+                          className="wire-report-primary"
+                          disabled={savingBoxEdit}
+                        >
+                          {savingBoxEdit ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          type="button"
+                          className="wire-report-secondary"
+                          disabled={savingBoxEdit}
+                          onClick={closeBoxEditor}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
                   )}
                   {isExpanded && (
                     <div className="wire-card-body">
