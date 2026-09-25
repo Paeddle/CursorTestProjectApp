@@ -19,7 +19,7 @@ export default defineConfig(({ command, mode }) => {
           description: 'Personal time clock that works offline and syncs later.',
           theme_color: '#12151c',
           background_color: '#12151c',
-          display: 'standalone',
+          display: 'browser',
           start_url: base,
           scope: base,
           icons: [
@@ -33,6 +33,7 @@ export default defineConfig(({ command, mode }) => {
         },
         workbox: {
           navigateFallback: 'index.html',
+          navigateFallbackAllowlist: [/^\/timeclock\/?$/],
           globPatterns: ['**/*.{js,css,html,svg,ico,webmanifest}'],
         },
       }),
