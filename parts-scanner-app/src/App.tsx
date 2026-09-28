@@ -509,7 +509,7 @@ export default function App() {
             ...fieldsFromRecord(existing),
             upc_code: fields.upc_code.trim() || existing.upc_code,
             part_name: fields.part_name.trim() || existing.part_name,
-            po: fields.po.trim(),
+            po: '',
             description: fields.description.trim() || existing.description,
           }
           const stored = missingFromDtools
@@ -545,7 +545,7 @@ export default function App() {
         }
         const snapshot = {
           ...fieldsFromRecord(part),
-          po: fields.po.trim(),
+          po: '',
           description: fields.description.trim() || part.description,
         }
         await insertCheckIn(snapshot, todayLocalDate(), part.id, checkInExtras())
@@ -562,7 +562,7 @@ export default function App() {
         }
         const snapshot = {
           ...fields,
-          po: fields.po.trim(),
+          po: '',
           description: fields.description.trim(),
         }
         const stored = await insertPartIfMissing({ ...snapshot, po: '' }, { missingFromDtools: true })
@@ -587,7 +587,7 @@ export default function App() {
       if (!selectedPart) {
         const snapshot = {
           ...fields,
-          po: fields.po.trim(),
+          po: '',
           description: fields.description.trim(),
         }
         if (!snapshot.upc_code.trim() && !snapshot.ipn.trim() && !snapshot.part_name.trim()) {
@@ -607,7 +607,7 @@ export default function App() {
         ...fieldsFromRecord(selectedPart),
         upc_code: fields.upc_code.trim() || selectedPart.upc_code,
         part_name: fields.part_name.trim() || selectedPart.part_name,
-        po: fields.po.trim(),
+        po: '',
         description: fields.description.trim(),
       }
       const dtoolsId =
@@ -714,7 +714,7 @@ export default function App() {
               </div>
             )}
 
-            {PART_FIELD_LABELS.map(({ key, label }) => (
+            {PART_FIELD_LABELS.filter(({ key }) => key !== 'po').map(({ key, label }) => (
               <div className={`form-field${SUGGEST_FIELDS.includes(key) ? ' parts-suggest-wrap' : ''}`} key={key}>
                 <label className="label" htmlFor={`field-${key}`}>
                   {label}
@@ -744,11 +744,9 @@ export default function App() {
                         ? 'Scan or type UPC'
                         : key === 'ipn'
                           ? 'Type IPN to search catalog'
-                          : key === 'po'
-                            ? 'Purchase order number'
-                            : SUGGEST_FIELDS.includes(key)
-                              ? 'Start typing to search the catalog'
-                              : undefined
+                          : SUGGEST_FIELDS.includes(key)
+                            ? 'Start typing to search the catalog'
+                            : undefined
                     }
                     autoComplete="off"
                     role={SUGGEST_FIELDS.includes(key) ? 'combobox' : undefined}
@@ -850,20 +848,6 @@ export default function App() {
             </div>
 
             <div className="po-qty-row">
-              <div className="form-field">
-                <label className="label" htmlFor="field-po">
-                  PO
-                </label>
-                <input
-                  id="field-po"
-                  type="text"
-                  className="input"
-                  value={fields.po}
-                  onChange={(e) => setField('po', e.target.value)}
-                  placeholder="Purchase order number"
-                  autoComplete="off"
-                />
-              </div>
               <div className="form-field form-field-qty">
                 <label className="label" htmlFor="field-quantity">
                   Qty

@@ -321,7 +321,7 @@ export async function insertCheckIn(
   const client = requireClient()
   const quantity = normalizeQuantity(extras?.quantity ?? 1)
   const base = {
-    ...nullableFields(fields),
+    ...nullableFields({ ...fields, po: '' }),
     part_id: partId,
     check_in_date: checkInDate || null,
   }

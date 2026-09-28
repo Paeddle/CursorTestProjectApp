@@ -74,45 +74,11 @@ function MissingDtoolsBadge() {
 }
 
 type WorkspaceTab = 'checkin' | 'parts'
-type CheckInSort = 'date-desc' | 'po-asc' | 'po-desc'
-type CheckInView = 'item' | 'po'
 
-function comparePo(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
-}
-
-function sortCheckIns(rows: PartCheckIn[], sort: CheckInSort): PartCheckIn[] {
-  const copy = [...rows]
-  copy.sort((a, b) => {
-    if (sort === 'date-desc') {
-      return new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime()
-    }
-    const aPo = (a.po ?? '').trim()
-    const bPo = (b.po ?? '').trim()
-    if (!aPo && !bPo) return 0
-    if (!aPo) return 1
-    if (!bPo) return -1
-    const byPo = comparePo(aPo, bPo)
-    return sort === 'po-asc' ? byPo : -byPo
-  })
-  return copy
-}
-
-function groupCheckInsByPo(rows: PartCheckIn[]): { key: string; po: string; rows: PartCheckIn[] }[] {
-  const groups: { key: string; po: string; rows: PartCheckIn[] }[] = []
-  const indexByKey = new Map<string, number>()
-  for (const row of rows) {
-    const po = (row.po ?? '').trim()
-    const key = po.toLowerCase() || '__no-po__'
-    const existing = indexByKey.get(key)
-    if (existing == null) {
-      indexByKey.set(key, groups.length)
-      groups.push({ key, po, rows: [row] })
-    } else {
-      groups[existing].rows.push(row)
-    }
-  }
-  return groups
+function sortCheckInsNewestFirst(rows: PartCheckIn[]): PartCheckIn[] {
+  return [...rows].sort(
+    (a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime(),
+  )
 }
 
 type ScannerMode = 'checkin' | 'parts'
@@ -207,8 +173,6 @@ export function PartsPage() {
   const [editOtherFields, setEditOtherFields] = useState<PartFields>(EMPTY_PART_FIELDS)
   const [editOtherSaving, setEditOtherSaving] = useState(false)
   const [libraryBusy, setLibraryBusy] = useState(false)
-  const [checkInSort, setCheckInSort] = useState<CheckInSort>('date-desc')
-  const [checkInView, setCheckInView] = useState<CheckInView>('item')
   const [checkInDate, setCheckInDate] = useState('')
   const [partSort, setPartSort] = useState<DtoolsSort>('name')
   const [filterBrand, setFilterBrand] = useState('')
@@ -243,16 +207,15 @@ export function PartsPage() {
 
   const filteredCheckIns = useMemo(
     () =>
-      sortCheckIns(
+      sortCheckInsNewestFirst(
         checkIns.filter((row) => {
+          if ((row.po ?? '').trim()) return false
           if (checkInDate && checkInDateKey(row.check_in_date) !== checkInDate) return false
           return checkInMatchesQuery(row, search)
         }),
-        checkInSort,
       ),
-    [checkInDate, checkInSort, checkIns, search],
+    [checkInDate, checkIns, search],
   )
-  const checkInPoGroups = useMemo(() => groupCheckInsByPo(filteredCheckIns), [filteredCheckIns])
   const brandOptions = useMemo(() => uniqueSorted(parts.map((row) => row.brand)), [parts])
   const supplierOptions = useMemo(() => uniqueSorted(parts.map((row) => row.supplier)), [parts])
   const categoryRoots = useMemo(
@@ -443,7 +406,7 @@ export function PartsPage() {
     setEditSaving(true)
     setError(null)
     try {
-      const updated = await updateCheckIn(editingId, editFields, qty, when)
+      const updated = await updateCheckIn(editingId, { ...editFields, po: '' }, qty, when)
       setCheckIns((prev) => prev.map((row) => (row.id === editingId ? updated : row)))
       cancelEdit()
     } catch (err) {
@@ -648,7 +611,7 @@ export function PartsPage() {
               className="parts-search"
               placeholder={
                 workspaceTab === 'checkin'
-                  ? 'Filter check-ins by name, UPC, IPN, PO…'
+                  ? 'Filter check-ins by name, UPC, IPN…'
                   : 'Filter by name, UPC, brand, or source…'
               }
               value={search}
@@ -674,34 +637,6 @@ export function PartsPage() {
                     Clear date
                   </button>
                 ) : null}
-                <label className="parts-sort">
-                  <span>Sort</span>
-                  <select
-                    value={checkInSort}
-                    onChange={(e) => setCheckInSort(e.target.value as CheckInSort)}
-                    aria-label="Sort check-ins"
-                  >
-                    <option value="date-desc">Newest first</option>
-                    <option value="po-asc">PO (A–Z)</option>
-                    <option value="po-desc">PO (Z–A)</option>
-                  </select>
-                </label>
-                <div className="parts-view-toggle" role="group" aria-label="Check-in display">
-                  <button
-                    type="button"
-                    className={checkInView === 'item' ? 'active' : ''}
-                    onClick={() => setCheckInView('item')}
-                  >
-                    By item
-                  </button>
-                  <button
-                    type="button"
-                    className={checkInView === 'po' ? 'active' : ''}
-                    onClick={() => setCheckInView('po')}
-                  >
-                    By PO
-                  </button>
-                </div>
               </>
             ) : null}
             {workspaceTab === 'parts' ? (
@@ -889,29 +824,9 @@ export function PartsPage() {
             ) : (
               <div className="parts-list-scroll">
                 <div className="parts-list">
-                  {(checkInView === 'po'
-                    ? checkInPoGroups
-                    : [{ key: 'all-items', po: '', rows: filteredCheckIns }]
-                  ).map((group) => (
-                    <div
-                      key={group.key}
-                      className={checkInView === 'po' ? 'parts-po-group' : undefined}
-                    >
-                      {checkInView === 'po' ? (
-                        <div className="parts-po-group-header">
-                          <span className="parts-po-group-title">
-                            {group.po || 'No PO'}
-                          </span>
-                          <span className="parts-po-group-meta">
-                            {group.rows.length} {group.rows.length === 1 ? 'item' : 'items'} · Qty{' '}
-                            {group.rows.reduce((sum, row) => sum + checkInQuantity(row), 0)}
-                          </span>
-                        </div>
-                      ) : null}
-                      {group.rows.map((row) => {
+                  {filteredCheckIns.map((row) => {
                     const isEditing = editingId === row.id
                     const docs = parseCheckInDocuments(row.documents)
-                    const hidePo = checkInView === 'po'
                     return (
                     <div key={row.id} className={`parts-card parts-checkin-row${isEditing ? ' parts-checkin-row-editing' : ''}`}>
                       <div className="parts-checkin-main">
@@ -924,12 +839,6 @@ export function PartsPage() {
                         </button>
                         {!isEditing ? (
                           <>
-                            {hidePo ? null : (
-                            <div className="parts-checkin-po">
-                              <span className="parts-checkin-po-label">PO</span>
-                              <span>{row.po?.trim() || '—'}</span>
-                            </div>
-                            )}
                             {row.description?.trim() ? (
                               <div className="parts-checkin-po">
                                 <span className="parts-checkin-po-label">Notes</span>
@@ -964,7 +873,7 @@ export function PartsPage() {
                               void saveEdit()
                             }}
                           >
-                            {PART_FIELD_LABELS.filter(({ key }) => key !== 'link').map(({ key, label }) => (
+                            {PART_FIELD_LABELS.filter(({ key }) => key !== 'link' && key !== 'po').map(({ key, label }) => (
                               <div className="parts-edit-field" key={key}>
                                 <label className="parts-checkin-po-label" htmlFor={`edit-${row.id}-${key}`}>
                                   {label}
@@ -1104,9 +1013,7 @@ export function PartsPage() {
                       </div>
                     </div>
                     )
-                      })}
-                    </div>
-                  ))}
+                  })}
                 </div>
               </div>
             )}

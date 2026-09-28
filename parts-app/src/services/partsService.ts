@@ -352,7 +352,7 @@ export async function updateCheckIn(
   const matched = await findExistingPart(fields).catch(() => null)
   const { data: existing } = await client.from('part_checkins').select('part_id').eq('id', id).maybeSingle()
   const payload: Record<string, unknown> = {
-    ...nullableFields(fields),
+    ...nullableFields({ ...fields, po: '' }),
     quantity: qty,
     part_id: matched?.id ?? (existing as { part_id?: string | null } | null)?.part_id ?? null,
   }
@@ -379,7 +379,7 @@ export async function insertCheckIn(
   partId: string | null,
 ): Promise<PartCheckIn> {
   const payload = {
-    ...nullableFields(fields),
+    ...nullableFields({ ...fields, po: '' }),
     part_id: partId,
     check_in_date: checkInDate || null,
   }
