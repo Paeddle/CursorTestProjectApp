@@ -231,6 +231,20 @@ function summaryMatchesWireTypeQuery(summary: WireBoxSummary, q: string): boolea
   })
 }
 
+async function persistManagedJob(name: string): Promise<void> {
+  const job = name.trim().replace(/\s+/g, ' ')
+  if (!job) return
+  const jobKey = normalizeJobNameKey(job)
+  const { error } = await supabase.from('wire_jobs').insert({
+    name: job,
+    name_key: jobKey,
+    is_active: true,
+  })
+  if (!error) return
+  if (/duplicate|unique|already exists/i.test(error.message)) return
+  throw new Error(error.message)
+}
+
 async function fetchAllScans(): Promise<WireBoxScan[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
@@ -1047,12 +1061,7 @@ export function WirePage() {
     try {
       const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
       if (insErr) throw new Error(insErr.message)
-      const jobKey = normalizeJobNameKey(job)
-      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
-        { name: job, name_key: jobKey, is_active: true },
-        { onConflict: 'name_key' },
-      )
-      if (jobErr) throw new Error(jobErr.message)
+      await persistManagedJob(job)
       setSelectedBoxKeys(new Set())
       selectionAnchorIndexRef.current = null
       await loadManagedJobs()
@@ -1227,12 +1236,7 @@ export function WirePage() {
     try {
       const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
       if (insErr) throw new Error(insErr.message)
-      const jobKey = normalizeJobNameKey(job)
-      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
-        { name: job, name_key: jobKey, is_active: true },
-        { onConflict: 'name_key' }
-      )
-      if (jobErr) throw new Error(jobErr.message)
+      await persistManagedJob(job)
       setSelectedBoxKeys(new Set())
       selectionAnchorIndexRef.current = null
       await loadManagedJobs()
@@ -1254,12 +1258,7 @@ export function WirePage() {
     setJobsWorking(true)
     setError(null)
     try {
-      const key = normalizeJobNameKey(name)
-      const { error: insErr } = await supabase.from('wire_jobs').upsert(
-        { name, name_key: key, is_active: true },
-        { onConflict: 'name_key' }
-      )
-      if (insErr) throw new Error(insErr.message)
+      await persistManagedJob(name)
       setNewManagedJob('')
       await loadManagedJobs()
     } catch (e: unknown) {

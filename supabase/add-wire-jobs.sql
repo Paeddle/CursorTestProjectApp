@@ -25,9 +25,18 @@ create policy "Allow public read on wire_jobs"
 drop policy if exists "Allow insert on wire_jobs" on public.wire_jobs;
 create policy "Allow insert on wire_jobs"
   on public.wire_jobs for insert
+  to anon, authenticated
+  with check (true);
+
+drop policy if exists "Allow update on wire_jobs" on public.wire_jobs;
+create policy "Allow update on wire_jobs"
+  on public.wire_jobs for update
+  to anon, authenticated
+  using (true)
   with check (true);
 
 drop policy if exists "Allow delete on wire_jobs" on public.wire_jobs;
 create policy "Allow delete on wire_jobs"
   on public.wire_jobs for delete
+  to anon, authenticated
   using (true);

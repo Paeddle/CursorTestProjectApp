@@ -499,11 +499,12 @@ export function WirePage() {
       const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
       if (insErr) throw new Error(insErr.message)
       const jobKey = normalizeJobNameKey(job)
-      const { error: jobErr } = await supabase.from('wire_jobs').upsert(
+      const { error: jobErr } = await supabase.from('wire_jobs').insert(
         { name: job, name_key: jobKey, is_active: true },
-        { onConflict: 'name_key' }
       )
-      if (jobErr) throw new Error(jobErr.message)
+      if (jobErr && !/duplicate|unique|already exists/i.test(jobErr.message)) {
+        throw new Error(jobErr.message)
+      }
       setSelectedBoxKeys(new Set())
       selectionAnchorIndexRef.current = null
       await loadManagedJobs()
@@ -522,11 +523,12 @@ export function WirePage() {
     setError(null)
     try {
       const key = normalizeJobNameKey(name)
-      const { error: insErr } = await supabase.from('wire_jobs').upsert(
+      const { error: insErr } = await supabase.from('wire_jobs').insert(
         { name, name_key: key, is_active: true },
-        { onConflict: 'name_key' }
       )
-      if (insErr) throw new Error(insErr.message)
+      if (insErr && !/duplicate|unique|already exists/i.test(insErr.message)) {
+        throw new Error(insErr.message)
+      }
       setNewManagedJob('')
       await loadManagedJobs()
     } catch (e: unknown) {

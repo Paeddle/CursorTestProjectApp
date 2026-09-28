@@ -411,8 +411,8 @@ function App() {
     const jobKey = normalizeJobNameKey(name)
     const { error } = await supabase
       .from('wire_jobs')
-      .upsert({ name, name_key: jobKey, is_active: true }, { onConflict: 'name_key' })
-    if (error) return
+      .insert({ name, name_key: jobKey, is_active: true })
+    if (error && !/duplicate|unique|already exists/i.test(error.message)) return
     setJobOptions((prev) => {
       if (prev.some((x) => normalizeJobNameKey(x) === jobKey)) return prev
       return [...prev, name].sort((a, b) => a.localeCompare(b))
