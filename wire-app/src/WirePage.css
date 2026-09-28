@@ -85,6 +85,46 @@
   min-width: 200px;
 }
 
+.wire-box-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.55rem;
+  margin: 0 0.85rem 0.55rem 0;
+}
+
+.wire-box-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.wire-box-filter-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #94a3b8;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.wire-box-filter-select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.wire-box-filter-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
 .wire-search-chevron {
   position: absolute;
   right: 0.2rem;
@@ -1795,6 +1835,24 @@
 
   .wire-sheet-panel--boxes .wire-boxes-section-nav {
     margin-bottom: 0.5rem;
+  }
+
+  .wire-sheet-panel--boxes .wire-box-filters {
+    margin: 0 0 0.45rem 0;
+    gap: 0.45rem;
+  }
+
+  .wire-sheet-panel--boxes .wire-box-filter {
+    flex: 1 1 calc(50% - 0.45rem);
+  }
+
+  .wire-sheet-panel--boxes .wire-box-filter-select {
+    min-height: 40px;
+    font-size: 16px;
+  }
+
+  .wire-sheet-panel--boxes .wire-search {
+    padding-right: 0.85rem;
   }
 
   .wire-sheet-panel--boxes .wire-controls {

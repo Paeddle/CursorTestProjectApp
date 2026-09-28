@@ -32,6 +32,8 @@ import {
   reportRowsToHtmlDocument,
   uniqueJobNamesForMaterialsReport,
   uniqueJobNamesFromScans,
+  RETIRED_JOB_NAME,
+  WAREHOUSE_JOB_NAME,
   wireTypeIdToLabel,
   wireTypeIdToDefaultFt,
   type WireBulkCheckoutInsertRow,
@@ -190,6 +192,31 @@ function boxHeaderRemainingFootage(scans: WireBoxScan[]): string {
   return formatFootageCell(newest)
 }
 
+function boxMatchesJobFilter(scans: WireBoxScan[], jobFilter: string): boolean {
+  const want = normalizeJobNameKey(jobFilter)
+  if (!want) return true
+  const warehouseKey = normalizeJobNameKey(WAREHOUSE_JOB_NAME)
+  const retiredKey = normalizeJobNameKey(RETIRED_JOB_NAME)
+  if (want === warehouseKey) {
+    const latest = scans[0]
+    return !!latest && normalizeJobNameKey(latest.job_name) === warehouseKey
+  }
+  return scans.some((scan) => {
+    const key = normalizeJobNameKey(scan.job_name)
+    if (!key || key === retiredKey || key === warehouseKey) return false
+    return key === want
+  })
+}
+
+function boxMatchesWireTypeFilter(scans: WireBoxScan[], typeId: string): boolean {
+  const want = typeId.trim()
+  if (!want) return true
+  const profile = boxHeaderProfileScan(scans)
+  const id = String(profile?.wire_type ?? '').trim()
+  if (id === want) return true
+  return false
+}
+
 function summaryMatchesWireTypeQuery(summary: WireBoxSummary, q: string): boolean {
   const header = boxHeaderWireType(summary.scans).toLowerCase()
   if (header !== '—' && header.includes(q)) return true
@@ -252,6 +279,8 @@ export function WirePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchBox, setSearchBox] = useState('')
+  const [boxJobFilter, setBoxJobFilter] = useState('')
+  const [boxWireTypeFilter, setBoxWireTypeFilter] = useState('')
   /** Active = warehouse or checked out on a job; inactive = Retired. */
   const [boxListMode, setBoxListMode] = useState<'active' | 'inactive'>('active')
   const [workspaceTab, setWorkspaceTab] = useState<'reports' | 'inventory' | 'types' | 'boxes'>(
@@ -279,12 +308,10 @@ export function WirePage() {
   const [reportsMenuOpen, setReportsMenuOpen] = useState(false)
   const [selectedManagedJobs, setSelectedManagedJobs] = useState<Set<string>>(() => new Set())
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
-  const [jobSearchOpen, setJobSearchOpen] = useState(false)
   const boxesMenuRef = useRef<HTMLDivElement | null>(null)
   const wireTypesMenuRef = useRef<HTMLDivElement | null>(null)
   const reportsMenuRef = useRef<HTMLDivElement | null>(null)
   const jobsMenuRef = useRef<HTMLDivElement | null>(null)
-  const jobSearchRef = useRef<HTMLDivElement | null>(null)
   const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
   const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
   const [managedJobs, setManagedJobs] = useState<string[]>([])
@@ -427,7 +454,7 @@ export function WirePage() {
   }, [savedReportQuery])
 
   useEffect(() => {
-    if (!boxesMenuOpen && !wireTypesMenuOpen && !reportsMenuOpen && !jobsMenuOpen && !jobSearchOpen) {
+    if (!boxesMenuOpen && !wireTypesMenuOpen && !reportsMenuOpen && !jobsMenuOpen) {
       return
     }
     const onDoc = (e: Event) => {
@@ -446,13 +473,10 @@ export function WirePage() {
       if (jobsMenuOpen && jobsMenuRef.current && !jobsMenuRef.current.contains(t)) {
         setJobsMenuOpen(false)
       }
-      if (jobSearchOpen && jobSearchRef.current && !jobSearchRef.current.contains(t)) {
-        setJobSearchOpen(false)
-      }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [boxesMenuOpen, wireTypesMenuOpen, reportsMenuOpen, jobsMenuOpen, jobSearchOpen])
+  }, [boxesMenuOpen, wireTypesMenuOpen, reportsMenuOpen, jobsMenuOpen])
 
   useEffect(() => {
     if (!isConfigured()) return
@@ -557,12 +581,20 @@ export function WirePage() {
     [summaries],
   )
 
-  const jobSearchSuggestions = useMemo(() => {
-    const q = searchBox.trim().toLowerCase()
-    const list = allJobNameSuggestions
-    if (!q) return list.slice(0, 12)
-    return list.filter((j) => j.toLowerCase().includes(q)).slice(0, 12)
-  }, [allJobNameSuggestions, searchBox])
+  const boxWireTypeFilterOptions = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const preset of wireTypes) byId.set(preset.id, preset.label)
+    for (const summary of summaries) {
+      const profile = boxHeaderProfileScan(summary.scans)
+      const id = String(profile?.wire_type ?? '').trim()
+      if (!id || byId.has(id)) continue
+      const label = boxHeaderWireType(summary.scans)
+      byId.set(id, label === '—' ? id : label)
+    }
+    return Array.from(byId.entries()).sort((a, b) =>
+      a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }),
+    )
+  }, [wireTypes, summaries])
 
   const filtered = useMemo(() => {
     const byStatus = summaries.filter((s) => {
@@ -570,8 +602,10 @@ export function WirePage() {
       return boxListMode === 'active' ? active : !active
     })
     const q = searchBox.trim().toLowerCase()
-    if (!q) return byStatus
     return byStatus.filter((s) => {
+      if (!boxMatchesJobFilter(s.scans, boxJobFilter)) return false
+      if (!boxMatchesWireTypeFilter(s.scans, boxWireTypeFilter)) return false
+      if (!q) return true
       if (s.box_id.toLowerCase().includes(q)) return true
       if (s.scans.some((scan) => {
         const job = (scan.job_name || '').toLowerCase()
@@ -581,7 +615,7 @@ export function WirePage() {
       if (summaryMatchesWireTypeQuery(s, q)) return true
       return false
     })
-  }, [summaries, searchBox, boxListMode])
+  }, [summaries, searchBox, boxListMode, boxJobFilter, boxWireTypeFilter])
 
   const filteredBoxKeys = useMemo(
     () => filtered.map((s) => s.box_id.toLowerCase()),
@@ -2093,47 +2127,51 @@ export function WirePage() {
           </div>
         </div>
 
+        <div className="wire-box-filters">
+          <label className="wire-box-filter" htmlFor="wire-box-filter-job">
+            <span className="wire-box-filter-label">Job</span>
+            <select
+              id="wire-box-filter-job"
+              className="wire-box-filter-select"
+              value={boxJobFilter}
+              onChange={(e) => setBoxJobFilter(e.target.value)}
+            >
+              <option value="">All jobs</option>
+              <option value={WAREHOUSE_JOB_NAME}>Warehouse</option>
+              {allJobNameSuggestions.map((job) => (
+                <option key={job} value={job}>
+                  {job}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="wire-box-filter" htmlFor="wire-box-filter-type">
+            <span className="wire-box-filter-label">Wire type</span>
+            <select
+              id="wire-box-filter-type"
+              className="wire-box-filter-select"
+              value={boxWireTypeFilter}
+              onChange={(e) => setBoxWireTypeFilter(e.target.value)}
+            >
+              <option value="">All wire types</option>
+              {boxWireTypeFilterOptions.map(([id, label]) => (
+                <option key={id} value={id}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         <div className="wire-controls">
-          <div className="wire-search-wrap" ref={jobSearchRef}>
+          <div className="wire-search-wrap">
             <input
               type="text"
               className="wire-search"
-              placeholder="Filter by box, job, or wire type…"
+              placeholder="Search box ID or type…"
               value={searchBox}
-              onChange={(e) => {
-                setSearchBox(e.target.value)
-                setJobSearchOpen(true)
-              }}
-              onFocus={() => setJobSearchOpen(true)}
-              aria-autocomplete="list"
-              aria-expanded={jobSearchOpen}
+              onChange={(e) => setSearchBox(e.target.value)}
             />
-            <button
-              type="button"
-              className="wire-search-chevron"
-              aria-label="Show job suggestions"
-              onClick={() => setJobSearchOpen((v) => !v)}
-            >
-              ▾
-            </button>
-            {jobSearchOpen && jobSearchSuggestions.length > 0 && (
-              <ul className="wire-search-suggestions" role="listbox">
-                {jobSearchSuggestions.map((job) => (
-                  <li key={job}>
-                    <button
-                      type="button"
-                      className="wire-search-suggestion"
-                      onClick={() => {
-                        setSearchBox(job)
-                        setJobSearchOpen(false)
-                      }}
-                    >
-                      {job}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
           <button
             type="button"
@@ -2270,8 +2308,8 @@ export function WirePage() {
       ) : filtered.length === 0 ? (
         <div className="wire-empty">
           <p>
-            {searchBox.trim()
-              ? 'No boxes match your filter.'
+            {searchBox.trim() || boxJobFilter || boxWireTypeFilter
+              ? 'No boxes match your filters.'
               : boxListMode === 'active'
                 ? 'No active boxes. Active includes warehouse stock and boxes checked out to jobs.'
                 : 'No retired (inactive) boxes yet. Use Set inactive, or Count empty boxes when creating a report.'}
