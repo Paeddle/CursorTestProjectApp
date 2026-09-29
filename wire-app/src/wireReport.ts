@@ -1062,3 +1062,77 @@ export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInvento
   rows.sort((a, b) => a.wireType.localeCompare(b.wireType, undefined, { sensitivity: 'base' }))
   return rows
 }
+
+export type WireLowStockMetric = 'percent' | 'feet' | 'box-count'
+
+export interface WireLowStockRow {
+  wireType: string
+  boxCount: number
+  lowBoxCount: number
+  lowestRemainingFt: number | null
+  totalRemainingFt: number
+}
+
+function boxCapacityFt(scans: WireBoxScan[]): number | null {
+  const sorted = [...scans].sort((a, b) => scanTimeWireReport(b) - scanTimeWireReport(a))
+  for (const scan of sorted) {
+    const stored = parseFootage(String(scan.spool_capacity_ft ?? ''))
+    if (stored !== null && stored > 0) return stored
+    const catalog = parseFootage(wireTypeIdToDefaultFt(scan.wire_type))
+    if (catalog !== null && catalog > 0) return catalog
+  }
+  return null
+}
+
+/** Warehouse boxes grouped by wire type, with a count of boxes that look low enough to reorder. */
+export function buildWireLowStockRows(
+  summaries: WireBoxSummary[],
+  metric: WireLowStockMetric,
+  threshold: number,
+): WireLowStockRow[] {
+  const limit = Number.isFinite(threshold) ? threshold : 0
+  const map = new Map<string, WireLowStockRow>()
+  for (const summary of summaries) {
+    if (!isBoxInInventory(summary.scans)) continue
+    const latest = newestScanInBox(summary.scans)
+    if (!latest) continue
+    const wire = boxWireTypeDisplayLabel(summary.scans)
+    if (!map.has(wire)) {
+      map.set(wire, {
+        wireType: wire,
+        boxCount: 0,
+        lowBoxCount: 0,
+        lowestRemainingFt: null,
+        totalRemainingFt: 0,
+      })
+    }
+    const entry = map.get(wire)!
+    entry.boxCount += 1
+    const remaining = parseFootage(latest.current_footage)
+    if (remaining !== null) {
+      entry.totalRemainingFt += remaining
+      if (entry.lowestRemainingFt === null || remaining < entry.lowestRemainingFt) {
+        entry.lowestRemainingFt = remaining
+      }
+    }
+    const capacity = boxCapacityFt(summary.scans)
+    let low = false
+    if (metric === 'percent') {
+      low = remaining !== null && capacity !== null && capacity > 0 && (remaining / capacity) * 100 <= limit
+    } else if (metric === 'feet') {
+      low = remaining !== null && remaining <= limit
+    }
+    if (low) entry.lowBoxCount += 1
+  }
+  const rows = Array.from(map.values())
+  if (metric === 'box-count') {
+    for (const row of rows) {
+      row.lowBoxCount = row.boxCount <= limit ? row.boxCount : 0
+    }
+  }
+  rows.sort((a, b) => {
+    if (b.lowBoxCount !== a.lowBoxCount) return b.lowBoxCount - a.lowBoxCount
+    return a.wireType.localeCompare(b.wireType, undefined, { sensitivity: 'base' })
+  })
+  return rows
+}

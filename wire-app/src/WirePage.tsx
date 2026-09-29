@@ -13,6 +13,8 @@ function wireScannerHref(): string {
 import {
   buildWireBulkCheckoutInsert,
   buildWireInventoryRows,
+  buildWireLowStockRows,
+  type WireLowStockMetric,
   buildWireMaterialsReport,
   buildWireStatusChangeInsert,
   describeRestoreActiveLocation,
@@ -296,6 +298,10 @@ export function WirePage() {
   const [searchBox, setSearchBox] = useState('')
   const [boxJobFilter, setBoxJobFilter] = useState('')
   const [boxWireTypeFilter, setBoxWireTypeFilter] = useState('')
+  const [lowStockMetric, setLowStockMetric] = useState<WireLowStockMetric>('percent')
+  const [lowStockThreshold, setLowStockThreshold] = useState('25')
+  const [lowStockWireType, setLowStockWireType] = useState('')
+  const [lowStockOnly, setLowStockOnly] = useState(true)
   /** Active = warehouse or checked out on a job; inactive = Retired. */
   const [boxListMode, setBoxListMode] = useState<'active' | 'inactive'>('active')
   const [workspaceTab, setWorkspaceTab] = useState<'reports' | 'inventory' | 'types' | 'boxes'>(
@@ -396,6 +402,27 @@ export function WirePage() {
   }, [allScans, managedJobs])
 
   const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
+
+  const lowStockRows = useMemo(() => {
+    const threshold = Number(lowStockThreshold)
+    const rows = buildWireLowStockRows(
+      summaries,
+      lowStockMetric,
+      Number.isFinite(threshold) ? threshold : 0,
+    )
+    return rows.filter((row) => {
+      if (lowStockWireType && row.wireType !== lowStockWireType) return false
+      if (lowStockOnly && row.lowBoxCount <= 0) return false
+      return true
+    })
+  }, [summaries, lowStockMetric, lowStockThreshold, lowStockWireType, lowStockOnly])
+
+  const lowStockThresholdLabel =
+    lowStockMetric === 'percent'
+      ? '% of spool or less'
+      : lowStockMetric === 'feet'
+        ? 'ft remaining or less'
+        : 'warehouse boxes or fewer'
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
@@ -1906,11 +1933,15 @@ export function WirePage() {
           <div className="wire-inventory-empty">No boxes in the warehouse right now.</div>
         ) : (
           <>
+            <div className="wire-inventory-side">
             <div
               className="wire-inventory-chart"
               role="img"
               aria-label="Bar chart of remaining footage by wire type"
             >
+              <div className="wire-inventory-chart-head" aria-hidden="true">
+                Remaining footage
+              </div>
               {(() => {
                 const maxFt = Math.max(...inventoryRows.map((r) => r.totalRemainingFt), 1)
                 return inventoryRows.map((row) => {
@@ -1939,6 +1970,97 @@ export function WirePage() {
                   )
                 })
               })()}
+            </div>
+            <section className="wire-inventory-low" aria-labelledby="wire-inventory-low-heading">
+              <h3 id="wire-inventory-low-heading" className="wire-inventory-low-title">
+                Low boxes
+              </h3>
+              <div className="wire-inventory-low-filters">
+                <label className="wire-box-filter">
+                  <span className="wire-box-filter-label">Wire type</span>
+                  <select
+                    className="wire-box-filter-select"
+                    value={lowStockWireType}
+                    onChange={(e) => setLowStockWireType(e.target.value)}
+                  >
+                    <option value="">All wire types</option>
+                    {inventoryRows.map((row) => (
+                      <option key={row.wireType} value={row.wireType}>
+                        {row.wireType}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wire-box-filter">
+                  <span className="wire-box-filter-label">Count as low</span>
+                  <select
+                    className="wire-box-filter-select"
+                    value={lowStockMetric}
+                    onChange={(e) => {
+                      const next = e.target.value as WireLowStockMetric
+                      setLowStockMetric(next)
+                      setLowStockThreshold(next === 'percent' ? '25' : next === 'feet' ? '250' : '2')
+                    }}
+                  >
+                    <option value="percent">Remaining % of spool</option>
+                    <option value="feet">Remaining feet</option>
+                    <option value="box-count">Warehouse box count</option>
+                  </select>
+                </label>
+                <label className="wire-box-filter wire-inventory-low-threshold">
+                  <span className="wire-box-filter-label">{lowStockThresholdLabel}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="wire-box-filter-select"
+                    value={lowStockThreshold}
+                    onChange={(e) => setLowStockThreshold(e.target.value)}
+                  />
+                </label>
+                <label className="wire-inventory-low-only">
+                  <input
+                    type="checkbox"
+                    checked={lowStockOnly}
+                    onChange={(e) => setLowStockOnly(e.target.checked)}
+                  />
+                  Only types that need an order
+                </label>
+              </div>
+              {lowStockRows.length === 0 ? (
+                <p className="wire-inventory-low-empty">No wire types match this filter.</p>
+              ) : (
+                <div className="wire-inventory-table-wrap">
+                  <table className="wire-inventory-table wire-inventory-table--compact">
+                    <thead>
+                      <tr>
+                        <th>Wire type</th>
+                        <th className="wire-inventory-num">Warehouse</th>
+                        <th className="wire-inventory-num">Low boxes</th>
+                        <th className="wire-inventory-num">Lowest left</th>
+                        <th className="wire-inventory-num">Total left</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lowStockRows.map((row) => (
+                        <tr key={row.wireType}>
+                          <td>{row.wireType}</td>
+                          <td className="wire-inventory-num">{row.boxCount}</td>
+                          <td className="wire-inventory-num">{row.lowBoxCount}</td>
+                          <td className="wire-inventory-num">
+                            {row.lowestRemainingFt === null
+                              ? '—'
+                              : `${formatInventoryFtDisplay(row.lowestRemainingFt)} ft`}
+                          </td>
+                          <td className="wire-inventory-num">
+                            {`${formatInventoryFtDisplay(row.totalRemainingFt)} ft`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
             </div>
             <div className="wire-inventory-table-wrap wire-inventory-table-wrap--compact">
               <table className="wire-inventory-table wire-inventory-table--compact">
