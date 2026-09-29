@@ -1125,9 +1125,7 @@ export function WirePage() {
       const sections = selected.map((r) => ({
         jobName: r.job_name,
         rows: r.rows,
-        generatedLabel: `${formatDateTime(r.created_at)}${
-          r.count_empty_boxes ? ' · Count empty boxes' : ''
-        }`,
+        generatedLabel: formatDateTime(r.created_at),
       }))
       const stem =
         selected.length === 1
