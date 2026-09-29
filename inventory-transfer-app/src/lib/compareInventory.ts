@@ -93,73 +93,10 @@ export type CompareResult = {
 
 const SKIP_KEYS = new Set(['N/A', 'NA', '-', '--', 'NONE', 'NULL', '?', '#'])
 
-const GENERIC_TOKENS = new Set([
-  'WALL',
-  'MOUNT',
-  'MOUNTS',
-  'KIT',
-  'KITS',
-  'BLACK',
-  'WHITE',
-  'CABLE',
-  'CABLES',
-  'WIRE',
-  'WIRES',
-  'SPEAKER',
-  'SPEAKERS',
-  'AUDIO',
-  'VIDEO',
-  'POWER',
-  'CONTROL',
-  'SYSTEM',
-  'SYSTEMS',
-  'ACCESSORY',
-  'ACCESSORIES',
-  'CEILING',
-  'OUTDOOR',
-  'INDOOR',
-  'ACTIVE',
-  'PASSIVE',
-  'BRACKET',
-  'BRACKETS',
-  'STAND',
-  'STANDS',
-  'DISPLAY',
-  'BOX',
-  'BOXES',
-  'ENCLOSURE',
-  'ENCLOSURES',
-  'ADAPTER',
-  'ADAPTERS',
-  'HDMI',
-  'USB',
-  'PORT',
-  'PORTS',
-  'CHANNEL',
-  'STEREO',
-  'WIRELESS',
-  'ULTRA',
-  'PRO',
-  'MAX',
-  'PLUS',
-  'MINI',
-  'SLIM',
-  'GEN',
-  'THE',
-  'AND',
-  'FOR',
-  'WITH',
-  'BACK',
-  'PRE',
-  'CONSTRUCTION',
-  'SURFACE',
-  'INWALL',
-  'INCEILING',
-  'EACH',
-  'PACK',
-  'PAIR',
-  'SET',
-])
+/** Allow at most this many character edits between similar SKUs. */
+const MAX_SIMILAR_EDITS = 5
+/** Short codes must match exactly; keeps tiny SKUs from matching noise. */
+const MIN_SIMILAR_LEN = 5
 
 function usableKey(value: string): string {
   const key = normalizePartKey(value)
@@ -171,54 +108,55 @@ function compactKey(value: string): string {
   return usableKey(value).replace(/[^A-Z0-9]/g, '')
 }
 
-function similarScore(a: string, b: string): number {
-  if (!a || !b) return 0
-  if (a === b) return 1000 + a.length
-  const shorter = a.length <= b.length ? a : b
-  const longer = a.length > b.length ? a : b
-  if (shorter.length < 6) return 0
-  if (longer.startsWith(shorter) || longer.includes(shorter)) return shorter.length
-  return 0
-}
+/** Levenshtein distance, aborting once it exceeds `max`. */
+function editDistance(a: string, b: string, max = MAX_SIMILAR_EDITS): number {
+  if (a === b) return 0
+  const m = a.length
+  const n = b.length
+  if (Math.abs(m - n) > max) return max + 1
+  if (m === 0) return n
+  if (n === 0) return m
 
-function wordTokens(value: string): string[] {
-  return usableKey(value)
-    .split(/[^A-Z0-9]+/)
-    .filter((token) => token.length >= 3)
-}
+  let prev = Array.from({ length: n + 1 }, (_, i) => i)
+  let curr = new Array<number>(n + 1)
 
-function sharedPhraseBonus(left: string[], right: string[]): number {
-  let best = 0
-  for (let i = 0; i < left.length; i += 1) {
-    for (let j = 0; j < right.length; j += 1) {
-      let n = 0
-      while (i + n < left.length && j + n < right.length && left[i + n] === right[j + n]) n += 1
-      if (n > best) best = n
+  for (let i = 1; i <= m; i += 1) {
+    curr[0] = i
+    let rowMin = curr[0]
+    const ca = a.charCodeAt(i - 1)
+    for (let j = 1; j <= n; j += 1) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1
+      const next = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost)
+      curr[j] = next
+      if (next < rowMin) rowMin = next
     }
+    if (rowMin > max) return max + 1
+    ;[prev, curr] = [curr, prev]
   }
-  return best >= 2 ? best * 20 : 0
+  return prev[n]!
 }
 
-function distinctiveTokens(value: string): string[] {
-  return wordTokens(value).filter((token) => !GENERIC_TOKENS.has(token))
+/**
+ * Similar when the SKUs are mostly the same: at most 5 character edits, and
+ * enough length left that they are not nearly rewritten.
+ */
+function similarEditDistance(a: string, b: string): number | null {
+  if (!a || !b) return null
+  if (a === b) return 0
+  const maxLen = Math.max(a.length, b.length)
+  const minLen = Math.min(a.length, b.length)
+  if (minLen < MIN_SIMILAR_LEN) return null
+  const dist = editDistance(a, b, MAX_SIMILAR_EDITS)
+  if (dist > MAX_SIMILAR_EDITS) return null
+  // Keep at least MIN_SIMILAR_LEN characters of "shared mass" after edits.
+  if (maxLen - dist < MIN_SIMILAR_LEN) return null
+  return dist
 }
 
-function tokenOverlapScore(left: string, right: string): number {
-  const sharedDistinct = distinctiveTokens(left).filter((token) => distinctiveTokens(right).includes(token))
-  if (sharedDistinct.length === 0) return 0
-  return (
-    sharedDistinct.reduce((sum, token) => sum + token.length * 8, 0) +
-    sharedPhraseBonus(wordTokens(left), wordTokens(right))
-  )
-}
-
-function compactPairScore(self: SimilarKey, other: SimilarKey): number {
-  const compact = similarScore(self.key, other.key)
-  if (!compact) return 0
-  if (distinctiveTokens(self.display).some((token) => distinctiveTokens(other.display).includes(token))) {
-    return compact
-  }
-  return 0
+function similarScore(a: string, b: string): number {
+  const dist = similarEditDistance(a, b)
+  if (dist == null) return 0
+  return 1000 - dist * 40 + Math.min(a.length, b.length)
 }
 
 type SimilarKey = {
@@ -227,21 +165,13 @@ type SimilarKey = {
   display: string
 }
 
-function describeSimilar(left: SimilarKey, right: SimilarKey): string {
+function describeSimilar(left: SimilarKey, right: SimilarKey, dist: number): string {
   const leftName = `${left.field} ${left.display}`
   const rightName = `${right.field} ${right.display}`
-  if (left.key === right.key) {
+  if (dist === 0 || left.key === right.key) {
     return `${leftName} and ${rightName} match after ignoring hyphens and spaces`
   }
-  const shorter = left.key.length <= right.key.length ? left : right
-  const longer = left.key.length <= right.key.length ? right : left
-  if (longer.key.startsWith(shorter.key)) {
-    return `${longer.field} ${longer.display} starts with ${shorter.field} ${shorter.display}`
-  }
-  if (longer.key.includes(shorter.key)) {
-    return `${shorter.field} ${shorter.display} appears in ${longer.field} ${longer.display}`
-  }
-  return `${leftName} looks like ${rightName}`
+  return `${leftName} differs from ${rightName} by ${dist} character${dist === 1 ? '' : 's'}`
 }
 
 function labeledKeys(fields: { value: string; field: string }[]): SimilarKey[] {
@@ -276,13 +206,13 @@ function findSimilarCandidates(
 ): SimilarCandidate[] {
   const found: SimilarCandidate[] = []
   for (const other of others) {
-    let best: { score: number; self: SimilarKey; other: SimilarKey; compact: number } | null = null
+    let best: { score: number; dist: number; self: SimilarKey; other: SimilarKey } | null = null
     for (const self of selfKeys) {
       for (const otherKey of other.keys) {
-        const compact = compactPairScore(self, otherKey)
-        const tokens = tokenOverlapScore(self.display, otherKey.display)
-        const score = compact * 10 + tokens
-        if (score > (best?.score || 0)) best = { score, self, other: otherKey, compact }
+        const dist = similarEditDistance(self.key, otherKey.key)
+        if (dist == null) continue
+        const score = similarScore(self.key, otherKey.key)
+        if (score > (best?.score || 0)) best = { score, dist, self, other: otherKey }
       }
     }
     if (!best || best.score <= 0) continue
@@ -295,10 +225,7 @@ function findSimilarCandidates(
           ? [item.partNumber, item.model].filter(Boolean).join(' · ') || item.model
           : [item.partNumber, item.itemName].filter(Boolean).join(' · ') || item.itemName,
       label: best.other.display,
-      reason:
-        best.compact > 0
-          ? describeSimilar(best.self, best.other)
-          : `${best.self.field} ${best.self.display} shares words with ${best.other.field} ${best.other.display}`,
+      reason: describeSimilar(best.self, best.other, best.dist),
       score: best.score,
       partNumber: item.partNumber,
       itemName: item.itemName,
@@ -315,7 +242,7 @@ function findSimilarCandidates(
     })
   }
   found.sort((a, b) => b.score - a.score || a.optionLabel.localeCompare(b.optionLabel))
-  return found.slice(0, 8)
+  return found.slice(0, 5)
 }
 
 function unique(values: string[]): string[] {
