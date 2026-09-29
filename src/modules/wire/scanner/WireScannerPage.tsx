@@ -17,16 +17,25 @@ function normalizeBoxId(raw: string): string {
 /** Wire box labels on QR stickers, e.g. BX-0001. */
 const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
 
+/** Early sample stickers all encode this same placeholder ID. */
+const PLACEHOLDER_BOX_ID = 'BX-0000'
+const PLACEHOLDER_STICKER_MESSAGE =
+  'This is an old sample sticker (BX-0000). Every one of these stickers uses the same ID, so they do not create real boxes on the Boxes tab. Use a real printed sticker (BX-0001 or higher).'
+
 /**
  * Current sticker generations encode a full scanner URL on these hosts.
  * Plain BX-#### QRs (pre-URL stickers) are rejected so they cannot check boxes in.
- * DigitalOcean stickers already in rotation stay valid.
+ * DigitalOcean stickers already in rotation stay valid (except BX-0000 samples).
  */
 const ALLOWED_SCANNER_HOSTS = new Set([
   'shswebapp.site',
   'www.shswebapp.site',
   'cursor-test-project-app-4w9pp.ondigitalocean.app',
 ])
+
+function isPlaceholderBoxId(id: string): boolean {
+  return normalizeBoxId(id).toUpperCase() === PLACEHOLDER_BOX_ID
+}
 
 function stripScanValuePrefixes(raw: string): string {
   // Some camera / barcode UIs prepend "URL:" before the decoded payload.
@@ -89,11 +98,12 @@ function extractBoxIdFromScannedValue(value: string): string | null {
     const url = new URL(href)
     if (!isAllowedScannerHost(url.hostname)) return null
     if (!isWireScannerPath(url.pathname)) return null
-    return (
+    const id =
       getBoxIdFromQueryOrHash(url.search) ||
       getBoxIdFromQueryOrHash(url.hash) ||
       findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
-    )
+    if (!id || isPlaceholderBoxId(id)) return null
+    return id
   } catch {
     return null
   }
@@ -102,10 +112,18 @@ function extractBoxIdFromScannedValue(value: string): string | null {
 function getInitialBoxIdFromWindow(): string {
   if (typeof window === 'undefined') return ''
   const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
-  if (fromSearch) return fromSearch
+  if (fromSearch && !isPlaceholderBoxId(fromSearch)) return fromSearch
   const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
-  if (fromHash) return fromHash
+  if (fromHash && !isPlaceholderBoxId(fromHash)) return fromHash
   return ''
+}
+
+function pageOpenedWithPlaceholderSticker(): boolean {
+  if (typeof window === 'undefined') return false
+  const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
+  if (fromSearch && isPlaceholderBoxId(fromSearch)) return true
+  const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
+  return !!(fromHash && isPlaceholderBoxId(fromHash))
 }
 
 type CheckType = 'check_in' | 'check_out'
@@ -153,7 +171,11 @@ export default function WireScannerPage() {
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
   const [jobOptions, setJobOptions] = useState<string[]>([])
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(() =>
+    pageOpenedWithPlaceholderSticker()
+      ? { type: 'error', message: PLACEHOLDER_STICKER_MESSAGE }
+      : null,
+  )
   const [submitting, setSubmitting] = useState(false)
 
   const [boxMetaLoading, setBoxMetaLoading] = useState(false)
@@ -315,6 +337,31 @@ export default function WireScannerPage() {
   }, [])
 
   const handleQRScanned = useCallback((value: string) => {
+    const raw = stripScanValuePrefixes(value || '')
+    const looksLikeUrl =
+      /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org|site)\b/i.test(raw)
+    if (looksLikeUrl) {
+      try {
+        const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
+        const url = new URL(href)
+        const maybeId =
+          getBoxIdFromQueryOrHash(url.search) ||
+          getBoxIdFromQueryOrHash(url.hash) ||
+          findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
+        if (maybeId && isPlaceholderBoxId(maybeId)) {
+          setShowScanner(false)
+          setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
+          return
+        }
+      } catch {
+        // fall through
+      }
+    }
+    if (raw && isPlaceholderBoxId(raw)) {
+      setShowScanner(false)
+      setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
+      return
+    }
     const id = extractBoxIdFromScannedValue(value)
     if (id) {
       setBoxId(id)
@@ -324,7 +371,7 @@ export default function WireScannerPage() {
     setStatus({
       type: 'error',
       message:
-        'This sticker is not supported. Use a wire-scanner URL sticker (shswebapp.site or the DigitalOcean link). Plain BX codes no longer work.',
+        'This sticker is not supported. Use a real wire-scanner URL sticker (BX-0001 or higher on shswebapp.site or the DigitalOcean link). Old BX-0000 sample stickers and plain BX codes no longer work.',
     })
     setShowScanner(false)
   }, [])
@@ -376,6 +423,11 @@ export default function WireScannerPage() {
     const footage = (currentFootage || '').trim()
     if (!id) {
       showError('Scan a QR code first.')
+      return
+    }
+    if (isPlaceholderBoxId(id)) {
+      showError(PLACEHOLDER_STICKER_MESSAGE)
+      setBoxId('')
       return
     }
     if (hasExistingScans === false) {

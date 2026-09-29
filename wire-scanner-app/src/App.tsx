@@ -24,15 +24,27 @@ function normalizeBoxId(raw: string): string {
 const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
 
 /**
+ * Early sample stickers all encode this same placeholder ID (and the DO scanner URL).
+ * Scanning many physical boxes with them only ever updates one shared BX-0000 row.
+ */
+const PLACEHOLDER_BOX_ID = 'BX-0000'
+const PLACEHOLDER_STICKER_MESSAGE =
+  'This is an old sample sticker (BX-0000). Every one of these stickers uses the same ID, so they do not create real boxes on the Boxes tab. Use a real printed sticker (BX-0001 or higher).'
+
+/**
  * Current sticker generations encode a full scanner URL on these hosts.
  * Plain BX-#### QRs (pre-URL stickers) are rejected so they cannot check boxes in.
- * DigitalOcean stickers already in rotation stay valid.
+ * DigitalOcean stickers already in rotation stay valid (except BX-0000 samples).
  */
 const ALLOWED_SCANNER_HOSTS = new Set([
   'shswebapp.site',
   'www.shswebapp.site',
   'cursor-test-project-app-4w9pp.ondigitalocean.app',
 ])
+
+function isPlaceholderBoxId(id: string): boolean {
+  return normalizeBoxId(id).toUpperCase() === PLACEHOLDER_BOX_ID
+}
 
 function stripScanValuePrefixes(raw: string): string {
   // Some camera / barcode UIs prepend "URL:" before the decoded payload.
@@ -102,11 +114,12 @@ function extractBoxIdFromScannedValue(value: string): string | null {
     const url = new URL(href)
     if (!isAllowedScannerHost(url.hostname)) return null
     if (!isWireScannerPath(url.pathname)) return null
-    return (
+    const id =
       getBoxIdFromQueryOrHash(url.search) ||
       getBoxIdFromQueryOrHash(url.hash) ||
       findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
-    )
+    if (!id || isPlaceholderBoxId(id)) return null
+    return id
   } catch {
     return null
   }
@@ -115,10 +128,18 @@ function extractBoxIdFromScannedValue(value: string): string | null {
 function getInitialBoxIdFromWindow(): string {
   if (typeof window === 'undefined') return ''
   const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
-  if (fromSearch) return fromSearch
+  if (fromSearch && !isPlaceholderBoxId(fromSearch)) return fromSearch
   const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
-  if (fromHash) return fromHash
+  if (fromHash && !isPlaceholderBoxId(fromHash)) return fromHash
   return ''
+}
+
+function pageOpenedWithPlaceholderSticker(): boolean {
+  if (typeof window === 'undefined') return false
+  const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
+  if (fromSearch && isPlaceholderBoxId(fromSearch)) return true
+  const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
+  return !!(fromHash && isPlaceholderBoxId(fromHash))
 }
 
 type CheckType = 'check_in' | 'check_out'
@@ -163,7 +184,11 @@ function App() {
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
   const [jobOptions, setJobOptions] = useState<string[]>([])
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(() =>
+    pageOpenedWithPlaceholderSticker()
+      ? { type: 'error', message: PLACEHOLDER_STICKER_MESSAGE }
+      : null,
+  )
   const [submitting, setSubmitting] = useState(false)
 
   const [boxMetaLoading, setBoxMetaLoading] = useState(false)
@@ -396,11 +421,36 @@ function App() {
     !isWarehouseJobName(lastScan.jobName) &&
     !isRetiredJobName(lastScan.jobName)
 
-  // Already out on a job — default to check-in so they can't double-checkout by accident.
+  /** Latest scan is already a warehouse check-in — cannot check in again until checked out. */
+  const alreadyCheckedIn =
+    !boxRetired &&
+    hasExistingScans === true &&
+    lastScan != null &&
+    lastScan.checkType === 'check_in' &&
+    !isRetiredJobName(lastScan.jobName)
+
+  // Force the only legal next action: in→out, out→in, new box→in.
   useEffect(() => {
-    if (boxMetaLoading || !alreadyCheckedOut) return
-    setCheckType('check_in')
-  }, [boxMetaLoading, alreadyCheckedOut, boxId])
+    if (boxMetaLoading || boxRetired) return
+    if (hasExistingScans === false) {
+      setCheckType('check_in')
+      return
+    }
+    if (alreadyCheckedOut) {
+      setCheckType('check_in')
+      return
+    }
+    if (alreadyCheckedIn) {
+      setCheckType('check_out')
+    }
+  }, [boxMetaLoading, boxRetired, hasExistingScans, alreadyCheckedOut, alreadyCheckedIn, boxId])
+
+  // Drop placeholder sample stickers (BX-0000) if they somehow get into state.
+  useEffect(() => {
+    if (!boxId || !isPlaceholderBoxId(boxId)) return
+    setBoxId('')
+    setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
+  }, [boxId])
 
   const clearStatus = useCallback(() => setStatus(null), [])
 
@@ -431,6 +481,31 @@ function App() {
   }, [])
 
   const handleQRScanned = useCallback((value: string) => {
+    const raw = stripScanValuePrefixes(value || '')
+    const looksLikeUrl =
+      /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org|site)\b/i.test(raw)
+    if (looksLikeUrl) {
+      try {
+        const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
+        const url = new URL(href)
+        const maybeId =
+          getBoxIdFromQueryOrHash(url.search) ||
+          getBoxIdFromQueryOrHash(url.hash) ||
+          findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
+        if (maybeId && isPlaceholderBoxId(maybeId)) {
+          setShowScanner(false)
+          setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
+          return
+        }
+      } catch {
+        // fall through to normal extract
+      }
+    }
+    if (raw && isPlaceholderBoxId(raw)) {
+      setShowScanner(false)
+      setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
+      return
+    }
     const id = extractBoxIdFromScannedValue(value)
     if (id) {
       setBoxId(id)
@@ -440,7 +515,7 @@ function App() {
     setStatus({
       type: 'error',
       message:
-        'This sticker is not supported. Use a wire-scanner URL sticker (shswebapp.site or the DigitalOcean link). Plain BX codes no longer work.',
+        'This sticker is not supported. Use a real wire-scanner URL sticker (BX-0001 or higher on shswebapp.site or the DigitalOcean link). Old BX-0000 sample stickers and plain BX codes no longer work.',
     })
     setShowScanner(false)
   }, [])
@@ -488,6 +563,11 @@ function App() {
       showError('Scan a QR code first.')
       return
     }
+    if (isPlaceholderBoxId(id)) {
+      showError(PLACEHOLDER_STICKER_MESSAGE)
+      setBoxId('')
+      return
+    }
     if (boxRetired) {
       showError(
         'This box is Retired (inactive). No check-in or check-out is allowed. Delete the box in Wire Tracker to reuse this ID.',
@@ -495,12 +575,24 @@ function App() {
       return
     }
     if (hasExistingScans === false) {
+      if (checkType === 'check_out') {
+        showError('New boxes must be checked in to the warehouse first.')
+        return
+      }
       if (!selectedPresetId) {
         showError('This box has no scans yet. Choose a wire type to initialize the box.')
         return
       }
       if (!getWireTypePreset(selectedPresetId, wireTypes)) {
         showError('Unknown wire type. Choose a wire type from the list.')
+        return
+      }
+    }
+    if (checkType === 'check_in') {
+      if (alreadyCheckedIn && lastScan) {
+        showError(
+          `This box is already checked in to the warehouse. Check it out to a job before checking it in again.`,
+        )
         return
       }
     }
@@ -517,16 +609,6 @@ function App() {
       }
       if (isWarehouseJobName(job)) {
         showError('Check-out needs a real job name, not Warehouse / Inventory.')
-        return
-      }
-      if (
-        lastScan &&
-        lastScan.checkType === 'check_out' &&
-        normalizeJobNameKey(lastScan.jobName) === normalizeJobNameKey(job)
-      ) {
-        showError(
-          `Already checked out to ${formatJobLocationDisplay(lastScan.jobName)}. Check in first, then check out again if needed.`,
-        )
         return
       }
     }
@@ -708,7 +790,7 @@ function App() {
 
             {!boxMetaLoading && !boxRetired && lastScan && (
               <div
-                className={`last-scan-panel${alreadyCheckedOut ? ' last-scan-panel--out' : ''}`}
+                className={`last-scan-panel${alreadyCheckedOut || alreadyCheckedIn ? ' last-scan-panel--out' : ''}`}
                 role="status"
               >
                 <strong>Last location</strong>
@@ -724,7 +806,12 @@ function App() {
                 </p>
                 {alreadyCheckedOut && (
                   <p className="last-scan-panel-warn">
-                    Already out on this job. Check in to the warehouse before checking out again.
+                    Already out on a job. Check in to the warehouse before checking out again.
+                  </p>
+                )}
+                {alreadyCheckedIn && (
+                  <p className="last-scan-panel-warn">
+                    Already in the warehouse. Check out to a job before checking in again.
                   </p>
                 )}
               </div>
@@ -744,6 +831,12 @@ function App() {
                   type="button"
                   className={`check-type-btn ${checkType === 'check_in' ? 'active check-type-in' : ''}`}
                   onClick={() => setCheckType('check_in')}
+                  disabled={alreadyCheckedIn}
+                  title={
+                    alreadyCheckedIn
+                      ? 'Already checked in to the warehouse — check out first'
+                      : undefined
+                  }
                 >
                   Check in
                 </button>
@@ -751,11 +844,13 @@ function App() {
                   type="button"
                   className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
                   onClick={() => setCheckType('check_out')}
-                  disabled={alreadyCheckedOut}
+                  disabled={alreadyCheckedOut || hasExistingScans === false}
                   title={
                     alreadyCheckedOut && lastScan
                       ? `Already checked out to ${formatJobLocationDisplay(lastScan.jobName)}`
-                      : undefined
+                      : hasExistingScans === false
+                        ? 'New boxes must check in first'
+                        : undefined
                   }
                 >
                   Check out
@@ -765,6 +860,11 @@ function App() {
                 <p className="field-hint">
                   Check-out is locked until this box is checked in from{' '}
                   {formatJobLocationDisplay(lastScan!.jobName)}.
+                </p>
+              )}
+              {alreadyCheckedIn && (
+                <p className="field-hint">
+                  Check-in is locked until this box is checked out to a job.
                 </p>
               )}
             </div>
