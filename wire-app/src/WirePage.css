@@ -1187,6 +1187,17 @@
   margin-bottom: 0.85rem;
 }
 
+.wire-boxes-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.wire-boxes-refresh-btn {
+  flex-shrink: 0;
+}
+
 .wire-boxes-mode-toggle {
   display: inline-flex;
   align-items: stretch;

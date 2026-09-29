@@ -869,7 +869,7 @@ export function WirePage() {
           disabled={loading}
           title="Reload wire box data from the server"
         >
-          Search
+          Refresh
         </button>
         {filtered.length > 0 && (
           <button

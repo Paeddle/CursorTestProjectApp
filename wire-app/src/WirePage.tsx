@@ -291,6 +291,7 @@ export function WirePage() {
   const [summaries, setSummaries] = useState<WireBoxSummary[]>([])
   const [allScans, setAllScans] = useState<WireBoxScan[]>([])
   const [loading, setLoading] = useState(true)
+  const [boxesRefreshing, setBoxesRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchBox, setSearchBox] = useState('')
   const [boxJobFilter, setBoxJobFilter] = useState('')
@@ -430,6 +431,19 @@ export function WirePage() {
       setManagedJobs([])
     }
   }, [])
+
+  const refreshBoxesData = useCallback(async () => {
+    setBoxesRefreshing(true)
+    setError(null)
+    try {
+      await load({ silent: true })
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to refresh box list')
+    } finally {
+      setBoxesRefreshing(false)
+    }
+  }, [load, loadManagedJobs])
 
   const loadSavedReports = useCallback(async () => {
     setSavedReportsLoading(true)
@@ -2100,26 +2114,37 @@ export function WirePage() {
           <h2 id="wire-boxes-heading" className="wire-boxes-section-title">
             Boxes
           </h2>
-          <div className="wire-boxes-mode-toggle" role="tablist" aria-label="Box status">
+          <div className="wire-boxes-section-actions">
+            <div className="wire-boxes-mode-toggle" role="tablist" aria-label="Box status">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={boxListMode === 'active'}
+                className={`wire-boxes-mode-btn${boxListMode === 'active' ? ' active' : ''}`}
+                onClick={() => setBoxListMode('active')}
+              >
+                Active
+                <span className="wire-boxes-mode-count">{activeBoxCount}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={boxListMode === 'inactive'}
+                className={`wire-boxes-mode-btn${boxListMode === 'inactive' ? ' active' : ''}`}
+                onClick={() => setBoxListMode('inactive')}
+              >
+                Inactive
+                <span className="wire-boxes-mode-count">{inactiveBoxCount}</span>
+              </button>
+            </div>
             <button
               type="button"
-              role="tab"
-              aria-selected={boxListMode === 'active'}
-              className={`wire-boxes-mode-btn${boxListMode === 'active' ? ' active' : ''}`}
-              onClick={() => setBoxListMode('active')}
+              className="wire-toolbar-btn wire-boxes-refresh-btn"
+              onClick={() => void refreshBoxesData()}
+              disabled={loading || boxesRefreshing}
+              title="Reload the box list from the server"
             >
-              Active
-              <span className="wire-boxes-mode-count">{activeBoxCount}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={boxListMode === 'inactive'}
-              className={`wire-boxes-mode-btn${boxListMode === 'inactive' ? ' active' : ''}`}
-              onClick={() => setBoxListMode('inactive')}
-            >
-              Inactive
-              <span className="wire-boxes-mode-count">{inactiveBoxCount}</span>
+              {boxesRefreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
         </div>
@@ -2173,11 +2198,11 @@ export function WirePage() {
           <button
             type="button"
             className="wire-toolbar-btn"
-            onClick={() => load()}
-            disabled={loading}
-            title="Reload wire box data from the server"
+            onClick={() => void refreshBoxesData()}
+            disabled={loading || boxesRefreshing}
+            title="Reload the box list from the server"
           >
-            Search
+            {boxesRefreshing ? 'Refreshing…' : 'Refresh'}
           </button>
           <button
             type="button"
