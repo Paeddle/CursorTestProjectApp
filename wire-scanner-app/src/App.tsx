@@ -23,6 +23,17 @@ function normalizeBoxId(raw: string): string {
 /** Wire box labels on QR stickers, e.g. BX-0001. */
 const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
 
+/**
+ * Current sticker generations encode a full scanner URL on these hosts.
+ * Plain BX-#### QRs (pre-URL stickers) are rejected so they cannot check boxes in.
+ * DigitalOcean stickers already in rotation stay valid.
+ */
+const ALLOWED_SCANNER_HOSTS = new Set([
+  'shswebapp.site',
+  'www.shswebapp.site',
+  'cursor-test-project-app-4w9pp.ondigitalocean.app',
+])
+
 function stripScanValuePrefixes(raw: string): string {
   // Some camera / barcode UIs prepend "URL:" before the decoded payload.
   return raw.trim().replace(/^(URL|URI)\s*:\s*/i, '').trim()
@@ -51,6 +62,14 @@ function isRetiredJobName(name: string): boolean {
   return normalizeJobNameKey(name) === normalizeJobNameKey(RETIRED_JOB_NAME)
 }
 
+function isAllowedScannerHost(hostname: string): boolean {
+  return ALLOWED_SCANNER_HOSTS.has(hostname.trim().toLowerCase())
+}
+
+function isWireScannerPath(pathname: string): boolean {
+  return /\/wire-scanner\/?/i.test(pathname)
+}
+
 function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   if (!searchOrHash || !searchOrHash.trim()) return null
   const s = searchOrHash.trim()
@@ -58,47 +77,39 @@ function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   const params = new URLSearchParams(query)
   const box = params.get('box')
   if (box) {
-    const fromParam = findBoxIdInText(box) || normalizeBoxId(box)
-    return fromParam
+    return findBoxIdInText(box)
   }
   if (s.startsWith('#') && s.length > 1 && !s.includes('=')) {
-    const hashVal = normalizeBoxId(s.slice(1))
-    return findBoxIdInText(hashVal) || hashVal
+    return findBoxIdInText(normalizeBoxId(s.slice(1)))
   }
   return null
 }
 
-/** Pull only the box id from a QR payload (plain BX-####, ?box=, or full scanner URL). */
+/**
+ * Accept only current URL stickers (shswebapp.site or DigitalOcean).
+ * Reject plain BX-#### / legacy free-text QRs from older printed stickers.
+ */
 function extractBoxIdFromScannedValue(value: string): string | null {
   const raw = stripScanValuePrefixes(value || '')
   if (!raw) return null
 
-  const looksLikeUrl = /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org)\b/i.test(raw)
-  if (looksLikeUrl) {
-    try {
-      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
-      const url = new URL(href)
-      const fromParams =
-        getBoxIdFromQueryOrHash(url.search) || getBoxIdFromQueryOrHash(url.hash)
-      if (fromParams) return findBoxIdInText(fromParams) || fromParams
-      const fromPath = findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
-      if (fromPath) return fromPath
-    } catch {
-      // fall through to text match
-    }
-    const embedded = findBoxIdInText(raw)
-    if (embedded) return embedded
+  const looksLikeUrl =
+    /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org|site)\b/i.test(raw)
+  if (!looksLikeUrl) return null
+
+  try {
+    const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
+    const url = new URL(href)
+    if (!isAllowedScannerHost(url.hostname)) return null
+    if (!isWireScannerPath(url.pathname)) return null
+    return (
+      getBoxIdFromQueryOrHash(url.search) ||
+      getBoxIdFromQueryOrHash(url.hash) ||
+      findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
+    )
+  } catch {
     return null
   }
-
-  const embedded = findBoxIdInText(raw)
-  if (embedded) return embedded
-
-  // Plain id that is not a URL (legacy formats)
-  if (!/\s/.test(raw) && raw.length < 64 && !raw.includes('://')) {
-    return normalizeBoxId(raw)
-  }
-  return null
 }
 
 function getInitialBoxIdFromWindow(): string {
@@ -428,7 +439,8 @@ function App() {
     }
     setStatus({
       type: 'error',
-      message: 'Could not read a box ID (expected BX-0000) from that QR code.',
+      message:
+        'This sticker is not supported. Use a wire-scanner URL sticker (shswebapp.site or the DigitalOcean link). Plain BX codes no longer work.',
     })
     setShowScanner(false)
   }, [])
