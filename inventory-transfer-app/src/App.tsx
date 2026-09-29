@@ -93,7 +93,7 @@ function lineMatchesFilter(
   if (filter === 'review') return lineIsDiscrepancy(line)
   if (filter === 'diff') return line.qtyDiffers
   if (filter === 'grouped') return line.groupSlices.length > 1
-  if (filter === 'similar') return line.isSimilar && !line.treatedAsSame
+  if (filter === 'similar') return line.isSimilar
   if (filter === 'ipoint') return line.match === 'ipoint-only'
   if (filter === 'dtools') return line.match === 'dtools-only'
   if (filter === 'matched') return line.match === 'both'
@@ -311,7 +311,7 @@ export function App() {
       discrepancyCount: effectiveLines.filter(lineIsDiscrepancy).length,
       qtyDifferences: effectiveLines.filter((line) => line.qtyDiffers).length,
       groupedCount: effectiveLines.filter((line) => line.groupSlices.length > 1).length,
-      similarCount: effectiveLines.filter((line) => line.isSimilar && !line.treatedAsSame).length,
+      similarCount: effectiveLines.filter((line) => line.isSimilar).length,
       ipointOnly: effectiveLines.filter((line) => line.match === 'ipoint-only').length,
       dtoolsOnly: effectiveLines.filter((line) => line.match === 'dtools-only').length,
       matchedKeys: effectiveLines.filter((line) => line.match === 'both').length,
