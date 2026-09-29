@@ -785,11 +785,16 @@ function App() {
                   {' · '}
                   {formatJobLocationDisplay(lastScan.jobName)}
                 </p>
-                <p className="last-scan-panel-meta">
-                  {lastScan.remainingFt ? `Remaining ${lastScan.remainingFt} ft` : null}
-                  {lastScan.remainingFt && formatLastScanWhen(lastScan.scannedAt) ? ' · ' : null}
-                  {formatLastScanWhen(lastScan.scannedAt)}
-                </p>
+                {lastScan.remainingFt ? (
+                  <p className="last-scan-footage" aria-label={`Remaining footage ${lastScan.remainingFt} feet`}>
+                    <span className="last-scan-footage-label">Remaining</span>
+                    <span className="last-scan-footage-value">{lastScan.remainingFt}</span>
+                    <span className="last-scan-footage-unit">ft</span>
+                  </p>
+                ) : null}
+                {formatLastScanWhen(lastScan.scannedAt) ? (
+                  <p className="last-scan-panel-meta">{formatLastScanWhen(lastScan.scannedAt)}</p>
+                ) : null}
                 {alreadyCheckedOut && (
                   <p className="last-scan-panel-warn">
                     Already out on a job. Check in to the warehouse before checking out again.

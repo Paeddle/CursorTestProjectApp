@@ -618,11 +618,14 @@ export default function WireScannerPage() {
                 <p>
                   {boxProfile.label}
                   <span className="profile-cap"> · Full spool {boxProfile.capacityFt} ft</span>
-                  <span className="profile-cap">
-                    {' '}
-                    · Current {boxProfile.remainingFt ? `${boxProfile.remainingFt} ft` : '—'}
-                  </span>
                 </p>
+                {boxProfile.remainingFt ? (
+                  <p className="last-scan-footage" aria-label={`Remaining footage ${boxProfile.remainingFt} feet`}>
+                    <span className="last-scan-footage-label">Remaining</span>
+                    <span className="last-scan-footage-value">{boxProfile.remainingFt}</span>
+                    <span className="last-scan-footage-unit">ft</span>
+                  </p>
+                ) : null}
               </div>
             )}
 

@@ -272,6 +272,41 @@
   color: #86efac;
 }
 
+.last-scan-footage {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  margin: 0.65rem 0 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  line-height: 1.1;
+}
+
+.last-scan-footage-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+  align-self: center;
+}
+
+.last-scan-footage-value {
+  font-size: 2.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+}
+
+.last-scan-footage-unit {
+  font-size: 1.25rem;
+  font-weight: 700;
+  opacity: 0.95;
+}
+
 .legacy-banner {
   background: rgba(113, 63, 18, 0.35);
   border: 1px solid #f59e0b;
