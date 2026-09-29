@@ -697,31 +697,6 @@ function App() {
       <main className="app-main">
         {!boxId ? (
           <section className="section">
-            <div className="form-field">
-              <span className="label" id="check-type-label-idle">
-                Warehouse or job
-              </span>
-              <div
-                className="check-type-toggle"
-                role="group"
-                aria-labelledby="check-type-label-idle"
-              >
-                <button
-                  type="button"
-                  className={`check-type-btn ${checkType === 'check_in' ? 'active check-type-in' : ''}`}
-                  onClick={() => setCheckType('check_in')}
-                >
-                  Check in
-                </button>
-                <button
-                  type="button"
-                  className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
-                  onClick={() => setCheckType('check_out')}
-                >
-                  Check out
-                </button>
-              </div>
-            </div>
             <button
               type="button"
               className="btn btn-primary btn-full"
