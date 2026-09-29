@@ -24,23 +24,20 @@ function normalizeBoxId(raw: string): string {
 const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
 
 /**
- * Early sample stickers all encode this same placeholder ID (and the DO scanner URL).
+ * Early sample stickers all encode this same placeholder ID.
  * Scanning many physical boxes with them only ever updates one shared BX-0000 row.
  */
 const PLACEHOLDER_BOX_ID = 'BX-0000'
 const PLACEHOLDER_STICKER_MESSAGE =
-  'This is an old sample sticker (BX-0000). Every one of these stickers uses the same ID, so they do not create real boxes on the Boxes tab. Use a real printed sticker (BX-0001 or higher).'
+  'This is an old sample sticker (BX-0000). Every one of these stickers uses the same ID, so they do not create real boxes on the Boxes tab. Use a real printed sticker (BX-0001 or higher on shswebapp.site).'
 
 /**
- * Current sticker generations encode a full scanner URL on these hosts.
- * Plain BX-#### QRs (pre-URL stickers) are rejected so they cannot check boxes in.
- * DigitalOcean stickers already in rotation stay valid (except BX-0000 samples).
+ * New stickers encode shswebapp.site. Older (smaller) stickers encode the DigitalOcean app URL
+ * with the same BX-#### — scanning them updates the wrong physical box when IDs were reused.
  */
-const ALLOWED_SCANNER_HOSTS = new Set([
-  'shswebapp.site',
-  'www.shswebapp.site',
-  'cursor-test-project-app-4w9pp.ondigitalocean.app',
-])
+const CURRENT_SCANNER_HOSTS = new Set(['shswebapp.site', 'www.shswebapp.site'])
+const OLD_STICKER_MESSAGE =
+  'This is an old sticker (DigitalOcean link). Old and new stickers can share the same BX number, so this would update the wrong box. Put a new shswebapp.site sticker on this box.'
 
 function isPlaceholderBoxId(id: string): boolean {
   return normalizeBoxId(id).toUpperCase() === PLACEHOLDER_BOX_ID
@@ -74,8 +71,18 @@ function isRetiredJobName(name: string): boolean {
   return normalizeJobNameKey(name) === normalizeJobNameKey(RETIRED_JOB_NAME)
 }
 
-function isAllowedScannerHost(hostname: string): boolean {
-  return ALLOWED_SCANNER_HOSTS.has(hostname.trim().toLowerCase())
+function isCurrentScannerHost(hostname: string): boolean {
+  return CURRENT_SCANNER_HOSTS.has(hostname.trim().toLowerCase())
+}
+
+function isOldScannerHost(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase()
+  return h === 'cursor-test-project-app-4w9pp.ondigitalocean.app' || h.endsWith('.ondigitalocean.app')
+}
+
+function isLocalDevHost(hostname: string): boolean {
+  const h = hostname.trim().toLowerCase()
+  return h === 'localhost' || h === '127.0.0.1'
 }
 
 function isWireScannerPath(pathname: string): boolean {
@@ -97,36 +104,49 @@ function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   return null
 }
 
-/**
- * Accept only current URL stickers (shswebapp.site or DigitalOcean).
- * Reject plain BX-#### / legacy free-text QRs from older printed stickers.
- */
-function extractBoxIdFromScannedValue(value: string): string | null {
+type StickerScanResult =
+  | { status: 'ok'; id: string }
+  | { status: 'old' }
+  | { status: 'placeholder' }
+  | { status: 'unsupported' }
+
+/** Accept only new shswebapp.site stickers; reject DigitalOcean / plain / sample QRs. */
+function classifyScannedSticker(value: string): StickerScanResult {
   const raw = stripScanValuePrefixes(value || '')
-  if (!raw) return null
+  if (!raw) return { status: 'unsupported' }
+
+  if (isPlaceholderBoxId(raw)) return { status: 'placeholder' }
 
   const looksLikeUrl =
     /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org|site)\b/i.test(raw)
-  if (!looksLikeUrl) return null
+  if (!looksLikeUrl) return { status: 'unsupported' }
 
   try {
     const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
     const url = new URL(href)
-    if (!isAllowedScannerHost(url.hostname)) return null
-    if (!isWireScannerPath(url.pathname)) return null
     const id =
       getBoxIdFromQueryOrHash(url.search) ||
       getBoxIdFromQueryOrHash(url.hash) ||
       findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
-    if (!id || isPlaceholderBoxId(id)) return null
-    return id
+
+    if (id && isPlaceholderBoxId(id)) return { status: 'placeholder' }
+    if (isOldScannerHost(url.hostname)) return { status: 'old' }
+    if (!isCurrentScannerHost(url.hostname)) return { status: 'unsupported' }
+    if (!isWireScannerPath(url.pathname)) return { status: 'unsupported' }
+    if (!id) return { status: 'unsupported' }
+    return { status: 'ok', id }
   } catch {
-    return null
+    return { status: 'unsupported' }
   }
 }
 
 function getInitialBoxIdFromWindow(): string {
   if (typeof window === 'undefined') return ''
+  // Old stickers open the DigitalOcean host — never auto-fill from that entry path.
+  if (isOldScannerHost(window.location.hostname)) return ''
+  if (!isCurrentScannerHost(window.location.hostname) && !isLocalDevHost(window.location.hostname)) {
+    return ''
+  }
   const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
   if (fromSearch && !isPlaceholderBoxId(fromSearch)) return fromSearch
   const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
@@ -134,12 +154,15 @@ function getInitialBoxIdFromWindow(): string {
   return ''
 }
 
-function pageOpenedWithPlaceholderSticker(): boolean {
-  if (typeof window === 'undefined') return false
+function initialStickerGateMessage(): string | null {
+  if (typeof window === 'undefined') return null
   const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
-  if (fromSearch && isPlaceholderBoxId(fromSearch)) return true
   const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
-  return !!(fromHash && isPlaceholderBoxId(fromHash))
+  const linkedId = fromSearch || fromHash
+  if (!linkedId) return null
+  if (isPlaceholderBoxId(linkedId)) return PLACEHOLDER_STICKER_MESSAGE
+  if (isOldScannerHost(window.location.hostname)) return OLD_STICKER_MESSAGE
+  return null
 }
 
 type CheckType = 'check_in' | 'check_out'
@@ -184,11 +207,10 @@ function App() {
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
   const [jobOptions, setJobOptions] = useState<string[]>([])
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(() =>
-    pageOpenedWithPlaceholderSticker()
-      ? { type: 'error', message: PLACEHOLDER_STICKER_MESSAGE }
-      : null,
-  )
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(() => {
+    const gate = initialStickerGateMessage()
+    return gate ? { type: 'error', message: gate } : null
+  })
   const [submitting, setSubmitting] = useState(false)
 
   const [boxMetaLoading, setBoxMetaLoading] = useState(false)
@@ -481,43 +503,26 @@ function App() {
   }, [])
 
   const handleQRScanned = useCallback((value: string) => {
-    const raw = stripScanValuePrefixes(value || '')
-    const looksLikeUrl =
-      /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org|site)\b/i.test(raw)
-    if (looksLikeUrl) {
-      try {
-        const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw.replace(/^\/\//, '')}`
-        const url = new URL(href)
-        const maybeId =
-          getBoxIdFromQueryOrHash(url.search) ||
-          getBoxIdFromQueryOrHash(url.hash) ||
-          findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
-        if (maybeId && isPlaceholderBoxId(maybeId)) {
-          setShowScanner(false)
-          setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
-          return
-        }
-      } catch {
-        // fall through to normal extract
-      }
-    }
-    if (raw && isPlaceholderBoxId(raw)) {
+    const result = classifyScannedSticker(value)
+    if (result.status === 'ok') {
+      setBoxId(result.id)
       setShowScanner(false)
-      setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
       return
     }
-    const id = extractBoxIdFromScannedValue(value)
-    if (id) {
-      setBoxId(id)
-      setShowScanner(false)
+    setShowScanner(false)
+    if (result.status === 'old') {
+      setStatus({ type: 'error', message: OLD_STICKER_MESSAGE })
+      return
+    }
+    if (result.status === 'placeholder') {
+      setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
       return
     }
     setStatus({
       type: 'error',
       message:
-        'This sticker is not supported. Use a real wire-scanner URL sticker (BX-0001 or higher on shswebapp.site or the DigitalOcean link). Old BX-0000 sample stickers and plain BX codes no longer work.',
+        'This sticker is not supported. Use a new shswebapp.site wire-scanner sticker (BX-0001 or higher). Old DigitalOcean stickers and plain BX codes no longer work.',
     })
-    setShowScanner(false)
   }, [])
 
   const buildProfileInsert = (): {
