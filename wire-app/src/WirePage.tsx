@@ -23,6 +23,7 @@ import {
   downloadWireMaterialsReportPdf,
   emptyBoxesToRetireForJob,
   formatInventoryFtDisplay,
+  formatScanFootage,
   formatWireJobNameDisplay,
   isBoxActive,
   isBoxInInventory,
@@ -150,10 +151,8 @@ function isIntakeScan(scan: WireBoxScan, boxScans: WireBoxScan[]): boolean {
   return scan.scanned_at === first.scanned_at
 }
 
-function formatFootageCell(scan: WireBoxScan): string {
-  const cur = parseFootage(scan.current_footage)
-  if (cur !== null) return `${cur} ft`
-  return (scan.current_footage || '').trim() || '—'
+function formatFootageCell(scan: WireBoxScan, boxScans: WireBoxScan[]): string {
+  return formatScanFootage(scan, boxScans)
 }
 
 function formatWireTypeDisplay(scan: WireBoxScan): string {
@@ -191,7 +190,7 @@ function boxHeaderRemainingFootage(scans: WireBoxScan[]): string {
   if (!scans.length) return '—'
   const newest = scans[0]
   if (!newest) return '—'
-  return formatFootageCell(newest)
+  return formatFootageCell(newest, scans)
 }
 
 function boxMatchesJobFilter(scans: WireBoxScan[], jobFilter: string): boolean {
@@ -2748,7 +2747,7 @@ export function WirePage() {
                                 )}
                               </td>
                               <td>{formatWireJobNameDisplay(scan.job_name)}</td>
-                              <td>{formatFootageCell(scan)}</td>
+                              <td>{formatFootageCell(scan, summary.scans)}</td>
                               <td>{formatDateTime(scan.scanned_at)}</td>
                               <td className="wire-actions-col">
                                 <button

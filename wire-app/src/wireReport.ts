@@ -180,6 +180,31 @@ export function parseFootage(raw: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Footage used for inventory and job math.
+ * A flagged counter uses the corrected current_footage (0 when marked empty).
+ * A reading above the spool size is ignored so a glitch like 22234 cannot enter the totals.
+ */
+export function trustedRemainingFt(scan: WireBoxScan, capacityFt: number | null): number | null {
+  const current = parseFootage(scan.current_footage)
+  const printed = (scan.printed_footage || '').trim()
+  if (printed) return current
+  if (current === null) return null
+  if (capacityFt !== null && capacityFt > 0 && current > capacityFt + 0.001) return null
+  return current
+}
+
+export function formatScanFootage(scan: WireBoxScan, boxScans: WireBoxScan[]): string {
+  const trusted = trustedRemainingFt(scan, boxCapacityFt(boxScans))
+  const raw = parseFootage(scan.current_footage)
+  const printed = (scan.printed_footage || '').trim()
+  if (trusted === null && raw !== null) return 'Count unreadable'
+  if (trusted === null) return (scan.current_footage || '').trim() || '—'
+  const shown = formatInventoryFtDisplay(trusted)
+  if (printed) return `${shown} ft (counter read ${printed})`
+  return `${shown} ft`
+}
+
 function normalizeMatchKey(s: string): string {
   return s.toLowerCase().replace(/\s+/g, '').replace(/_/g, '-')
 }
@@ -241,8 +266,19 @@ export function isTossedEmptyAfterJobCheckout(boxAllScans: WireBoxScan[], jobNam
   return jobNameMatchesReport(latest, jobName)
 }
 
+const BAD_COUNTER_NOTE =
+  'Counter reading was too high for this spool, so this box was left out of the total.'
+
+function readingIgnored(scan: WireBoxScan, capacityFt: number | null): boolean {
+  return parseFootage(scan.current_footage) !== null && trustedRemainingFt(scan, capacityFt) === null
+}
+
 /** Footage on last check-out row for this job; end = 0, used = start (all wire assumed used / tossed). */
-function usageForBoxTossedEmpty(jobScans: WireBoxScan[], jobName: string): {
+function usageForBoxTossedEmpty(
+  jobScans: WireBoxScan[],
+  jobName: string,
+  capacityFt: number | null,
+): {
   startFt: number | null
   endFt: number | null
   usedFt: number | null
@@ -254,14 +290,16 @@ function usageForBoxTossedEmpty(jobScans: WireBoxScan[], jobName: string): {
   const checkouts = sortedJob.filter((s) => s.check_type === 'check_out' && jobNameMatchesReport(s, jobName))
   const ref =
     checkouts.length > 0 ? checkouts[checkouts.length - 1]! : sortedJob[sortedJob.length - 1]!
-  const startFt = parseFootage(ref.current_footage)
+  const startFt = trustedRemainingFt(ref, capacityFt)
   const endFt = 0
   if (startFt === null) {
     return {
       startFt: null,
       endFt: 0,
       usedFt: null,
-      notes: 'Assumed empty (tossed); could not read check-out footage.',
+      notes: readingIgnored(ref, capacityFt)
+        ? BAD_COUNTER_NOTE
+        : 'Assumed empty (tossed); could not read check-out footage.',
     }
   }
   return {
@@ -272,7 +310,10 @@ function usageForBoxTossedEmpty(jobScans: WireBoxScan[], jobName: string): {
   }
 }
 
-function usageForBoxScans(boxScans: WireBoxScan[]): {
+function usageForBoxScans(
+  boxScans: WireBoxScan[],
+  capacityFt: number | null,
+): {
   startFt: number | null
   endFt: number | null
   usedFt: number | null
@@ -284,14 +325,17 @@ function usageForBoxScans(boxScans: WireBoxScan[]): {
   const sorted = [...boxScans].sort(
     (a, c) => new Date(a.scanned_at).getTime() - new Date(c.scanned_at).getTime()
   )
-  const startFt = parseFootage(sorted[0]!.current_footage)
-  const endFt = parseFootage(sorted[sorted.length - 1]!.current_footage)
+  const startScan = sorted[0]!
+  const endScan = sorted[sorted.length - 1]!
+  const startFt = trustedRemainingFt(startScan, capacityFt)
+  const endFt = trustedRemainingFt(endScan, capacityFt)
   if (startFt === null || endFt === null) {
+    const ignored = readingIgnored(startScan, capacityFt) || readingIgnored(endScan, capacityFt)
     return {
       startFt,
       endFt,
       usedFt: null,
-      notes: 'Could not read start or end footage.',
+      notes: ignored ? BAD_COUNTER_NOTE : 'Could not read start or end footage.',
     }
   }
   const usedFt = startFt - endFt
@@ -437,10 +481,11 @@ export function buildWireMaterialsReport(
 
   const usageForReportBox = (list: WireBoxScan[]) => {
     const boxAll = scansForBoxId(allScans, list[0]!.box_id)
+    const capacityFt = boxCapacityFt(boxAll)
     if (countTossed && isTossedEmptyAfterJobCheckout(boxAll, jobName)) {
-      return usageForBoxTossedEmpty(list, jobName)
+      return usageForBoxTossedEmpty(list, jobName, capacityFt)
     }
-    return usageForBoxScans(list)
+    return usageForBoxScans(list, capacityFt)
   }
 
   const assignedBoxes = new Set<string>()
@@ -951,8 +996,9 @@ export function buildWireStatusChangeInsert(
   if (retired) return null
 
   const latest = newestScanInBox(summary.scans)
+  const trusted = latest ? trustedRemainingFt(latest, boxCapacityFt(summary.scans)) : null
   const footage =
-    (options?.footageOverride ?? latest?.current_footage ?? '').trim() || '0'
+    (options?.footageOverride ?? (trusted !== null ? formatInventoryFtDisplay(trusted) : '')).trim() || '0'
   const boxId = summary.box_id.trim()
   if (!boxId) return null
 
@@ -982,8 +1028,9 @@ export function buildWireBulkCheckoutInsert(
   if (!latest || latest.check_type === 'check_out') return null
   const job = jobName.trim()
   if (!job) return null
-  const footage = (latest.current_footage || '').trim()
-  if (!footage) return null
+  const trusted = trustedRemainingFt(latest, boxCapacityFt(summary.scans))
+  if (trusted === null) return null
+  const footage = formatInventoryFtDisplay(trusted)
 
   const row: WireBulkCheckoutInsertRow = {
     box_id: summary.box_id.trim(),
@@ -1046,7 +1093,7 @@ export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInvento
     }
     const entry = map.get(wire)!
     entry.boxCount += 1
-    const ft = parseFootage(latest.current_footage)
+    const ft = trustedRemainingFt(latest, boxCapacityFt(summary.scans))
     if (ft === null) entry.boxesWithUnknownFootage += 1
     else entry.totalRemainingFt += ft
   }
@@ -1108,7 +1155,7 @@ export function buildWireLowStockRows(
     }
     const entry = map.get(wire)!
     entry.boxCount += 1
-    const remaining = parseFootage(latest.current_footage)
+    const remaining = trustedRemainingFt(latest, boxCapacityFt(summary.scans))
     if (remaining !== null) {
       entry.totalRemainingFt += remaining
       if (entry.lowestRemainingFt === null || remaining < entry.lowestRemainingFt) {

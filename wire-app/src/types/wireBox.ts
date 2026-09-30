@@ -15,6 +15,10 @@ export interface WireBoxScan {
   wire_type_label?: string | null
   /** Full spool length in ft for this box (after add-wire-box-profile-columns.sql). */
   spool_capacity_ft?: string | null
+  /** Counter number when it was flagged as wrong (add-wire-box-counter-correction.sql). */
+  printed_footage?: string | null
+  /** Why current_footage was corrected, such as a bad counter or an empty box. */
+  footage_note?: string | null
 }
 
 export interface WireBoxSummary {

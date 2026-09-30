@@ -164,6 +164,7 @@ interface LastScanInfo {
   checkType: CheckType
   remainingFt: string | null
   scannedAt: string | null
+  note: string | null
 }
 
 function formatJobLocationDisplay(jobName: string): string {
@@ -191,6 +192,9 @@ function App() {
   const [boxId, setBoxId] = useState(getInitialBoxIdFromWindow)
   const [jobName, setJobName] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
+  const [counterWrong, setCounterWrong] = useState(false)
+  const [actualMode, setActualMode] = useState<'' | 'empty' | 'custom'>('')
+  const [actualFootage, setActualFootage] = useState('')
   const [jobOptions, setJobOptions] = useState<string[]>([])
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(() => {
     const gate = initialStickerGateMessage()
@@ -272,6 +276,9 @@ function App() {
     setBoxRetired(false)
     setLastScan(null)
     setHasExistingScans(null)
+    setCounterWrong(false)
+    setActualMode('')
+    setActualFootage('')
 
     if (!boxId || !supabase) {
       setBoxMetaLoading(false)
@@ -285,7 +292,7 @@ function App() {
 
     ;(async () => {
       try {
-        const [countRes, profileRes, latestRes] = await Promise.all([
+        const [countRes, profileRes, latestFirst] = await Promise.all([
           supabase.from('wire_box_scans').select('*', { count: 'exact', head: true }).ilike('box_id', idMatch),
           supabase
             .from('wire_box_scans')
@@ -298,13 +305,25 @@ function App() {
           supabase
             .from('wire_box_scans')
             .select(
-              'box_id, job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft, scanned_at',
+              'box_id, job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft, scanned_at, printed_footage, footage_note',
             )
             .ilike('box_id', idMatch)
             .order('scanned_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
         ])
+        let latestRes = latestFirst
+        if (latestRes.error && /printed_footage|footage_note/i.test(latestRes.error.message || '')) {
+          latestRes = await supabase
+            .from('wire_box_scans')
+            .select(
+              'box_id, job_name, check_type, current_footage, wire_type_label, wire_type, spool_capacity_ft, scanned_at',
+            )
+            .ilike('box_id', idMatch)
+            .order('scanned_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        }
 
         if (cancelled) return
 
@@ -326,6 +345,8 @@ function App() {
           wire_type_label?: string | null
           spool_capacity_ft?: string | null
           scanned_at?: string | null
+          printed_footage?: string | null
+          footage_note?: string | null
         } | null
         const storedBoxId = latest?.box_id ? String(latest.box_id).trim() : ''
         // Keep DB casing for future inserts so we don't split one box into two ids.
@@ -339,11 +360,25 @@ function App() {
           const ctRaw = String(latest.check_type ?? '').trim().toLowerCase()
           const ct: CheckType = ctRaw === 'check_out' ? 'check_out' : 'check_in'
           const rem = latest.current_footage ? String(latest.current_footage).trim() : ''
+          const printed = latest.printed_footage ? String(latest.printed_footage).trim() : ''
+          const capRaw = latest.spool_capacity_ft ? String(latest.spool_capacity_ft).trim() : ''
+          const typePreset = resolveWireTypePreset(
+            latest.wire_type ? String(latest.wire_type).trim() : '',
+            wireTypes,
+          )
+          const capN = typePreset?.defaultCapacityFt ?? parseFootageNumber(capRaw)
+          const remN = parseFootageNumber(rem)
+          const unreadable = !printed && remN !== null && capN !== null && capN > 0 && remN > capN
           setLastScan({
             jobName: String(latest.job_name ?? '').trim(),
             checkType: ct,
-            remainingFt: rem || null,
+            remainingFt: unreadable ? null : rem || null,
             scannedAt: latest.scanned_at ? String(latest.scanned_at) : null,
+            note: unreadable
+              ? 'Last counter reading was too high for this spool and is not used.'
+              : latest.footage_note
+                ? String(latest.footage_note).trim()
+                : null,
           })
         } else {
           setLastScan(null)
@@ -532,6 +567,18 @@ function App() {
     return {}
   }
 
+  const spoolCapacityNow = (): number | null => {
+    if (boxProfile?.capacityFt) {
+      const fromBox = parseFootageNumber(boxProfile.capacityFt)
+      if (fromBox !== null && fromBox > 0) return fromBox
+    }
+    if (selectedPresetId) {
+      const preset = getWireTypePreset(selectedPresetId, wireTypes)
+      if (preset && preset.defaultCapacityFt > 0) return preset.defaultCapacityFt
+    }
+    return null
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!supabase) {
@@ -599,7 +646,45 @@ function App() {
       }
     }
     if (!footage) {
-      showError('Enter current footage.')
+      showError('Enter the number on the counter.')
+      return
+    }
+    const printedN = parseFootageNumber(footage)
+    if (printedN === null || printedN < 0) {
+      showError('Enter the counter number in feet.')
+      return
+    }
+    const capacityN = spoolCapacityNow()
+    let storedFootage = footage
+    let printedFootage: string | null = null
+    let footageNote: string | null = null
+    if (counterWrong) {
+      if (actualMode === 'empty') {
+        storedFootage = '0'
+        printedFootage = footage
+        footageNote = `Counter read ${footage} ft. Box marked empty.`
+      } else if (actualMode === 'custom') {
+        const actual = actualFootage.trim()
+        const actualN = parseFootageNumber(actual)
+        if (actualN === null || actualN < 0) {
+          showError('Enter how much wire is actually left, or choose Empty.')
+          return
+        }
+        if (capacityN !== null && actualN > capacityN) {
+          showError(`Actual footage cannot be more than this spool (${capacityN} ft). Choose Empty if the box is empty.`)
+          return
+        }
+        storedFootage = actual
+        printedFootage = footage
+        footageNote = `Counter read ${footage} ft. Remaining set to ${actual} ft.`
+      } else {
+        showError('Choose Empty or enter how much wire is actually left.')
+        return
+      }
+    } else if (capacityN !== null && printedN > capacityN) {
+      showError(
+        `${footage} ft is more than this spool holds (${capacityN} ft). Use Counter is wrong, then choose Empty or enter the real footage.`,
+      )
       return
     }
 
@@ -610,7 +695,7 @@ function App() {
       const row: Record<string, string | number | boolean | null> = {
         box_id: id,
         job_name: job,
-        current_footage: footage,
+        current_footage: storedFootage,
         check_type: checkType,
         scanned_at: new Date().toISOString(),
       }
@@ -619,10 +704,20 @@ function App() {
         row.wire_type_label = profile.wire_type_label ?? profile.wire_type
         row.spool_capacity_ft = profile.spool_capacity_ft!
       }
+      if (printedFootage) {
+        row.printed_footage = printedFootage
+        row.footage_note = footageNote
+      }
 
       const { error } = await supabase.from('wire_box_scans').insert(row)
       if (error) {
         const msg = error.message || 'Save failed'
+        if (/printed_footage|footage_note/i.test(msg)) {
+          showError(
+            `${msg} Run supabase/add-wire-box-counter-correction.sql in the Supabase SQL Editor, then try again.`,
+          )
+          return
+        }
         if (/wire_type|spool_capacity|wire_type_label|column/i.test(msg)) {
           showError(
             `${msg} Run supabase/add-wire-box-type-label-default.sql in the Supabase SQL Editor (adds wire_type, spool_capacity_ft, wire_type_label if missing).`
@@ -636,15 +731,19 @@ function App() {
         await persistJobOption(job)
       }
       const modeLabel = checkType === 'check_out' ? 'Checked out' : 'Checked in to warehouse'
-      const remainingLabel = `Remaining ${footage} ft`
+      const remainingLabel = `Remaining ${storedFootage} ft`
       const capHint =
-        profile.spool_capacity_ft && parseFootageNumber(footage) !== null
+        profile.spool_capacity_ft && parseFootageNumber(storedFootage) !== null
           ? ` of ${profile.spool_capacity_ft} ft`
           : ''
-      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}`)
+      const counterHint = printedFootage ? ` Counter read ${printedFootage} ft.` : ''
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}`)
       setBoxId('')
       setJobName('')
       setCurrentFootage('')
+      setCounterWrong(false)
+      setActualMode('')
+      setActualFootage('')
     } finally {
       setSubmitting(false)
     }
@@ -654,6 +753,9 @@ function App() {
     setBoxId('')
     setJobName('')
     setCurrentFootage('')
+    setCounterWrong(false)
+    setActualMode('')
+    setActualFootage('')
     setSelectedPresetId('')
     setSpoolCapacityStr('')
     setBoxRetired(false)
@@ -767,6 +869,7 @@ function App() {
                     <span className="last-scan-footage-unit">ft</span>
                   </p>
                 ) : null}
+                {lastScan.note ? <p className="last-scan-panel-warn">{lastScan.note}</p> : null}
                 {formatLastScanWhen(lastScan.scannedAt) ? (
                   <p className="last-scan-panel-meta">{formatLastScanWhen(lastScan.scannedAt)}</p>
                 ) : null}
@@ -902,6 +1005,77 @@ function App() {
                 autoComplete="off"
                 disabled={boxMetaLoading}
               />
+              {(() => {
+                const entered = parseFootageNumber(currentFootage)
+                const capacityN = spoolCapacityNow()
+                const lastN = lastScan?.remainingFt ? parseFootageNumber(lastScan.remainingFt) : null
+                const overCapacity = entered !== null && capacityN !== null && entered > capacityN
+                const jumped =
+                  entered !== null &&
+                  lastN !== null &&
+                  capacityN !== null &&
+                  lastN <= capacityN &&
+                  entered > lastN + 0.5
+                if (!overCapacity && !jumped) return null
+                return (
+                  <p className="counter-warn" role="status">
+                    {overCapacity
+                      ? `${currentFootage.trim()} ft is more than this spool holds (${capacityN} ft). Use Counter is wrong if the counter is messed up.`
+                      : `This is higher than the last scan (${lastN} ft). A spool does not gain wire. Use Counter is wrong if this number is bad.`}
+                  </p>
+                )
+              })()}
+              <button
+                type="button"
+                className={`btn btn-secondary btn-full counter-wrong-btn${counterWrong ? ' is-on' : ''}`}
+                onClick={() => {
+                  setCounterWrong((on) => {
+                    if (on) {
+                      setActualMode('')
+                      setActualFootage('')
+                    }
+                    return !on
+                  })
+                }}
+                disabled={boxMetaLoading}
+              >
+                {counterWrong ? 'Counter marked wrong' : 'Counter is wrong'}
+              </button>
+              {counterWrong ? (
+                <div className="counter-fix">
+                  <p className="counter-fix-title">What is actually left?</p>
+                  <p className="counter-fix-hint">
+                    The counter number is kept as a note. Inventory and job totals use the amount you choose here.
+                  </p>
+                  <div className="counter-fix-actions">
+                    <button
+                      type="button"
+                      className={`btn btn-secondary${actualMode === 'empty' ? ' is-on' : ''}`}
+                      onClick={() => setActualMode('empty')}
+                    >
+                      Empty
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-secondary${actualMode === 'custom' ? ' is-on' : ''}`}
+                      onClick={() => setActualMode('custom')}
+                    >
+                      Enter footage
+                    </button>
+                  </div>
+                  {actualMode === 'custom' ? (
+                    <input
+                      id="actual-footage"
+                      type="text"
+                      className="input counter-fix-input"
+                      value={actualFootage}
+                      onChange={(e) => setActualFootage(e.target.value)}
+                      placeholder="Feet actually left"
+                      autoComplete="off"
+                    />
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             )}
             <div className="form-actions">
