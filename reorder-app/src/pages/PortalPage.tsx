@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import ShsAppNav from '../../../shared/ShsAppNav'
 import { Link } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
@@ -356,6 +357,8 @@ export default function PortalPage() {
   )
 
   return (
+    <>
+    <ShsAppNav current="reorder" />
     <div className="app portal app-wide">
       <header className="app-header">
         <h1><a href="/" className="home-title-link">Re-order Portal</a></h1>
@@ -473,5 +476,6 @@ export default function PortalPage() {
       </div>
       </div>
     </div>
+    </>
   )
 }

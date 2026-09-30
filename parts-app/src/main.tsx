@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import ShsAppNav from '../../shared/ShsAppNav'
 import { PartsPage } from './PartsPage'
 import { requireShsUnlock } from './lib/shsAuth'
 import './index.css'
@@ -7,7 +8,12 @@ import './index.css'
 if (requireShsUnlock()) {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <PartsPage />
+      <div className="shs-app-shell">
+        <ShsAppNav current="parts" />
+        <div className="shs-app-shell-body">
+          <PartsPage />
+        </div>
+      </div>
     </StrictMode>,
   )
 }
