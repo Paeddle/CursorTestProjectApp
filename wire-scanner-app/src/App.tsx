@@ -13,6 +13,8 @@ import './App.css'
 
 /** Same as Tracker warehouse stock: every check-in is stored under this job name. */
 const WAREHOUSE_JOB_NAME = 'Inventory'
+/** Show the "footage is off" checkbox only for readings above a full spool. */
+const FOOTAGE_OFF_ABOVE_FT = 1000
 /** Same as Tracker: inactive / retired boxes use this job name and cannot be scanned. */
 const RETIRED_JOB_NAME = 'Retired'
 
@@ -655,10 +657,11 @@ function App() {
       return
     }
     const capacityN = spoolCapacityNow()
+    const footageOff = counterWrong && printedN > FOOTAGE_OFF_ABOVE_FT
     let storedFootage = footage
     let printedFootage: string | null = null
     let footageNote: string | null = null
-    if (counterWrong) {
+    if (footageOff) {
       if (actualMode === 'empty') {
         storedFootage = '0'
         printedFootage = footage
@@ -681,10 +684,8 @@ function App() {
         showError('Choose Empty or enter how much wire is actually left.')
         return
       }
-    } else if (capacityN !== null && printedN > capacityN) {
-      showError(
-        `${footage} ft is more than this spool holds (${capacityN} ft). Use Counter is wrong, then choose Empty or enter the real footage.`,
-      )
+    } else if (printedN > FOOTAGE_OFF_ABOVE_FT) {
+      showError('That footage is too high. Check “footage is off”, then choose Empty or enter the real footage.')
       return
     }
 
@@ -995,53 +996,59 @@ function App() {
               <label className="label" htmlFor="current-footage">
                 Current footage (feet remaining on spool)
               </label>
-              <input
-                id="current-footage"
-                type="text"
-                className="input"
-                value={currentFootage}
-                onChange={(e) => setCurrentFootage(e.target.value)}
-                placeholder="e.g. 250 or 125.5"
-                autoComplete="off"
-                disabled={boxMetaLoading}
-              />
-              {(() => {
-                const entered = parseFootageNumber(currentFootage)
-                const capacityN = spoolCapacityNow()
-                const lastN = lastScan?.remainingFt ? parseFootageNumber(lastScan.remainingFt) : null
-                const overCapacity = entered !== null && capacityN !== null && entered > capacityN
-                const jumped =
-                  entered !== null &&
-                  lastN !== null &&
-                  capacityN !== null &&
-                  lastN <= capacityN &&
-                  entered > lastN + 0.5
-                if (!overCapacity && !jumped) return null
-                return (
-                  <p className="counter-warn" role="status">
-                    {overCapacity
-                      ? `${currentFootage.trim()} ft is more than this spool holds (${capacityN} ft). Use Counter is wrong if the counter is messed up.`
-                      : `This is higher than the last scan (${lastN} ft). A spool does not gain wire. Use Counter is wrong if this number is bad.`}
-                  </p>
-                )
-              })()}
-              <button
-                type="button"
-                className={`btn btn-secondary btn-full counter-wrong-btn${counterWrong ? ' is-on' : ''}`}
-                onClick={() => {
-                  setCounterWrong((on) => {
-                    if (on) {
+              <div className="footage-entry">
+                <input
+                  id="current-footage"
+                  type="text"
+                  className="input"
+                  value={currentFootage}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setCurrentFootage(next)
+                    const n = parseFootageNumber(next)
+                    if (n === null || n <= FOOTAGE_OFF_ABOVE_FT) {
+                      setCounterWrong(false)
                       setActualMode('')
                       setActualFootage('')
                     }
-                    return !on
-                  })
-                }}
-                disabled={boxMetaLoading}
-              >
-                {counterWrong ? 'Counter marked wrong' : 'Counter is wrong'}
-              </button>
-              {counterWrong ? (
+                  }}
+                  placeholder="e.g. 250 or 125.5"
+                  autoComplete="off"
+                  disabled={boxMetaLoading}
+                />
+                {(() => {
+                  const entered = parseFootageNumber(currentFootage)
+                  if (entered === null || entered <= FOOTAGE_OFF_ABOVE_FT) return null
+                  return (
+                    <label className="footage-off">
+                      <input
+                        type="checkbox"
+                        checked={counterWrong}
+                        disabled={boxMetaLoading}
+                        onChange={(e) => {
+                          const on = e.target.checked
+                          setCounterWrong(on)
+                          if (!on) {
+                            setActualMode('')
+                            setActualFootage('')
+                          }
+                        }}
+                      />
+                      footage is off
+                    </label>
+                  )
+                })()}
+              </div>
+              {(() => {
+                const entered = parseFootageNumber(currentFootage)
+                if (entered === null || entered <= FOOTAGE_OFF_ABOVE_FT) return null
+                return (
+                  <p className="counter-warn" role="status">
+                    This number is too high to be footage left on the spool. Check “footage is off”, then mark the box empty or enter what is actually left.
+                  </p>
+                )
+              })()}
+              {counterWrong && (parseFootageNumber(currentFootage) ?? 0) > FOOTAGE_OFF_ABOVE_FT ? (
                 <div className="counter-fix">
                   <p className="counter-fix-title">What is actually left?</p>
                   <p className="counter-fix-hint">
