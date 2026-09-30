@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import ShsAppNav from '../../shared/ShsAppNav'
+import ShsAppNav from './ShsAppNav'
 import { PartsPage } from './PartsPage'
 import { requireShsUnlock } from './lib/shsAuth'
 import './index.css'

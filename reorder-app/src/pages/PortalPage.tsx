@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import ShsAppNav from '../../../shared/ShsAppNav'
+import ShsAppNav from '../ShsAppNav'
 import { Link } from 'react-router-dom'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
