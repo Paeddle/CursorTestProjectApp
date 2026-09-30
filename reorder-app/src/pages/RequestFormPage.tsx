@@ -5,7 +5,6 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { fetchPartByIpn, ipnFromLocation, ipnFromScannedValue } from '../services/itemLookup'
 import { submitReorderRequest } from '../services/reorderService'
 import type { InventreePartRecord } from '../types'
-import { portalDeskForCategory, portalDeskLabel } from '../portalDesk'
 import '../App.css'
 
 type Status = { type: 'success' | 'error' | 'info'; message: string } | null
@@ -193,11 +192,7 @@ export default function RequestFormPage() {
         <div className="section success-panel">
           <h2>Request submitted</h2>
           <p>
-            Your re-order request was saved
-            {part
-              ? ` and sent to the ${portalDeskLabel(portalDeskForCategory(part.category_name))} tab`
-              : ''}
-            . Someone will review it soon.
+            Your re-order request was saved. Someone will review it soon.
           </p>
           <button type="button" className="btn btn-primary" onClick={startAnotherScan}>
             Submit another request

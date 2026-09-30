@@ -11,7 +11,6 @@ import {
   setReorderReceived,
 } from '../services/portalService'
 import type { ReorderRequestRecord } from '../types'
-import { portalDeskForCategory, type PortalDesk } from '../portalDesk'
 import '../App.css'
 import './PortalPage.css'
 
@@ -209,7 +208,6 @@ function RequestCard({
 }
 
 export default function PortalPage() {
-  const [desk, setDesk] = useState<PortalDesk>('warehouse')
   const [tab, setTab] = useState<PortalTab>('open')
   const [openRequests, setOpenRequests] = useState<ReorderRequestRecord[]>([])
   const [history, setHistory] = useState<ReorderRequestRecord[]>([])
@@ -325,35 +323,13 @@ export default function PortalPage() {
     }
   }
 
-  const warehouseOpen = useMemo(
-    () => openRequests.filter((row) => portalDeskForCategory(row.category_name) === 'warehouse'),
+  const pendingCount = useMemo(
+    () => openRequests.filter((row) => row.status === 'pending').length,
     [openRequests],
   )
-  const purchasingOpen = useMemo(
-    () => openRequests.filter((row) => portalDeskForCategory(row.category_name) === 'purchasing'),
-    [openRequests],
-  )
-  const warehousePending = useMemo(
-    () => warehouseOpen.filter((row) => row.status === 'pending').length,
-    [warehouseOpen],
-  )
-  const purchasingPending = useMemo(
-    () => purchasingOpen.filter((row) => row.status === 'pending').length,
-    [purchasingOpen],
-  )
-  const warehouseHistory = useMemo(
-    () => history.filter((row) => portalDeskForCategory(row.category_name) === 'warehouse'),
-    [history],
-  )
-  const purchasingHistory = useMemo(
-    () => history.filter((row) => portalDeskForCategory(row.category_name) === 'purchasing'),
-    [history],
-  )
-  const deskOpen = desk === 'purchasing' ? purchasingOpen : warehouseOpen
-  const deskHistory = desk === 'purchasing' ? purchasingHistory : warehouseHistory
   const list = useMemo(
-    () => sortRequests(tab === 'open' ? deskOpen : deskHistory, sort),
-    [deskHistory, deskOpen, sort, tab],
+    () => sortRequests(tab === 'open' ? openRequests : history, sort),
+    [history, openRequests, sort, tab],
   )
 
   return (
@@ -379,29 +355,16 @@ export default function PortalPage() {
 
       <div className="portal-desk">
       <div className="portal-toolbar portal-desk-bar">
-        <div className="portal-tabs portal-desk-tabs" role="tablist" aria-label="Reorder desk">
-          <button
-            type="button"
-            className={`portal-tab ${desk === 'warehouse' ? 'portal-tab-active' : ''}`}
-            onClick={() => setDesk('warehouse')}
-          >
-            Warehouse ({warehouseOpen.length})
+        <div className="portal-tabs portal-desk-tabs">
+          <div className="portal-tab portal-tab-active">
+            Warehouse ({openRequests.length})
             <span className="portal-tab-sep"> - </span>
-            <span className="portal-tab-pending">Pending ({warehousePending})</span>
-          </button>
-          <button
-            type="button"
-            className={`portal-tab ${desk === 'purchasing' ? 'portal-tab-active' : ''}`}
-            onClick={() => setDesk('purchasing')}
-          >
-            Purchasing ({purchasingOpen.length})
-            <span className="portal-tab-sep"> - </span>
-            <span className="portal-tab-pending">Pending ({purchasingPending})</span>
-          </button>
+            <span className="portal-tab-pending">Pending ({pendingCount})</span>
+          </div>
         </div>
       </div>
 
-      <div className={`portal-desk-panel portal-desk-panel-${desk}`}>
+      <div className="portal-desk-panel portal-desk-panel-warehouse">
       <div className="portal-toolbar">
         <div className="portal-tabs portal-sub-tabs" role="tablist" aria-label="Request list">
           <button
@@ -409,14 +372,14 @@ export default function PortalPage() {
             className={`portal-tab ${tab === 'open' ? 'portal-sub-tab-active' : ''}`}
             onClick={() => setTab('open')}
           >
-            Open requests ({deskOpen.length})
+            Open requests ({openRequests.length})
           </button>
           <button
             type="button"
             className={`portal-tab ${tab === 'history' ? 'portal-sub-tab-active' : ''}`}
             onClick={() => setTab('history')}
           >
-            Order history ({deskHistory.length})
+            Order history ({history.length})
           </button>
         </div>
         <label className="portal-sort">
@@ -448,12 +411,8 @@ export default function PortalPage() {
           {!loading && list.length === 0 ? (
             <p className="portal-empty">
               {tab === 'open'
-                ? desk === 'purchasing'
-                  ? 'No open Security - Inventory, Stock - Inventory, or Stock - Non Inventory re-order requests.'
-                  : 'No open Consumables or Security - Non Inventory re-order requests.'
-                : desk === 'purchasing'
-                  ? 'No completed Purchasing orders yet.'
-                  : 'No completed Warehouse orders yet.'}
+                ? 'No open re-order requests.'
+                : 'No completed orders yet.'}
             </p>
           ) : null}
           {!loading

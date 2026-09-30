@@ -48,6 +48,7 @@
   background: #164a5c;
   border-color: #2a6d82;
   color: #e0f2fe;
+  cursor: default;
 }
 
 .portal-tab-sep {
@@ -75,15 +76,7 @@
 }
 
 .portal-desk-panel-warehouse {
-  border-top-left-radius: 0;
   border-top-right-radius: 12px;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-}
-
-.portal-desk-panel-purchasing {
-  border-top-left-radius: 12px;
-  border-top-right-radius: 0;
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
 }
