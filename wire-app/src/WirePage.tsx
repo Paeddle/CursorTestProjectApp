@@ -342,7 +342,6 @@ export function WirePage() {
   const [reportJob, setReportJob] = useState('')
   const [reportRows, setReportRows] = useState<WireReportRow[] | null>(null)
   const [pdfWorking, setPdfWorking] = useState(false)
-  const [countEmptyBoxes, setCountEmptyBoxes] = useState(false)
   const [savedReports, setSavedReports] = useState<SavedMaterialsReport[]>([])
   const [savedReportsLoading, setSavedReportsLoading] = useState(false)
   const [savedReportQuery, setSavedReportQuery] = useState('')
@@ -667,10 +666,10 @@ export function WirePage() {
       prev === null
         ? null
         : buildWireMaterialsReport(reportJob.trim(), allScans, {
-            countEmptyTossedBoxes: countEmptyBoxes,
+            countEmptyTossedBoxes: true,
           }),
     )
-  }, [countEmptyBoxes, allScans, reportJob, openedSavedReportId])
+  }, [allScans, reportJob, openedSavedReportId])
 
   const activeBoxCount = useMemo(
     () => summaries.filter((s) => isBoxActive(s.scans)).length,
@@ -814,14 +813,14 @@ export function WirePage() {
     setError(null)
     try {
       const rows = buildWireMaterialsReport(job, allScans, {
-        countEmptyTossedBoxes: countEmptyBoxes,
+        countEmptyTossedBoxes: true,
       })
       setReportRows(rows)
 
       try {
         const saved = await saveMaterialsReport({
           jobName: job,
-          countEmptyBoxes,
+          countEmptyBoxes: true,
           rows,
         })
         setSavedReports((prev) => [saved, ...prev.filter((r) => r.id !== saved.id)])
@@ -834,24 +833,22 @@ export function WirePage() {
         )
       }
 
-      if (countEmptyBoxes) {
-        const toRetire = emptyBoxesToRetireForJob(summaries, job)
-        const payloads = toRetire
-          .map((s) =>
-            buildWireStatusChangeInsert(s, 'inactive', {
-              footageOverride: '0',
-            }),
-          )
-          .filter((r): r is WireStatusChangeInsertRow => r != null)
-          .map((r) => toSupabaseWireInsert({ ...r, scanned_at: new Date().toISOString() }))
-        if (payloads.length > 0) {
-          setCloseoutPrompt({
-            job,
-            payloads,
-            moveBoxes: true,
-            hideJob: false,
-          })
-        }
+      const toRetire = emptyBoxesToRetireForJob(summaries, job)
+      const payloads = toRetire
+        .map((s) =>
+          buildWireStatusChangeInsert(s, 'inactive', {
+            footageOverride: '0',
+          }),
+        )
+        .filter((r): r is WireStatusChangeInsertRow => r != null)
+        .map((r) => toSupabaseWireInsert({ ...r, scanned_at: new Date().toISOString() }))
+      if (payloads.length > 0) {
+        setCloseoutPrompt({
+          job,
+          payloads,
+          moveBoxes: true,
+          hideJob: false,
+        })
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not create report')
@@ -869,7 +866,6 @@ export function WirePage() {
       return next
     })
     setReportJob(report.job_name)
-    setCountEmptyBoxes(report.count_empty_boxes)
     setReportRows(report.rows)
     window.setTimeout(() => {
       reportPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -1912,15 +1908,6 @@ export function WirePage() {
             >
               {reportWorking ? 'Saving…' : 'Create report'}
             </button>
-            <button
-              type="button"
-              className={countEmptyBoxes ? 'wire-report-primary' : 'wire-report-secondary'}
-              disabled={loading}
-              aria-pressed={countEmptyBoxes}
-              onClick={() => setCountEmptyBoxes((v) => !v)}
-            >
-              Count empty boxes
-            </button>
           </div>
           <div className="wire-report-toolbar-downloads">
             <button
@@ -2658,7 +2645,7 @@ export function WirePage() {
               ? 'No boxes match your filters.'
               : boxListMode === 'active'
                 ? 'No active boxes. Active includes warehouse stock and boxes checked out to jobs.'
-                : 'No retired (inactive) boxes yet. Use Set inactive, or Count empty boxes when creating a report.'}
+                : 'No retired (inactive) boxes yet. Use Set inactive, or create a report and move emptied boxes to Inactive.'}
           </p>
         </div>
       ) : (
