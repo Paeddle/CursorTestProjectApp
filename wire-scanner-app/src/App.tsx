@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import QRScanner from './components/QRScanner'
 import {
@@ -16,6 +16,8 @@ import './App.css'
 const WAREHOUSE_JOB_NAME = 'Inventory'
 /** Show the "footage is off" checkbox only for readings above a full spool. */
 const FOOTAGE_OFF_ABOVE_FT = 1000
+/** Check-in below this remaining footage is thrown away and marked inactive. */
+const THROW_AWAY_BELOW_FT = 75
 /** Same as Tracker: inactive / retired boxes use this job name and cannot be scanned. */
 const RETIRED_JOB_NAME = 'Retired'
 /** Footage that disappeared from the shelf with no known job. */
@@ -221,6 +223,7 @@ function App() {
     [...WIRE_TYPE_PRESETS].sort((a, b) => compareWireTypeLabelsDisplay(a.label, b.label)),
   )
   const [wireTypesLoading, setWireTypesLoading] = useState(false)
+  const checkoutAutofillKey = useRef('')
 
   useEffect(() => {
     const fromUrl = getInitialBoxIdFromWindow()
@@ -487,11 +490,14 @@ function App() {
     return printedN
   })()
   const lastRemainingPreviewFt = lastScan?.remainingFt ? parseFootageNumber(lastScan.remainingFt) : null
-  const showFootageGap =
-    alreadyCheckedIn &&
+  const footageLowerThanLast =
+    hasExistingScans === true &&
+    !boxRetired &&
     lastRemainingPreviewFt !== null &&
     enteredPreviewFt !== null &&
     enteredPreviewFt + 0.001 < lastRemainingPreviewFt
+  const showFootageGap =
+    footageLowerThanLast && (alreadyCheckedIn || (checkType === 'check_out' && alreadyCheckedOut))
 
   // Force the only legal next action: in→out, out→in, new box→in.
   useEffect(() => {
@@ -508,6 +514,31 @@ function App() {
       setCheckType('check_out')
     }
   }, [boxMetaLoading, boxRetired, hasExistingScans, alreadyCheckedOut, alreadyCheckedIn, boxId])
+
+  // Check-out starts from the last saved footage. Editing that number is what opens the missing-wire prompt.
+  useEffect(() => {
+    if (checkType !== 'check_out') {
+      checkoutAutofillKey.current = ''
+      return
+    }
+    if (boxMetaLoading || boxRetired || hasExistingScans !== true) return
+    const rem = lastScan?.remainingFt?.trim() ?? ''
+    if (!rem) return
+    const key = `${normalizeBoxId(boxId)}|${rem}`
+    if (checkoutAutofillKey.current === key) return
+    checkoutAutofillKey.current = key
+    setCurrentFootage(rem)
+    setCounterWrong(false)
+    setActualMode('')
+    setActualFootage('')
+  }, [
+    checkType,
+    boxMetaLoading,
+    boxRetired,
+    hasExistingScans,
+    lastScan?.remainingFt,
+    boxId,
+  ])
 
   // Drop placeholder sample stickers (BX-0000) if they somehow get into state.
   useEffect(() => {
@@ -708,10 +739,12 @@ function App() {
     const storedN = parseFootageNumber(storedFootage)
     const lastFt = lastScan?.remainingFt ? parseFootageNumber(lastScan.remainingFt) : null
     const footageDropped =
-      alreadyCheckedIn &&
+      hasExistingScans === true &&
+      !boxRetired &&
       lastFt !== null &&
       storedN !== null &&
-      storedN + 0.001 < lastFt
+      storedN + 0.001 < lastFt &&
+      (alreadyCheckedIn || (checkType === 'check_out' && alreadyCheckedOut))
     if (checkType === 'check_in' && alreadyCheckedIn && !footageDropped) {
       showError(
         'This box is already checked in to the warehouse. Check it out to a job, or enter a lower footage if wire was used without a checkout.',
@@ -758,11 +791,34 @@ function App() {
       rows.push(row)
     }
 
-    if (footageDropped && priorFt) {
+    if (footageDropped && priorFt && alreadyCheckedIn) {
       pushRow('check_out', gapName, priorFt, 0, 'Checkout filled in because footage dropped with no scan.')
       pushRow('check_in', WAREHOUSE_JOB_NAME, storedFootage, 1000, null)
       if (checkType === 'check_out') {
         pushRow('check_out', job, storedFootage, 2000, null)
+      }
+    } else if (footageDropped && priorFt && alreadyCheckedOut && checkType === 'check_out' && lastScan) {
+      const gapIsOpenJob = normalizeJobNameKey(gapName) === normalizeJobNameKey(lastScan.jobName)
+      if (gapIsOpenJob) {
+        pushRow(
+          'check_in',
+          WAREHOUSE_JOB_NAME,
+          storedFootage,
+          0,
+          `Returned from ${formatJobLocationDisplay(lastScan.jobName)}. Footage dropped from ${priorFt} ft to ${storedFootage} ft.`,
+        )
+        pushRow('check_out', job, storedFootage, 1000, null)
+      } else {
+        pushRow(
+          'check_in',
+          WAREHOUSE_JOB_NAME,
+          priorFt,
+          0,
+          `Returned from ${formatJobLocationDisplay(lastScan.jobName)} before charging the missing wire.`,
+        )
+        pushRow('check_out', gapName, priorFt, 1000, 'Checkout filled in because footage dropped with no scan.')
+        pushRow('check_in', WAREHOUSE_JOB_NAME, storedFootage, 2000, null)
+        pushRow('check_out', job, storedFootage, 3000, null)
       }
     } else if (alreadyCheckedOut && checkType === 'check_out' && lastScan) {
       pushRow(
@@ -780,6 +836,22 @@ function App() {
       const last = rows[rows.length - 1]!
       last.printed_footage = printedFootage
       last.footage_note = footageNote
+    }
+
+    const retireLowBox =
+      checkType === 'check_in' && storedN !== null && storedN < THROW_AWAY_BELOW_FT
+    if (retireLowBox) {
+      const ok = window.confirm(
+        `Please throw away ${id}. It has ${storedFootage} ft left, which is below ${THROW_AWAY_BELOW_FT} ft. The box will be marked inactive at ${storedFootage} ft.`,
+      )
+      if (!ok) return
+      pushRow(
+        'check_out',
+        RETIRED_JOB_NAME,
+        storedFootage,
+        4000,
+        `Less than ${THROW_AWAY_BELOW_FT} ft at check-in. Please throw the box away.`,
+      )
     }
 
     setSubmitting(true)
@@ -812,7 +884,11 @@ function App() {
       if (footageDropped && normalizeJobNameKey(gapName) === normalizeJobNameKey(UNASSIGNED_JOB_NAME)) {
         await persistJobOption(UNASSIGNED_JOB_NAME)
       }
-      const modeLabel = checkType === 'check_out' ? 'Checked out' : 'Checked in to warehouse'
+      const modeLabel = retireLowBox
+        ? 'Checked in and marked inactive'
+        : checkType === 'check_out'
+          ? 'Checked out'
+          : 'Checked in to warehouse'
       const remainingLabel = `Remaining ${storedFootage} ft`
       const capHint =
         profile.spool_capacity_ft && parseFootageNumber(storedFootage) !== null
@@ -824,7 +900,10 @@ function App() {
         alreadyCheckedOut && checkType === 'check_out' && lastScan
           ? ` Closed the open checkout on ${formatJobLocationDisplay(lastScan.jobName)}.`
           : ''
-      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}${gapHint}${takeoverHint}`)
+      const retireHint = retireLowBox
+        ? ` Please throw the box away. It is inactive at ${storedFootage} ft.`
+        : ''
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}${gapHint}${takeoverHint}${retireHint}`)
       setBoxId('')
       setJobName('')
       setGapJob('')
@@ -1078,6 +1157,20 @@ function App() {
                 <p className="field-hint">
                   Saving checks this out to your job and closes the open checkout on{' '}
                   {formatJobLocationDisplay(lastScan.jobName)}.
+                </p>
+              )}
+              {checkType === 'check_out' &&
+                hasExistingScans === true &&
+                lastRemainingPreviewFt !== null &&
+                enteredPreviewFt !== null &&
+                Math.abs(enteredPreviewFt - lastRemainingPreviewFt) < 0.001 && (
+                <p className="field-hint">
+                  Footage starts at the last reading ({lastRemainingPreviewFt} ft). Change it if that number is wrong, then say which job used the difference.
+                </p>
+              )}
+              {checkType === 'check_in' && enteredPreviewFt !== null && enteredPreviewFt < THROW_AWAY_BELOW_FT && (
+                <p className="field-hint">
+                  Below {THROW_AWAY_BELOW_FT} ft. Saving will ask you to throw this box away and mark it inactive at this footage.
                 </p>
               )}
               {showFootageGap && (
