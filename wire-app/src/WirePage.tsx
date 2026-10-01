@@ -1020,7 +1020,6 @@ export function WirePage() {
     const active = isBoxActive(summary.scans)
     const target = active ? 'inactive' : 'active'
     await applyBoxStatus(target, [summary], {
-      footageOverride: active ? '0' : undefined,
       confirmMessage: active
         ? `Retire ${summary.box_id} (move to Inactive / Retired)?`
         : `Restore ${summary.box_id} to Active by undoing Retired (back to ${describeRestoreActiveLocation(summary.scans)})?`,
@@ -1048,8 +1047,7 @@ export function WirePage() {
       return
     }
     await applyBoxStatus('inactive', selected, {
-      footageOverride: '0',
-      confirmMessage: 'Retire {n} selected box(es) to Inactive?',
+      confirmMessage: 'Retire {n} selected box(es) to Inactive? The last footage is kept for reference.',
     })
   }
 

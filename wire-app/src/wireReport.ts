@@ -452,7 +452,10 @@ function usageForJobVisits(
     const usedFt = startFt - endFt
     let notes = ''
     if (jobNameIsRetired(next.job_name)) {
-      notes = 'Thrown away; remaining footage charged to this job.'
+      notes =
+        endFt <= 0.001
+          ? 'Thrown away; remaining footage charged to this job.'
+          : 'Marked inactive. Leftover footage was kept for reference.'
     } else if (usedFt < 0) {
       notes = 'Used is negative—verify check-in/out order or footage.'
     }
@@ -1152,8 +1155,9 @@ export function buildWireStatusChangeInsert(
 
   const latest = newestScanInBox(summary.scans)
   const trusted = latest ? trustedRemainingFt(latest, boxCapacityFt(summary.scans)) : null
-  const footage =
-    (options?.footageOverride ?? (trusted !== null ? formatInventoryFtDisplay(trusted) : '')).trim() || '0'
+  const lastFootage =
+    trusted !== null ? formatInventoryFtDisplay(trusted) : String(latest?.current_footage ?? '').trim()
+  const footage = (options?.footageOverride ?? lastFootage).trim() || '0'
   const boxId = summary.box_id.trim()
   if (!boxId) return null
 
