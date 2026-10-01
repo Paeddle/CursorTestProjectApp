@@ -14,7 +14,6 @@ import {
   buildWireBulkCheckoutInsert,
   buildWireInventoryRows,
   buildWireLowStockRows,
-  buildWireWarehouseCheckInInsert,
   type WireLowStockMetric,
   buildWireMaterialsReport,
   compareWireTypeLabelsDisplay,
@@ -30,7 +29,6 @@ import {
   isBoxActive,
   isBoxInInventory,
   isBoxRetired,
-  latestOpenJobCheckout,
   scanIdsToDeleteToRestoreActive,
   isSelectableWireJobName,
   parseFootage,
@@ -280,30 +278,6 @@ async function setManagedJobActive(name: string, active: boolean): Promise<void>
   }
 }
 
-const STALE_CHECKOUT_MS = 3 * 24 * 60 * 60 * 1000
-const STALE_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000
-const STALE_SNOOZE_KEY = 'wire-tracker-stale-checkout-snooze'
-
-function readStaleSnooze(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(STALE_SNOOZE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as Record<string, number>
-    const now = Date.now()
-    const keep: Record<string, number> = {}
-    for (const [key, until] of Object.entries(parsed)) {
-      if (typeof until === 'number' && until > now) keep[key] = until
-    }
-    return keep
-  } catch {
-    return {}
-  }
-}
-
-function writeStaleSnooze(map: Record<string, number>) {
-  localStorage.setItem(STALE_SNOOZE_KEY, JSON.stringify(map))
-}
-
 async function fetchAllScans(): Promise<WireBoxScan[]> {
   const { data, error } = await supabase
     .from('wire_box_scans')
@@ -403,8 +377,6 @@ export function WirePage() {
     moveBoxes: boolean
     hideJob: boolean
   } | null>(null)
-  const [staleSnooze, setStaleSnooze] = useState<Record<string, number>>(() => readStaleSnooze())
-  const [staleReturnFt, setStaleReturnFt] = useState<Record<string, string>>({})
   const [editingBoxKey, setEditingBoxKey] = useState<string | null>(null)
   const [boxEditDraft, setBoxEditDraft] = useState<BoxEditDraft | null>(null)
   const [savingBoxEdit, setSavingBoxEdit] = useState(false)
@@ -468,29 +440,6 @@ export function WirePage() {
     }
     return Array.from(merged).sort((a, b) => a.localeCompare(b))
   }, [allScans, managedJobs, hiddenJobs])
-
-  const staleCheckouts = useMemo(() => {
-    const now = Date.now()
-    const rows: { summary: WireBoxSummary; job: string; scannedAt: string; footage: string; days: number }[] = []
-    for (const summary of summaries) {
-      const open = latestOpenJobCheckout(summary.scans)
-      if (!open) continue
-      const at = new Date(open.scanned_at).getTime()
-      if (!Number.isFinite(at) || now - at < STALE_CHECKOUT_MS) continue
-      const key = summary.box_id.trim().toLowerCase()
-      if ((staleSnooze[key] ?? 0) > now) continue
-      const ft = parseFootage(String(open.current_footage ?? ''))
-      rows.push({
-        summary,
-        job: formatWireJobNameDisplay(open.job_name),
-        scannedAt: open.scanned_at,
-        footage: ft === null ? '' : formatInventoryFtDisplay(ft),
-        days: Math.max(1, Math.floor((now - at) / (24 * 60 * 60 * 1000))),
-      })
-    }
-    rows.sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
-    return rows
-  }, [summaries, staleSnooze])
 
   const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
 
@@ -1577,42 +1526,6 @@ export function WirePage() {
     }
   }
 
-  const returnStaleBoxToWarehouse = async (summary: WireBoxSummary) => {
-    const key = summary.box_id.trim().toLowerCase()
-    const open = latestOpenJobCheckout(summary.scans)
-    const fallback = open ? parseFootage(String(open.current_footage ?? '')) : null
-    const footage = (staleReturnFt[key] ?? (fallback === null ? '' : formatInventoryFtDisplay(fallback))).trim()
-    if (!footage || parseFootage(footage) === null || parseFootage(footage)! < 0) {
-      setError(`Enter the footage left on ${summary.box_id}.`)
-      return
-    }
-    const built = buildWireWarehouseCheckInInsert(summary, footage)
-    if (!built) {
-      setError(`${summary.box_id} is not checked out to a job.`)
-      return
-    }
-    setStatusWorking(true)
-    setError(null)
-    try {
-      const { error: insErr } = await supabase
-        .from('wire_box_scans')
-        .insert(toSupabaseWireInsert({ ...built, scanned_at: new Date().toISOString() }))
-      if (insErr) throw new Error(insErr.message)
-      await load({ silent: true })
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not check the box back in')
-    } finally {
-      setStatusWorking(false)
-    }
-  }
-
-  const snoozeStaleBox = (boxId: string) => {
-    const key = boxId.trim().toLowerCase()
-    const next = { ...readStaleSnooze(), [key]: Date.now() + STALE_SNOOZE_MS }
-    writeStaleSnooze(next)
-    setStaleSnooze(next)
-  }
-
   const closeBoxEditor = () => {
     setEditingBoxKey(null)
     setBoxEditDraft(null)
@@ -2561,64 +2474,6 @@ export function WirePage() {
             </button>
           </div>
         </div>
-
-        {boxListMode === 'active' && staleCheckouts.length > 0 && (
-          <div className="wire-stale-list" aria-label="Boxes still checked out">
-            <div className="wire-jobs-header">Still checked out</div>
-            <p className="wire-stale-lead">
-              These boxes have been out for at least 3 days. Check one back in, mark it thrown away, or leave it on the job.
-            </p>
-            {staleCheckouts.map((row) => {
-              const key = row.summary.box_id.trim().toLowerCase()
-              return (
-                <div key={key} className="wire-stale-row">
-                  <div className="wire-stale-main">
-                    <strong>{row.summary.box_id}</strong>
-                    <span>
-                      {row.job} · {row.days} day{row.days === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                  <label className="wire-stale-ft">
-                    <span>Ft left</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={staleReturnFt[key] ?? row.footage}
-                      onChange={(e) =>
-                        setStaleReturnFt((prev) => ({ ...prev, [key]: e.target.value }))
-                      }
-                    />
-                  </label>
-                  <div className="wire-stale-actions">
-                    <button
-                      type="button"
-                      className="wire-report-secondary"
-                      disabled={statusWorking}
-                      onClick={() => void returnStaleBoxToWarehouse(row.summary)}
-                    >
-                      Back in warehouse
-                    </button>
-                    <button
-                      type="button"
-                      className="wire-report-secondary"
-                      disabled={statusWorking}
-                      onClick={() => void throwAwayBoxes([row.summary])}
-                    >
-                      Thrown away
-                    </button>
-                    <button
-                      type="button"
-                      className="wire-report-secondary"
-                      onClick={() => snoozeStaleBox(row.summary.box_id)}
-                    >
-                      Still on the job
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
 
         <div className="wire-box-filters">
           <label className="wire-box-filter" htmlFor="wire-box-filter-job">
