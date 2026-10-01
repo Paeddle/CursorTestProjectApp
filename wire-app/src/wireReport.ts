@@ -153,24 +153,48 @@ function isOutdoorWireVariant(label: string): boolean {
   return n.includes('direct burial') || n.includes('outdoor')
 }
 
+function isPlainCat6Label(label: string): boolean {
+  const compact = compactWireLabel(label)
+  return /cat6/.test(compact) && !/cat6a/.test(compact)
+}
+
+function wireTypeRank(label: string): [number, number, string] {
+  const norm = normWireLabel(label)
+  const exact = ROUGH_IN_WIRE_REPORT_ROWS.findIndex((row) => normWireLabel(row.label) === norm)
+  if (exact >= 0) return [exact, 0, norm]
+  const anchor = wireFamilyAnchor(label)
+  if (anchor < 0) return [10_000, 0, norm]
+  return [anchor, isOutdoorWireVariant(label) ? 1 : 2, norm]
+}
+
+function compareWireTypeRank(a: [number, number, string], b: [number, number, string]): number {
+  if (a[0] !== b[0]) return a[0] - b[0]
+  if (a[1] !== b[1]) return a[1] - b[1]
+  return a[2].localeCompare(b[2], undefined, { sensitivity: 'base', numeric: true })
+}
+
 /**
- * Schedule order, with similar cables kept together.
- * Cat6 direct burial and Cat6 outdoor follow the Cat6 colors, next to each other.
+ * Materials-report order. Cat6 direct burial and outdoor sit under the other Cat6.
  */
 export function compareWireTypeLabels(a: string, b: string): number {
-  const rank = (label: string): [number, number, string] => {
-    const norm = normWireLabel(label)
-    const exact = ROUGH_IN_WIRE_REPORT_ROWS.findIndex((row) => normWireLabel(row.label) === norm)
-    if (exact >= 0) return [exact, 0, norm]
-    const anchor = wireFamilyAnchor(label)
-    if (anchor < 0) return [10_000, 0, norm]
-    return [anchor, isOutdoorWireVariant(label) ? 1 : 2, norm]
+  return compareWireTypeRank(wireTypeRank(a), wireTypeRank(b))
+}
+
+/**
+ * Inventory, wire-type list, and dropdowns. Same families as the report, flipped
+ * so speaker wire is at the top. Direct burial and outdoor Cat6 stay under the other Cat6.
+ */
+export function compareWireTypeLabelsDisplay(a: string, b: string): number {
+  const displayRank = (label: string): [number, number, string] => {
+    const [group, variant, norm] = wireTypeRank(label)
+    if (group >= 10_000) return [100_000, 0, norm]
+    if (isPlainCat6Label(label) && isOutdoorWireVariant(label)) {
+      const firstCat6 = ROUGH_IN_WIRE_REPORT_ROWS.findIndex((row) => isPlainCat6Label(row.label))
+      return [-firstCat6, 1, norm]
+    }
+    return [-group, variant, norm]
   }
-  const [aGroup, aVariant, aNorm] = rank(a)
-  const [bGroup, bVariant, bNorm] = rank(b)
-  if (aGroup !== bGroup) return aGroup - bGroup
-  if (aVariant !== bVariant) return aVariant - bVariant
-  return aNorm.localeCompare(bNorm, undefined, { sensitivity: 'base', numeric: true })
+  return compareWireTypeRank(displayRank(a), displayRank(b))
 }
 
 export interface WireReportRow {
@@ -1259,7 +1283,7 @@ export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInvento
       boxesWithUnknownFootage: data.boxesWithUnknownFootage,
     })
   }
-  rows.sort((a, b) => compareWireTypeLabels(a.wireType, b.wireType))
+  rows.sort((a, b) => compareWireTypeLabelsDisplay(a.wireType, b.wireType))
   return rows
 }
 
@@ -1330,6 +1354,6 @@ export function buildWireLowStockRows(
       row.lowBoxCount = row.boxCount <= limit ? row.boxCount : 0
     }
   }
-  rows.sort((a, b) => compareWireTypeLabels(a.wireType, b.wireType))
+  rows.sort((a, b) => compareWireTypeLabelsDisplay(a.wireType, b.wireType))
   return rows
 }

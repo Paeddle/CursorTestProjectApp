@@ -9,6 +9,7 @@ import {
   type WireTypePreset,
 } from './wireTypePresets'
 import { fetchActiveWireTypes } from './services/wireTypesService'
+import { compareWireTypeLabelsDisplay } from '../../wire-app/src/wireReport'
 import './App.css'
 
 /** Same as Tracker warehouse stock: every check-in is stored under this job name. */
@@ -217,9 +218,7 @@ function App() {
   const [spoolCapacityStr, setSpoolCapacityStr] = useState('')
 
   const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(() =>
-    [...WIRE_TYPE_PRESETS].sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
-    ),
+    [...WIRE_TYPE_PRESETS].sort((a, b) => compareWireTypeLabelsDisplay(a.label, b.label)),
   )
   const [wireTypesLoading, setWireTypesLoading] = useState(false)
 

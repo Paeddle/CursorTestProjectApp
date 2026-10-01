@@ -17,7 +17,7 @@ import {
   buildWireWarehouseCheckInInsert,
   type WireLowStockMetric,
   buildWireMaterialsReport,
-  compareWireTypeLabels,
+  compareWireTypeLabelsDisplay,
   buildWireStatusChangeInsert,
   describeRestoreActiveLocation,
   downloadTextFile,
@@ -408,7 +408,7 @@ export function WirePage() {
   const [boxEditDraft, setBoxEditDraft] = useState<BoxEditDraft | null>(null)
   const [savingBoxEdit, setSavingBoxEdit] = useState(false)
   const [wireTypes, setWireTypes] = useState<WireTypePreset[]>(() =>
-    [...WIRE_TYPE_PRESETS].sort((a, b) => compareWireTypeLabels(a.label, b.label)),
+    [...WIRE_TYPE_PRESETS].sort((a, b) => compareWireTypeLabelsDisplay(a.label, b.label)),
   )
   const [wireTypesWorking, setWireTypesWorking] = useState(false)
   const [newTypeLabel, setNewTypeLabel] = useState('')
@@ -742,7 +742,7 @@ export function WirePage() {
       const label = boxHeaderWireType(summary.scans)
       byId.set(id, label === '—' ? id : label)
     }
-    return Array.from(byId.entries()).sort((a, b) => compareWireTypeLabels(a[1], b[1]))
+    return Array.from(byId.entries()).sort((a, b) => compareWireTypeLabelsDisplay(a[1], b[1]))
   }, [wireTypes, summaries])
 
   const filtered = useMemo(() => {

@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { compareWireTypeLabels } from '../wireReport'
+import { compareWireTypeLabelsDisplay } from '../wireReport'
 import {
   WIRE_TYPE_PRESETS,
   type WireTypePreset,
@@ -25,7 +25,7 @@ function rowToPreset(row: WireTypeRow): WireTypePreset {
 /** Active types from Supabase, in the same family order as inventory and reports. */
 export async function fetchActiveWireTypes(): Promise<WireTypePreset[]> {
   const byFamily = (list: WireTypePreset[]) =>
-    [...list].sort((a, b) => compareWireTypeLabels(a.label, b.label))
+    [...list].sort((a, b) => compareWireTypeLabelsDisplay(a.label, b.label))
   try {
     const { data, error } = await supabase
       .from('wire_types')

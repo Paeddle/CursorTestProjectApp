@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { compareWireTypeLabelsDisplay } from '../../../wire-app/src/wireReport'
 import { WIRE_TYPE_PRESETS, type WireTypePreset } from '../wireTypePresets'
 
 type WireTypeRow = {
@@ -15,37 +16,26 @@ function rowToPreset(row: WireTypeRow): WireTypePreset {
   }
 }
 
-/** Active types from Supabase, sorted by name; seed fallback if empty/unreachable. */
+/** Active types from Supabase, same order as the Wire Tracker inventory list. */
 export async function fetchActiveWireTypes(): Promise<WireTypePreset[]> {
-  if (!supabase) {
-    return [...WIRE_TYPE_PRESETS].sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
-    )
-  }
+  const byDisplay = (list: WireTypePreset[]) =>
+    [...list].sort((a, b) => compareWireTypeLabelsDisplay(a.label, b.label))
+  if (!supabase) return byDisplay(WIRE_TYPE_PRESETS)
 
   try {
     const { data, error } = await supabase
       .from('wire_types')
       .select('id, label, default_capacity_ft, is_active, sort_order')
       .eq('is_active', true)
-      .order('label', { ascending: true })
 
     if (error) throw error
     const list = (data ?? [])
       .map((r) => rowToPreset(r as WireTypeRow))
       .filter((p) => p.id && p.label && p.defaultCapacityFt > 0)
 
-    if (list.length === 0) {
-      return [...WIRE_TYPE_PRESETS].sort((a, b) =>
-        a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
-      )
-    }
-    return list.sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
-    )
+    if (list.length === 0) return byDisplay(WIRE_TYPE_PRESETS)
+    return byDisplay(list)
   } catch {
-    return [...WIRE_TYPE_PRESETS].sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
-    )
+    return byDisplay(WIRE_TYPE_PRESETS)
   }
 }
