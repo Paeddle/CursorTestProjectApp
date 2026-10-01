@@ -380,6 +380,19 @@
   line-height: 1.35;
 }
 
+.last-scan-wire {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  margin: 0.55rem 0 0 0;
+}
+
+.last-scan-wire-value {
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
 .last-scan-footage {
   display: flex;
   align-items: baseline;

@@ -1045,6 +1045,12 @@ function App() {
                   {' · '}
                   {formatJobLocationDisplay(lastScan.jobName)}
                 </p>
+                {boxProfile?.label ? (
+                  <p className="last-scan-wire" aria-label={`Wire type ${boxProfile.label}`}>
+                    <span className="last-scan-footage-label">Wire type</span>
+                    <span className="last-scan-wire-value">{boxProfile.label}</span>
+                  </p>
+                ) : null}
                 {lastScan.remainingFt ? (
                   <p className="last-scan-footage" aria-label={`Remaining footage ${lastScan.remainingFt} feet`}>
                     <span className="last-scan-footage-label">Remaining</span>
