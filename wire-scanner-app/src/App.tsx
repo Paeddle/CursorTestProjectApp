@@ -224,6 +224,7 @@ function App() {
   )
   const [wireTypesLoading, setWireTypesLoading] = useState(false)
   const checkoutAutofillKey = useRef('')
+  const checkInClearKey = useRef('')
 
   useEffect(() => {
     const fromUrl = getInitialBoxIdFromWindow()
@@ -515,24 +516,39 @@ function App() {
     }
   }, [boxMetaLoading, boxRetired, hasExistingScans, alreadyCheckedOut, alreadyCheckedIn, boxId])
 
-  // Check-out starts from the last saved footage. Editing that number is what opens the missing-wire prompt.
+  // Check-out copies the last check-in footage. Check-in from a job starts blank.
   useEffect(() => {
-    if (checkType !== 'check_out') {
+    if (boxMetaLoading || boxRetired) return
+    const id = normalizeBoxId(boxId)
+    if (checkType === 'check_in' && alreadyCheckedOut) {
+      const key = `${id}|in`
+      checkoutAutofillKey.current = ''
+      if (checkInClearKey.current === key) return
+      checkInClearKey.current = key
+      setCurrentFootage('')
+      setCounterWrong(false)
+      setActualMode('')
+      setActualFootage('')
+      return
+    }
+    if (checkType !== 'check_out' || !alreadyCheckedIn || hasExistingScans !== true) {
       checkoutAutofillKey.current = ''
       return
     }
-    if (boxMetaLoading || boxRetired || hasExistingScans !== true) return
     const rem = lastScan?.remainingFt?.trim() ?? ''
     if (!rem) return
-    const key = `${normalizeBoxId(boxId)}|${rem}`
+    const key = `${id}|out|${rem}`
     if (checkoutAutofillKey.current === key) return
     checkoutAutofillKey.current = key
+    checkInClearKey.current = ''
     setCurrentFootage(rem)
     setCounterWrong(false)
     setActualMode('')
     setActualFootage('')
   }, [
     checkType,
+    alreadyCheckedOut,
+    alreadyCheckedIn,
     boxMetaLoading,
     boxRetired,
     hasExistingScans,
