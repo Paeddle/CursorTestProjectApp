@@ -14,6 +14,7 @@ import {
   buildWireBulkCheckoutInsert,
   buildWireInventoryRows,
   buildWireLowStockRows,
+  buildWireWarehouseCheckInInsert,
   type WireLowStockMetric,
   buildWireMaterialsReport,
   buildWireStatusChangeInsert,
@@ -28,6 +29,7 @@ import {
   isBoxActive,
   isBoxInInventory,
   isBoxRetired,
+  latestOpenJobCheckout,
   scanIdsToDeleteToRestoreActive,
   isSelectableWireJobName,
   parseFootage,
@@ -36,6 +38,7 @@ import {
   uniqueJobNamesForMaterialsReport,
   uniqueJobNamesFromScans,
   RETIRED_JOB_NAME,
+  UNASSIGNED_JOB_NAME,
   WAREHOUSE_JOB_NAME,
   wireTypeIdToLabel,
   wireTypeIdToDefaultFt,
@@ -242,8 +245,61 @@ async function persistManagedJob(name: string): Promise<void> {
     is_active: true,
   })
   if (!error) return
-  if (/duplicate|unique|already exists/i.test(error.message)) return
+  if (/duplicate|unique|already exists/i.test(error.message)) {
+    const { error: upErr } = await supabase
+      .from('wire_jobs')
+      .update({ is_active: true, name: job })
+      .eq('name_key', jobKey)
+    if (upErr) throw new Error(upErr.message)
+    return
+  }
   throw new Error(error.message)
+}
+
+/** Hide or restore a job. Hidden jobs stay in the database and on saved reports. */
+async function setManagedJobActive(name: string, active: boolean): Promise<void> {
+  const job = name.trim().replace(/\s+/g, ' ')
+  if (!job || !isSelectableWireJobName(job)) return
+  const jobKey = normalizeJobNameKey(job)
+  const { data, error } = await supabase
+    .from('wire_jobs')
+    .update({ is_active: active })
+    .eq('name_key', jobKey)
+    .select('id')
+  if (error) throw new Error(error.message)
+  if (data && data.length > 0) return
+  const { error: insErr } = await supabase.from('wire_jobs').insert({
+    name: job,
+    name_key: jobKey,
+    is_active: active,
+  })
+  if (insErr && !/duplicate|unique|already exists/i.test(insErr.message)) {
+    throw new Error(insErr.message)
+  }
+}
+
+const STALE_CHECKOUT_MS = 3 * 24 * 60 * 60 * 1000
+const STALE_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000
+const STALE_SNOOZE_KEY = 'wire-tracker-stale-checkout-snooze'
+
+function readStaleSnooze(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(STALE_SNOOZE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, number>
+    const now = Date.now()
+    const keep: Record<string, number> = {}
+    for (const [key, until] of Object.entries(parsed)) {
+      if (typeof until === 'number' && until > now) keep[key] = until
+    }
+    return keep
+  } catch {
+    return {}
+  }
+}
+
+function writeStaleSnooze(map: Record<string, number>) {
+  localStorage.setItem(STALE_SNOOZE_KEY, JSON.stringify(map))
 }
 
 async function fetchAllScans(): Promise<WireBoxScan[]> {
@@ -335,8 +391,18 @@ export function WirePage() {
   const [bulkCheckoutJob, setBulkCheckoutJob] = useState('')
   const [bulkCheckoutWorking, setBulkCheckoutWorking] = useState(false)
   const [managedJobs, setManagedJobs] = useState<string[]>([])
+  const [hiddenJobs, setHiddenJobs] = useState<string[]>([])
+  const [showHiddenJobs, setShowHiddenJobs] = useState(false)
   const [newManagedJob, setNewManagedJob] = useState('')
   const [jobsWorking, setJobsWorking] = useState(false)
+  const [closeoutPrompt, setCloseoutPrompt] = useState<{
+    job: string
+    payloads: Record<string, string>[]
+    moveBoxes: boolean
+    hideJob: boolean
+  } | null>(null)
+  const [staleSnooze, setStaleSnooze] = useState<Record<string, number>>(() => readStaleSnooze())
+  const [staleReturnFt, setStaleReturnFt] = useState<Record<string, string>>({})
   const [editingBoxKey, setEditingBoxKey] = useState<string | null>(null)
   const [boxEditDraft, setBoxEditDraft] = useState<BoxEditDraft | null>(null)
   const [savingBoxEdit, setSavingBoxEdit] = useState(false)
@@ -356,6 +422,7 @@ export function WirePage() {
 
   const jobOptions = useMemo(() => uniqueJobNamesForMaterialsReport(allScans), [allScans])
   const reportJobSelectOptions = useMemo(() => {
+    const hidden = new Set(hiddenJobs.map((j) => j.trim().toLowerCase()))
     const seen = new Set<string>()
     const out: string[] = []
     const add = (name: string) => {
@@ -363,6 +430,7 @@ export function WirePage() {
       if (!t) return
       const key = t.toLowerCase()
       if (seen.has(key)) return
+      if (hidden.has(key) && key !== reportJob.trim().toLowerCase()) return
       seen.add(key)
       out.push(t)
     }
@@ -370,7 +438,7 @@ export function WirePage() {
     if (reportJob) add(reportJob)
     for (const r of savedReports) add(r.job_name)
     return out
-  }, [jobOptions, reportJob, savedReports])
+  }, [jobOptions, reportJob, savedReports, hiddenJobs])
   const filteredSavedReports = useMemo(() => {
     const q = savedReportQuery.trim().toLowerCase()
     if (!q) return savedReports
@@ -390,15 +458,39 @@ export function WirePage() {
     [savedReports, openedSavedReportId],
   )
   const allJobNameSuggestions = useMemo(() => {
+    const hidden = new Set(hiddenJobs.map((j) => j.trim().toLowerCase()))
     const merged = new Set<string>()
     for (const j of managedJobs) {
-      if (isSelectableWireJobName(j)) merged.add(j)
+      if (isSelectableWireJobName(j) && !hidden.has(j.trim().toLowerCase())) merged.add(j)
     }
     for (const j of uniqueJobNamesFromScans(allScans)) {
-      if (isSelectableWireJobName(j)) merged.add(j)
+      if (isSelectableWireJobName(j) && !hidden.has(j.trim().toLowerCase())) merged.add(j)
     }
     return Array.from(merged).sort((a, b) => a.localeCompare(b))
-  }, [allScans, managedJobs])
+  }, [allScans, managedJobs, hiddenJobs])
+
+  const staleCheckouts = useMemo(() => {
+    const now = Date.now()
+    const rows: { summary: WireBoxSummary; job: string; scannedAt: string; footage: string; days: number }[] = []
+    for (const summary of summaries) {
+      const open = latestOpenJobCheckout(summary.scans)
+      if (!open) continue
+      const at = new Date(open.scanned_at).getTime()
+      if (!Number.isFinite(at) || now - at < STALE_CHECKOUT_MS) continue
+      const key = summary.box_id.trim().toLowerCase()
+      if ((staleSnooze[key] ?? 0) > now) continue
+      const ft = parseFootage(String(open.current_footage ?? ''))
+      rows.push({
+        summary,
+        job: formatWireJobNameDisplay(open.job_name),
+        scannedAt: open.scanned_at,
+        footage: ft === null ? '' : formatInventoryFtDisplay(ft),
+        days: Math.max(1, Math.floor((now - at) / (24 * 60 * 60 * 1000))),
+      })
+    }
+    rows.sort((a, b) => new Date(a.scannedAt).getTime() - new Date(b.scannedAt).getTime())
+    return rows
+  }, [summaries, staleSnooze])
 
   const inventoryRows = useMemo(() => buildWireInventoryRows(summaries), [summaries])
 
@@ -446,15 +538,21 @@ export function WirePage() {
       const { data, error: qErr } = await supabase
         .from('wire_jobs')
         .select('name, is_active')
-        .eq('is_active', true)
         .order('name', { ascending: true })
       if (qErr) throw qErr
-      const names = (data ?? [])
-        .map((r) => (typeof r.name === 'string' ? r.name.trim() : ''))
-        .filter(isSelectableWireJobName)
-      setManagedJobs(names)
+      const active: string[] = []
+      const hidden: string[] = []
+      for (const r of data ?? []) {
+        const name = typeof r.name === 'string' ? r.name.trim() : ''
+        if (!isSelectableWireJobName(name)) continue
+        if (r.is_active === false) hidden.push(name)
+        else active.push(name)
+      }
+      setManagedJobs(active)
+      setHiddenJobs(hidden)
     } catch {
       setManagedJobs([])
+      setHiddenJobs([])
     }
   }, [])
 
@@ -792,27 +890,21 @@ export function WirePage() {
 
       if (countEmptyBoxes) {
         const toRetire = emptyBoxesToRetireForJob(summaries, job)
-        if (toRetire.length > 0) {
-          const payloads = toRetire
-            .map((s) =>
-              buildWireStatusChangeInsert(s, 'inactive', {
-                footageOverride: '0',
-              }),
-            )
-            .filter((r): r is WireStatusChangeInsertRow => r != null)
-            .map((r) => toSupabaseWireInsert({ ...r, scanned_at: new Date().toISOString() }))
-
-          if (payloads.length > 0) {
-            const ok = window.confirm(
-              `Count empty boxes is on. Move ${payloads.length} emptied box${payloads.length !== 1 ? 'es' : ''} from “${job}” to Retired (inactive)?`,
-            )
-            if (ok) {
-              const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
-              if (insErr) throw new Error(insErr.message)
-              setSelectedBoxKeys(new Set())
-              await load({ silent: true })
-            }
-          }
+        const payloads = toRetire
+          .map((s) =>
+            buildWireStatusChangeInsert(s, 'inactive', {
+              footageOverride: '0',
+            }),
+          )
+          .filter((r): r is WireStatusChangeInsertRow => r != null)
+          .map((r) => toSupabaseWireInsert({ ...r, scanned_at: new Date().toISOString() }))
+        if (payloads.length > 0) {
+          setCloseoutPrompt({
+            job,
+            payloads,
+            moveBoxes: true,
+            hideJob: false,
+          })
         }
       }
     } catch (e: unknown) {
@@ -1369,6 +1461,160 @@ export function WirePage() {
     }
   }
 
+  const handleHideSelectedManagedJobs = async () => {
+    const names = [...selectedManagedJobs]
+    if (names.length === 0) {
+      setError('Select one or more jobs to hide.')
+      setJobsMenuOpen(false)
+      return
+    }
+    setJobsWorking(true)
+    setError(null)
+    setJobsMenuOpen(false)
+    try {
+      for (const name of names) {
+        await setManagedJobActive(name, false)
+      }
+      setSelectedManagedJobs(new Set())
+      setShowHiddenJobs(true)
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not hide jobs')
+    } finally {
+      setJobsWorking(false)
+    }
+  }
+
+  const handleUnhideManagedJob = async (name: string) => {
+    setJobsWorking(true)
+    setError(null)
+    try {
+      await setManagedJobActive(name, true)
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not restore job')
+    } finally {
+      setJobsWorking(false)
+    }
+  }
+
+  const applyCloseoutPrompt = async () => {
+    const prompt = closeoutPrompt
+    if (!prompt) return
+    setCloseoutPrompt(null)
+    setReportWorking(true)
+    setError(null)
+    try {
+      if (prompt.moveBoxes && prompt.payloads.length > 0) {
+        const { error: insErr } = await supabase.from('wire_box_scans').insert(prompt.payloads)
+        if (insErr) throw new Error(insErr.message)
+        setSelectedBoxKeys(new Set())
+        await load({ silent: true })
+      }
+      if (prompt.hideJob) {
+        await setManagedJobActive(prompt.job, false)
+        setShowHiddenJobs(true)
+        await loadManagedJobs()
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not finish the job closeout')
+    } finally {
+      setReportWorking(false)
+    }
+  }
+
+  const throwAwayBoxes = async (boxSummaries: WireBoxSummary[]) => {
+    const active = boxSummaries.filter((s) => isBoxActive(s.scans))
+    if (active.length === 0) {
+      setError('Select an active box to throw away.')
+      return
+    }
+    const ok = window.confirm(
+      active.length === 1
+        ? `Throw away ${active[0]!.box_id}? It moves to Inactive. Wire still checked out is charged to that job. Wire that was in the warehouse is charged to ${UNASSIGNED_JOB_NAME}.`
+        : `Throw away ${active.length} boxes? They move to Inactive. Wire still checked out is charged to that job. Wire that was in the warehouse is charged to ${UNASSIGNED_JOB_NAME}.`,
+    )
+    if (!ok) return
+    const now = Date.now()
+    const payloads: Record<string, string>[] = []
+    let needsUnassigned = false
+    for (const summary of active) {
+      if (isBoxInInventory(summary.scans)) {
+        const checkout = buildWireBulkCheckoutInsert(summary, UNASSIGNED_JOB_NAME)
+        if (checkout) {
+          needsUnassigned = true
+          payloads.push(
+            toSupabaseWireInsert({ ...checkout, scanned_at: new Date(now).toISOString() }),
+          )
+        }
+      }
+      const retired = buildWireStatusChangeInsert(summary, 'inactive', { footageOverride: '0' })
+      if (retired) {
+        payloads.push(
+          toSupabaseWireInsert({
+            ...retired,
+            scanned_at: new Date(now + 1000).toISOString(),
+          }),
+        )
+      }
+    }
+    if (payloads.length === 0) {
+      setError('No boxes to throw away.')
+      return
+    }
+    setStatusWorking(true)
+    setError(null)
+    setBoxesMenuOpen(false)
+    try {
+      if (needsUnassigned) await persistManagedJob(UNASSIGNED_JOB_NAME)
+      const { error: insErr } = await supabase.from('wire_box_scans').insert(payloads)
+      if (insErr) throw new Error(insErr.message)
+      setSelectedBoxKeys(new Set())
+      await load({ silent: true })
+      await loadManagedJobs()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not throw away boxes')
+    } finally {
+      setStatusWorking(false)
+    }
+  }
+
+  const returnStaleBoxToWarehouse = async (summary: WireBoxSummary) => {
+    const key = summary.box_id.trim().toLowerCase()
+    const open = latestOpenJobCheckout(summary.scans)
+    const fallback = open ? parseFootage(String(open.current_footage ?? '')) : null
+    const footage = (staleReturnFt[key] ?? (fallback === null ? '' : formatInventoryFtDisplay(fallback))).trim()
+    if (!footage || parseFootage(footage) === null || parseFootage(footage)! < 0) {
+      setError(`Enter the footage left on ${summary.box_id}.`)
+      return
+    }
+    const built = buildWireWarehouseCheckInInsert(summary, footage)
+    if (!built) {
+      setError(`${summary.box_id} is not checked out to a job.`)
+      return
+    }
+    setStatusWorking(true)
+    setError(null)
+    try {
+      const { error: insErr } = await supabase
+        .from('wire_box_scans')
+        .insert(toSupabaseWireInsert({ ...built, scanned_at: new Date().toISOString() }))
+      if (insErr) throw new Error(insErr.message)
+      await load({ silent: true })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not check the box back in')
+    } finally {
+      setStatusWorking(false)
+    }
+  }
+
+  const snoozeStaleBox = (boxId: string) => {
+    const key = boxId.trim().toLowerCase()
+    const next = { ...readStaleSnooze(), [key]: Date.now() + STALE_SNOOZE_MS }
+    writeStaleSnooze(next)
+    setStaleSnooze(next)
+  }
+
   const closeBoxEditor = () => {
     setEditingBoxKey(null)
     setBoxEditDraft(null)
@@ -1643,6 +1889,15 @@ export function WirePage() {
                     role="menuitem"
                     className="wire-boxes-menu-item"
                     disabled={selectedManagedJobs.size === 0 || jobsWorking}
+                    onClick={() => void handleHideSelectedManagedJobs()}
+                  >
+                    Hide Selected
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="wire-boxes-menu-item"
+                    disabled={selectedManagedJobs.size === 0 || jobsWorking}
                     onClick={() => void handleDeleteSelectedManagedJobs()}
                   >
                     Delete Selected
@@ -1688,6 +1943,34 @@ export function WirePage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+          {hiddenJobs.length > 0 && (
+            <div className="wire-hidden-jobs">
+              <button
+                type="button"
+                className="wire-hidden-jobs-toggle"
+                onClick={() => setShowHiddenJobs((v) => !v)}
+              >
+                {showHiddenJobs ? 'Hide' : 'Show'} hidden jobs ({hiddenJobs.length})
+              </button>
+              {showHiddenJobs && (
+                <div className="wire-jobs-list">
+                  {hiddenJobs.map((job) => (
+                    <div key={job} className="wire-jobs-item wire-inline-select wire-inline-select--end">
+                      <span className="wire-jobs-item-label">{job}</span>
+                      <button
+                        type="button"
+                        className="wire-report-secondary wire-unhide-job"
+                        disabled={jobsWorking}
+                        onClick={() => void handleUnhideManagedJob(job)}
+                      >
+                        Unhide
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -2270,6 +2553,64 @@ export function WirePage() {
           </div>
         </div>
 
+        {boxListMode === 'active' && staleCheckouts.length > 0 && (
+          <div className="wire-stale-list" aria-label="Boxes still checked out">
+            <div className="wire-jobs-header">Still checked out</div>
+            <p className="wire-stale-lead">
+              These boxes have been out for at least 3 days. Check one back in, mark it thrown away, or leave it on the job.
+            </p>
+            {staleCheckouts.map((row) => {
+              const key = row.summary.box_id.trim().toLowerCase()
+              return (
+                <div key={key} className="wire-stale-row">
+                  <div className="wire-stale-main">
+                    <strong>{row.summary.box_id}</strong>
+                    <span>
+                      {row.job} · {row.days} day{row.days === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <label className="wire-stale-ft">
+                    <span>Ft left</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={staleReturnFt[key] ?? row.footage}
+                      onChange={(e) =>
+                        setStaleReturnFt((prev) => ({ ...prev, [key]: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <div className="wire-stale-actions">
+                    <button
+                      type="button"
+                      className="wire-report-secondary"
+                      disabled={statusWorking}
+                      onClick={() => void returnStaleBoxToWarehouse(row.summary)}
+                    >
+                      Back in warehouse
+                    </button>
+                    <button
+                      type="button"
+                      className="wire-report-secondary"
+                      disabled={statusWorking}
+                      onClick={() => void throwAwayBoxes([row.summary])}
+                    >
+                      Thrown away
+                    </button>
+                    <button
+                      type="button"
+                      className="wire-report-secondary"
+                      onClick={() => snoozeStaleBox(row.summary.box_id)}
+                    >
+                      Still on the job
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         <div className="wire-box-filters">
           <label className="wire-box-filter" htmlFor="wire-box-filter-job">
             <span className="wire-box-filter-label">Job</span>
@@ -2389,6 +2730,18 @@ export function WirePage() {
                   onClick={() => void handleMenuSetActive()}
                 >
                   Set Active
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="wire-boxes-menu-item"
+                  disabled={statusWorking || selectedBoxKeys.size === 0 || boxListMode === 'inactive'}
+                  onClick={() => {
+                    const selected = summaries.filter((s) => selectedBoxKeys.has(s.box_id.toLowerCase()))
+                    void throwAwayBoxes(selected)
+                  }}
+                >
+                  Thrown away
                 </button>
                 <button
                   type="button"
@@ -2779,6 +3132,64 @@ export function WirePage() {
           </div>
         </div>
       </section>
+      {closeoutPrompt && (
+        <div className="wire-modal-backdrop" role="presentation">
+          <div
+            className="wire-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wire-closeout-title"
+          >
+            <h3 id="wire-closeout-title">Report saved</h3>
+            <p>
+              {closeoutPrompt.payloads.length} emptied box
+              {closeoutPrompt.payloads.length === 1 ? '' : 'es'} from “{closeoutPrompt.job}” can move to
+              Inactive. Saved reports stay either way.
+            </p>
+            <label className="wire-modal-check">
+              <input
+                type="checkbox"
+                checked={closeoutPrompt.moveBoxes}
+                onChange={(e) =>
+                  setCloseoutPrompt((prev) =>
+                    prev ? { ...prev, moveBoxes: e.target.checked } : prev,
+                  )
+                }
+              />
+              Move these boxes to Inactive
+            </label>
+            <label className="wire-modal-check">
+              <input
+                type="checkbox"
+                checked={closeoutPrompt.hideJob}
+                onChange={(e) =>
+                  setCloseoutPrompt((prev) =>
+                    prev ? { ...prev, hideJob: e.target.checked } : prev,
+                  )
+                }
+              />
+              Job is done — hide “{closeoutPrompt.job}” from the job list
+            </label>
+            <div className="wire-modal-actions">
+              <button
+                type="button"
+                className="wire-report-secondary"
+                onClick={() => setCloseoutPrompt(null)}
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                className="wire-report-primary"
+                disabled={reportWorking}
+                onClick={() => void applyCloseoutPrompt()}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

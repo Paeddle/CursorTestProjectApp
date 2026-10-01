@@ -310,6 +310,66 @@ function usageForBoxTossedEmpty(
   }
 }
 
+/**
+ * Each check-out to this job is closed by the next scan on the box (a return, another
+ * check-out, or Retired). An open check-out counts as empty only when count empty is on.
+ */
+function usageForJobVisits(
+  boxAllScans: WireBoxScan[],
+  jobName: string,
+  capacityFt: number | null,
+  countTossed: boolean,
+): { startFt: number | null; endFt: number | null; usedFt: number | null; notes: string } {
+  const sorted = [...boxAllScans].sort(
+    (a, c) => new Date(a.scanned_at).getTime() - new Date(c.scanned_at).getTime(),
+  )
+  const segments: { startFt: number | null; endFt: number | null; usedFt: number | null; notes: string }[] =
+    []
+  for (let i = 0; i < sorted.length; i++) {
+    const scan = sorted[i]!
+    if (scan.check_type !== 'check_out' || !jobNameMatchesReport(scan, jobName)) continue
+    const next = sorted[i + 1]
+    if (!next) {
+      if (countTossed) {
+        segments.push(usageForBoxTossedEmpty([scan], jobName, capacityFt))
+      } else {
+        const startFt = trustedRemainingFt(scan, capacityFt)
+        segments.push({
+          startFt,
+          endFt: startFt,
+          usedFt: startFt === null ? null : 0,
+          notes: startFt === null ? 'Could not read check-out footage.' : '',
+        })
+      }
+      continue
+    }
+    const startFt = trustedRemainingFt(scan, capacityFt)
+    const endFt = trustedRemainingFt(next, capacityFt)
+    if (startFt === null || endFt === null) {
+      const ignored = readingIgnored(scan, capacityFt) || readingIgnored(next, capacityFt)
+      segments.push({
+        startFt,
+        endFt,
+        usedFt: null,
+        notes: ignored ? BAD_COUNTER_NOTE : 'Could not read start or end footage.',
+      })
+      continue
+    }
+    const usedFt = startFt - endFt
+    let notes = ''
+    if (jobNameIsRetired(next.job_name)) {
+      notes = 'Thrown away; remaining footage charged to this job.'
+    } else if (usedFt < 0) {
+      notes = 'Used is negative—verify check-in/out order or footage.'
+    }
+    segments.push({ startFt, endFt, usedFt, notes })
+  }
+  if (segments.length === 0) {
+    return { startFt: null, endFt: null, usedFt: null, notes: '' }
+  }
+  return aggregateBoxUsagesForReport(segments)
+}
+
 function usageForBoxScans(
   boxScans: WireBoxScan[],
   capacityFt: number | null,
@@ -482,9 +542,10 @@ export function buildWireMaterialsReport(
   const usageForReportBox = (list: WireBoxScan[]) => {
     const boxAll = scansForBoxId(allScans, list[0]!.box_id)
     const capacityFt = boxCapacityFt(boxAll)
-    if (countTossed && isTossedEmptyAfterJobCheckout(boxAll, jobName)) {
-      return usageForBoxTossedEmpty(list, jobName, capacityFt)
-    }
+    const hasCheckout = boxAll.some(
+      (s) => s.check_type === 'check_out' && jobNameMatchesReport(s, jobName),
+    )
+    if (hasCheckout) return usageForJobVisits(boxAll, jobName, capacityFt, countTossed)
     return usageForBoxScans(list, capacityFt)
   }
 
@@ -787,6 +848,9 @@ export function uniqueJobNamesFromScans(scans: WireBoxScan[]): string[] {
  * Same concept as “checked in”: the box is housed in the warehouse, not out on a job.
  * Keep it off report / bulk check-out / existing-jobs pickers.
  */
+/** Footage that left the shelf with no known job. Shows up as its own job so it can be assigned later. */
+export const UNASSIGNED_JOB_NAME = 'Unassigned'
+
 export const WAREHOUSE_JOB_NAME = 'Inventory'
 
 /**
@@ -867,6 +931,15 @@ export function isBoxInInventory(scans: WireBoxScan[]): boolean {
   if (!latest) return false
   if (latest.check_type === 'check_out') return false
   return true
+}
+
+/** Latest scan is a check-out on a real job (not warehouse or retired). */
+export function latestOpenJobCheckout(scans: WireBoxScan[]): WireBoxScan | null {
+  if (isBoxRetired(scans)) return null
+  const latest = newestScanInBox(scans)
+  if (!latest || latest.check_type !== 'check_out') return null
+  if (!isSelectableWireJobName(latest.job_name || '')) return null
+  return latest
 }
 
 /** Newest-first scan that carries wire profile fields (for inserts when latest row omits them). */
@@ -1044,6 +1117,28 @@ export function buildWireBulkCheckoutInsert(
 
   attachProfileFields(summary, row)
 
+  return row
+}
+
+/** Return a checked-out box to the warehouse at the footage entered now. */
+export function buildWireWarehouseCheckInInsert(
+  summary: WireBoxSummary,
+  footage: string,
+): WireStatusChangeInsertRow | null {
+  if (!latestOpenJobCheckout(summary.scans)) return null
+  const ft = footage.trim()
+  const boxId = summary.box_id.trim()
+  if (!boxId || !ft) return null
+  const row: WireStatusChangeInsertRow = {
+    box_id: boxId,
+    job_name: WAREHOUSE_JOB_NAME,
+    current_footage: ft,
+    check_type: 'check_in',
+    wire_type: null,
+    wire_type_label: null,
+    spool_capacity_ft: null,
+  }
+  attachProfileFields(summary, row)
   return row
 }
 

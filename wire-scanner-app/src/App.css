@@ -525,3 +525,13 @@
 .counter-fix-input {
   margin-top: 0.7rem;
 }
+
+.btn-danger {
+  background: #7f1d1d;
+  color: #fee2e2;
+  border-color: #b91c1c;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #991b1b;
+}

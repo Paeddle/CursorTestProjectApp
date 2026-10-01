@@ -17,6 +17,8 @@ const WAREHOUSE_JOB_NAME = 'Inventory'
 const FOOTAGE_OFF_ABOVE_FT = 1000
 /** Same as Tracker: inactive / retired boxes use this job name and cannot be scanned. */
 const RETIRED_JOB_NAME = 'Retired'
+/** Footage that disappeared from the shelf with no known job. */
+const UNASSIGNED_JOB_NAME = 'Unassigned'
 
 function normalizeBoxId(raw: string): string {
   return raw.trim()
@@ -193,6 +195,7 @@ function App() {
   const [checkType, setCheckType] = useState<CheckType>('check_in')
   const [boxId, setBoxId] = useState(getInitialBoxIdFromWindow)
   const [jobName, setJobName] = useState('')
+  const [gapJob, setGapJob] = useState('')
   const [currentFootage, setCurrentFootage] = useState('')
   const [counterWrong, setCounterWrong] = useState(false)
   const [actualMode, setActualMode] = useState<'' | 'empty' | 'custom'>('')
@@ -473,6 +476,24 @@ function App() {
     lastScan.checkType === 'check_in' &&
     !isRetiredJobName(lastScan.jobName)
 
+  const enteredPreviewFt = (() => {
+    const printedN = parseFootageNumber(currentFootage)
+    if (printedN === null) return null
+    if (counterWrong && printedN > FOOTAGE_OFF_ABOVE_FT) {
+      if (actualMode === 'empty') return 0
+      if (actualMode === 'custom') return parseFootageNumber(actualFootage)
+      return null
+    }
+    if (printedN > FOOTAGE_OFF_ABOVE_FT) return null
+    return printedN
+  })()
+  const lastRemainingPreviewFt = lastScan?.remainingFt ? parseFootageNumber(lastScan.remainingFt) : null
+  const showFootageGap =
+    alreadyCheckedIn &&
+    lastRemainingPreviewFt !== null &&
+    enteredPreviewFt !== null &&
+    enteredPreviewFt + 0.001 < lastRemainingPreviewFt
+
   // Force the only legal next action: in→out, out→in, new box→in.
   useEffect(() => {
     if (boxMetaLoading || boxRetired) return
@@ -481,7 +502,7 @@ function App() {
       return
     }
     if (alreadyCheckedOut) {
-      setCheckType('check_in')
+      setCheckType('check_out')
       return
     }
     if (alreadyCheckedIn) {
@@ -623,18 +644,14 @@ function App() {
         return
       }
     }
-    if (checkType === 'check_in') {
-      if (alreadyCheckedIn && lastScan) {
-        showError(
-          `This box is already checked in to the warehouse. Check it out to a job before checking it in again.`,
-        )
-        return
-      }
-    }
     if (checkType === 'check_out') {
-      if (alreadyCheckedOut && lastScan) {
+      if (
+        alreadyCheckedOut &&
+        lastScan &&
+        normalizeJobNameKey(jobName) === normalizeJobNameKey(lastScan.jobName)
+      ) {
         showError(
-          `This box is already checked out to ${formatJobLocationDisplay(lastScan.jobName)}. Check it in to the warehouse before checking it out again.`,
+          `This box is already checked out to ${formatJobLocationDisplay(lastScan.jobName)}. Choose a different job, check it in, or mark it thrown away.`,
         )
         return
       }
@@ -689,28 +706,87 @@ function App() {
       return
     }
 
-    setSubmitting(true)
-    setStatus(null)
-    try {
-      const profile = buildProfileInsert()
+    const storedN = parseFootageNumber(storedFootage)
+    const lastFt = lastScan?.remainingFt ? parseFootageNumber(lastScan.remainingFt) : null
+    const footageDropped =
+      alreadyCheckedIn &&
+      lastFt !== null &&
+      storedN !== null &&
+      storedN + 0.001 < lastFt
+    if (checkType === 'check_in' && alreadyCheckedIn && !footageDropped) {
+      showError(
+        'This box is already checked in to the warehouse. Check it out to a job, or enter a lower footage if wire was used without a checkout.',
+      )
+      return
+    }
+    const gapName = gapJob.trim()
+    if (footageDropped) {
+      if (!gapName) {
+        showError(`Choose which job used the missing wire, or ${UNASSIGNED_JOB_NAME}.`)
+        return
+      }
+      if (isWarehouseJobName(gapName) || isRetiredJobName(gapName)) {
+        showError('Choose a real job, or Unassigned.')
+        return
+      }
+    }
+
+    const priorFt =
+      lastScan?.remainingFt && lastFt !== null ? String(lastFt) : lastScan?.remainingFt || ''
+    const rows: Record<string, string | number | boolean | null>[] = []
+    const profile = buildProfileInsert()
+    const base = Date.now()
+    const pushRow = (
+      check_type: CheckType,
+      job_name: string,
+      current_footage: string,
+      offsetMs: number,
+      note: string | null,
+    ) => {
       const row: Record<string, string | number | boolean | null> = {
         box_id: id,
-        job_name: job,
-        current_footage: storedFootage,
-        check_type: checkType,
-        scanned_at: new Date().toISOString(),
+        job_name,
+        current_footage,
+        check_type,
+        scanned_at: new Date(base + offsetMs).toISOString(),
       }
       if (profile.wire_type) {
         row.wire_type = profile.wire_type
         row.wire_type_label = profile.wire_type_label ?? profile.wire_type
         row.spool_capacity_ft = profile.spool_capacity_ft!
       }
-      if (printedFootage) {
-        row.printed_footage = printedFootage
-        row.footage_note = footageNote
-      }
+      if (note) row.footage_note = note
+      rows.push(row)
+    }
 
-      const { error } = await supabase.from('wire_box_scans').insert(row)
+    if (footageDropped && priorFt) {
+      pushRow('check_out', gapName, priorFt, 0, 'Checkout filled in because footage dropped with no scan.')
+      pushRow('check_in', WAREHOUSE_JOB_NAME, storedFootage, 1000, null)
+      if (checkType === 'check_out') {
+        pushRow('check_out', job, storedFootage, 2000, null)
+      }
+    } else if (alreadyCheckedOut && checkType === 'check_out' && lastScan) {
+      pushRow(
+        'check_in',
+        WAREHOUSE_JOB_NAME,
+        storedFootage,
+        0,
+        `Returned from ${formatJobLocationDisplay(lastScan.jobName)} while checking out to another job.`,
+      )
+      pushRow('check_out', job, storedFootage, 1000, null)
+    } else {
+      pushRow(checkType, job, storedFootage, 0, null)
+    }
+    if (printedFootage && rows.length > 0) {
+      const last = rows[rows.length - 1]!
+      last.printed_footage = printedFootage
+      last.footage_note = footageNote
+    }
+
+    setSubmitting(true)
+    setStatus(null)
+    try {
+      const { error } = await supabase.from('wire_box_scans').insert(rows)
       if (error) {
         const msg = error.message || 'Save failed'
         if (/printed_footage|footage_note/i.test(msg)) {
@@ -731,6 +807,12 @@ function App() {
       if (checkType === 'check_out') {
         await persistJobOption(job)
       }
+      if (footageDropped && gapName && normalizeJobNameKey(gapName) !== normalizeJobNameKey(UNASSIGNED_JOB_NAME)) {
+        await persistJobOption(gapName)
+      }
+      if (footageDropped && normalizeJobNameKey(gapName) === normalizeJobNameKey(UNASSIGNED_JOB_NAME)) {
+        await persistJobOption(UNASSIGNED_JOB_NAME)
+      }
       const modeLabel = checkType === 'check_out' ? 'Checked out' : 'Checked in to warehouse'
       const remainingLabel = `Remaining ${storedFootage} ft`
       const capHint =
@@ -738,9 +820,81 @@ function App() {
           ? ` of ${profile.spool_capacity_ft} ft`
           : ''
       const counterHint = printedFootage ? ` Counter read ${printedFootage} ft.` : ''
-      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}`)
+      const gapHint = footageDropped ? ` ${lastFt! - storedN!} ft charged to ${gapName}.` : ''
+      const takeoverHint =
+        alreadyCheckedOut && checkType === 'check_out' && lastScan
+          ? ` Closed the open checkout on ${formatJobLocationDisplay(lastScan.jobName)}.`
+          : ''
+      showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}${gapHint}${takeoverHint}`)
       setBoxId('')
       setJobName('')
+      setGapJob('')
+      setCurrentFootage('')
+      setCounterWrong(false)
+      setActualMode('')
+      setActualFootage('')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleThrowAway = async () => {
+    if (!supabase) {
+      showError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
+      return
+    }
+    const id = normalizeBoxId(boxId)
+    if (!id || boxRetired || hasExistingScans !== true || !lastScan) {
+      showError('Scan a box that is already in the warehouse or checked out.')
+      return
+    }
+    const ft = lastScan.remainingFt || '0'
+    const fromJob = alreadyCheckedOut
+    const ok = window.confirm(
+      fromJob
+        ? `Throw away ${id}? It will be retired, and ${ft} ft still on the books will be charged to ${formatJobLocationDisplay(lastScan.jobName)}.`
+        : `Throw away ${id}? It will be retired, and ${ft} ft still on the books will be charged to ${UNASSIGNED_JOB_NAME}.`,
+    )
+    if (!ok) return
+    setSubmitting(true)
+    setStatus(null)
+    try {
+      const profile = buildProfileInsert()
+      const base = Date.now()
+      const rows: Record<string, string | number | boolean | null>[] = []
+      const push = (job_name: string, current_footage: string, offsetMs: number) => {
+        const row: Record<string, string | number | boolean | null> = {
+          box_id: id,
+          job_name,
+          current_footage,
+          check_type: 'check_out',
+          scanned_at: new Date(base + offsetMs).toISOString(),
+        }
+        if (profile.wire_type) {
+          row.wire_type = profile.wire_type
+          row.wire_type_label = profile.wire_type_label ?? profile.wire_type
+          row.spool_capacity_ft = profile.spool_capacity_ft!
+        }
+        rows.push(row)
+      }
+      if (!fromJob) {
+        push(UNASSIGNED_JOB_NAME, ft, 0)
+        await persistJobOption(UNASSIGNED_JOB_NAME)
+      }
+      push(RETIRED_JOB_NAME, '0', 1000)
+      const { error } = await supabase.from('wire_box_scans').insert(rows)
+      if (error) {
+        showError(error.message || 'Save failed')
+        return
+      }
+      showSuccess(
+        fromJob
+          ? `Thrown away: ${id}. Remaining ${ft} ft charged to ${formatJobLocationDisplay(lastScan.jobName)}.`
+          : `Thrown away: ${id}. Remaining ${ft} ft charged to ${UNASSIGNED_JOB_NAME}.`,
+      )
+      setBoxId('')
+      setJobName('')
+      setGapJob('')
       setCurrentFootage('')
       setCounterWrong(false)
       setActualMode('')
@@ -753,6 +907,7 @@ function App() {
   const handleScanAnother = () => {
     setBoxId('')
     setJobName('')
+    setGapJob('')
     setCurrentFootage('')
     setCounterWrong(false)
     setActualMode('')
@@ -874,14 +1029,16 @@ function App() {
                 {formatLastScanWhen(lastScan.scannedAt) ? (
                   <p className="last-scan-panel-meta">{formatLastScanWhen(lastScan.scannedAt)}</p>
                 ) : null}
-                {alreadyCheckedOut && (
+                {alreadyCheckedOut && lastScan && (
                   <p className="last-scan-panel-warn">
-                    Already out on a job. Check in to the warehouse before checking out again.
+                    Still checked out to {formatJobLocationDisplay(lastScan.jobName)}
+                    {formatLastScanWhen(lastScan.scannedAt) ? ` (${formatLastScanWhen(lastScan.scannedAt)})` : ''}.
+                    Check it out to your job anyway — that also closes the previous job. Or check it in, or throw it away.
                   </p>
                 )}
                 {alreadyCheckedIn && (
                   <p className="last-scan-panel-warn">
-                    Already in the warehouse. Check out to a job before checking in again.
+                    In the warehouse. If the counter is lower than the last reading, choose which job used the difference.
                   </p>
                 )}
               </div>
@@ -901,12 +1058,6 @@ function App() {
                   type="button"
                   className={`check-type-btn ${checkType === 'check_in' ? 'active check-type-in' : ''}`}
                   onClick={() => setCheckType('check_in')}
-                  disabled={alreadyCheckedIn}
-                  title={
-                    alreadyCheckedIn
-                      ? 'Already checked in to the warehouse — check out first'
-                      : undefined
-                  }
                 >
                   Check in
                 </button>
@@ -914,27 +1065,25 @@ function App() {
                   type="button"
                   className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
                   onClick={() => setCheckType('check_out')}
-                  disabled={alreadyCheckedOut || hasExistingScans === false}
+                  disabled={hasExistingScans === false}
                   title={
-                    alreadyCheckedOut && lastScan
-                      ? `Already checked out to ${formatJobLocationDisplay(lastScan.jobName)}`
-                      : hasExistingScans === false
-                        ? 'New boxes must check in first'
-                        : undefined
+                    hasExistingScans === false
+                      ? 'New boxes must check in first'
+                      : undefined
                   }
                 >
                   Check out
                 </button>
               </div>
-              {alreadyCheckedOut && (
+              {alreadyCheckedOut && checkType === 'check_out' && lastScan && (
                 <p className="field-hint">
-                  Check-out is locked until this box is checked in from{' '}
-                  {formatJobLocationDisplay(lastScan!.jobName)}.
+                  Saving checks this out to your job and closes the open checkout on{' '}
+                  {formatJobLocationDisplay(lastScan.jobName)}.
                 </p>
               )}
-              {alreadyCheckedIn && (
+              {showFootageGap && (
                 <p className="field-hint">
-                  Check-in is locked until this box is checked out to a job.
+                  Footage dropped from {lastRemainingPreviewFt} ft to {enteredPreviewFt} ft. Choose who used it before saving.
                 </p>
               )}
             </div>
@@ -1085,6 +1234,29 @@ function App() {
               ) : null}
             </div>
             )}
+            {!boxRetired && showFootageGap && (
+              <div className="form-field">
+                <label className="label" htmlFor="gap-job">
+                  Who used the missing wire?
+                </label>
+                <select
+                  id="gap-job"
+                  className="input"
+                  value={gapJob}
+                  onChange={(e) => setGapJob(e.target.value)}
+                >
+                  <option value="">Select a job…</option>
+                  <option value={UNASSIGNED_JOB_NAME}>{UNASSIGNED_JOB_NAME}</option>
+                  {jobOptions
+                    .filter((j) => normalizeJobNameKey(j) !== normalizeJobNameKey(UNASSIGNED_JOB_NAME))
+                    .map((j) => (
+                      <option key={j} value={j}>
+                        {j}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
             <div className="form-actions">
               <button
                 type="button"
@@ -1094,6 +1266,16 @@ function App() {
               >
                 Scan another
               </button>
+              {!boxRetired && hasExistingScans === true && (
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={submitting || boxMetaLoading}
+                onClick={() => void handleThrowAway()}
+              >
+                Thrown away
+              </button>
+              )}
               {!boxRetired && (
               <button
                 type="submit"
