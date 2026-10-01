@@ -507,7 +507,7 @@ function App() {
       return
     }
     if (alreadyCheckedOut) {
-      setCheckType('check_out')
+      setCheckType('check_in')
       return
     }
     if (alreadyCheckedIn) {
@@ -841,10 +841,9 @@ function App() {
     const retireLowBox =
       checkType === 'check_in' && storedN !== null && storedN < THROW_AWAY_BELOW_FT
     if (retireLowBox) {
-      const ok = window.confirm(
-        `Please throw away ${id}. It has ${storedFootage} ft left, which is below ${THROW_AWAY_BELOW_FT} ft. The box will be marked inactive at ${storedFootage} ft.`,
+      window.alert(
+        `Please toss ${id}. It has ${storedFootage} ft left, which is below ${THROW_AWAY_BELOW_FT} ft. It will be marked inactive at ${storedFootage} ft.`,
       )
-      if (!ok) return
       pushRow(
         'check_out',
         RETIRED_JOB_NAME,
@@ -904,72 +903,6 @@ function App() {
         ? ` Please throw the box away. It is inactive at ${storedFootage} ft.`
         : ''
       showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}${gapHint}${takeoverHint}${retireHint}`)
-      setBoxId('')
-      setJobName('')
-      setGapJob('')
-      setCurrentFootage('')
-      setCounterWrong(false)
-      setActualMode('')
-      setActualFootage('')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const handleThrowAway = async () => {
-    if (!supabase) {
-      showError('Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
-      return
-    }
-    const id = normalizeBoxId(boxId)
-    if (!id || boxRetired || hasExistingScans !== true || !lastScan) {
-      showError('Scan a box that is already in the warehouse or checked out.')
-      return
-    }
-    const ft = lastScan.remainingFt || '0'
-    const fromJob = alreadyCheckedOut
-    const ok = window.confirm(
-      fromJob
-        ? `Throw away ${id}? It will be retired, and ${ft} ft still on the books will be charged to ${formatJobLocationDisplay(lastScan.jobName)}.`
-        : `Throw away ${id}? It will be retired, and ${ft} ft still on the books will be charged to ${UNASSIGNED_JOB_NAME}.`,
-    )
-    if (!ok) return
-    setSubmitting(true)
-    setStatus(null)
-    try {
-      const profile = buildProfileInsert()
-      const base = Date.now()
-      const rows: Record<string, string | number | boolean | null>[] = []
-      const push = (job_name: string, current_footage: string, offsetMs: number) => {
-        const row: Record<string, string | number | boolean | null> = {
-          box_id: id,
-          job_name,
-          current_footage,
-          check_type: 'check_out',
-          scanned_at: new Date(base + offsetMs).toISOString(),
-        }
-        if (profile.wire_type) {
-          row.wire_type = profile.wire_type
-          row.wire_type_label = profile.wire_type_label ?? profile.wire_type
-          row.spool_capacity_ft = profile.spool_capacity_ft!
-        }
-        rows.push(row)
-      }
-      if (!fromJob) {
-        push(UNASSIGNED_JOB_NAME, ft, 0)
-        await persistJobOption(UNASSIGNED_JOB_NAME)
-      }
-      push(RETIRED_JOB_NAME, '0', 1000)
-      const { error } = await supabase.from('wire_box_scans').insert(rows)
-      if (error) {
-        showError(error.message || 'Save failed')
-        return
-      }
-      showSuccess(
-        fromJob
-          ? `Thrown away: ${id}. Remaining ${ft} ft charged to ${formatJobLocationDisplay(lastScan.jobName)}.`
-          : `Thrown away: ${id}. Remaining ${ft} ft charged to ${UNASSIGNED_JOB_NAME}.`,
-      )
       setBoxId('')
       setJobName('')
       setGapJob('')
@@ -1107,18 +1040,6 @@ function App() {
                 {formatLastScanWhen(lastScan.scannedAt) ? (
                   <p className="last-scan-panel-meta">{formatLastScanWhen(lastScan.scannedAt)}</p>
                 ) : null}
-                {alreadyCheckedOut && lastScan && (
-                  <p className="last-scan-panel-warn">
-                    Still checked out to {formatJobLocationDisplay(lastScan.jobName)}
-                    {formatLastScanWhen(lastScan.scannedAt) ? ` (${formatLastScanWhen(lastScan.scannedAt)})` : ''}.
-                    Check it out to your job anyway — that also closes the previous job. Or check it in, or throw it away.
-                  </p>
-                )}
-                {alreadyCheckedIn && (
-                  <p className="last-scan-panel-warn">
-                    In the warehouse. If the counter is lower than the last reading, choose which job used the difference.
-                  </p>
-                )}
               </div>
             )}
 
@@ -1143,41 +1064,18 @@ function App() {
                   type="button"
                   className={`check-type-btn ${checkType === 'check_out' ? 'active check-type-out' : ''}`}
                   onClick={() => setCheckType('check_out')}
-                  disabled={hasExistingScans === false}
+                  disabled={hasExistingScans === false || alreadyCheckedOut}
                   title={
                     hasExistingScans === false
                       ? 'New boxes must check in first'
-                      : undefined
+                      : alreadyCheckedOut
+                        ? 'This box is checked out. Check it in.'
+                        : undefined
                   }
                 >
                   Check out
                 </button>
               </div>
-              {alreadyCheckedOut && checkType === 'check_out' && lastScan && (
-                <p className="field-hint">
-                  Saving checks this out to your job and closes the open checkout on{' '}
-                  {formatJobLocationDisplay(lastScan.jobName)}.
-                </p>
-              )}
-              {checkType === 'check_out' &&
-                hasExistingScans === true &&
-                lastRemainingPreviewFt !== null &&
-                enteredPreviewFt !== null &&
-                Math.abs(enteredPreviewFt - lastRemainingPreviewFt) < 0.001 && (
-                <p className="field-hint">
-                  Footage starts at the last reading ({lastRemainingPreviewFt} ft). Change it if that number is wrong, then say which job used the difference.
-                </p>
-              )}
-              {checkType === 'check_in' && enteredPreviewFt !== null && enteredPreviewFt < THROW_AWAY_BELOW_FT && (
-                <p className="field-hint">
-                  Below {THROW_AWAY_BELOW_FT} ft. Saving will ask you to throw this box away and mark it inactive at this footage.
-                </p>
-              )}
-              {showFootageGap && (
-                <p className="field-hint">
-                  Footage dropped from {lastRemainingPreviewFt} ft to {enteredPreviewFt} ft. Choose who used it before saving.
-                </p>
-              )}
             </div>
             )}
             <div className="form-field">
@@ -1358,16 +1256,6 @@ function App() {
               >
                 Scan another
               </button>
-              {!boxRetired && hasExistingScans === true && (
-              <button
-                type="button"
-                className="btn btn-danger"
-                disabled={submitting || boxMetaLoading}
-                onClick={() => void handleThrowAway()}
-              >
-                Thrown away
-              </button>
-              )}
               {!boxRetired && (
               <button
                 type="submit"
