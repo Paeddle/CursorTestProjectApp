@@ -103,6 +103,76 @@ export const ROUGH_IN_WIRE_REPORT_ROWS: WireReportTemplateRow[] = [
   },
 ]
 
+function normWireLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function compactWireLabel(label: string): string {
+  return normWireLabel(label).replace(/ /g, '')
+}
+
+/** Last schedule row this name belongs with, so variants sit under that family. */
+function wireFamilyAnchor(label: string): number {
+  const compact = compactWireLabel(label)
+  const spaced = normWireLabel(label)
+  const lastMatch = (pred: (rowCompact: string) => boolean): number => {
+    let idx = -1
+    ROUGH_IN_WIRE_REPORT_ROWS.forEach((row, i) => {
+      if (pred(compactWireLabel(row.label))) idx = i
+    })
+    return idx
+  }
+  if (/cat6a/.test(compact)) return lastMatch((row) => /cat6a/.test(row))
+  if (/cat8/.test(compact)) return lastMatch((row) => /cat8/.test(row))
+  if (/cat7/.test(compact)) return lastMatch((row) => /cat7/.test(row))
+  if (/cat6/.test(compact)) return lastMatch((row) => /cat6/.test(row) && !/cat6a/.test(row))
+  if (/rg6|quadshield/.test(compact)) return lastMatch((row) => /rg6|quadshield/.test(row))
+  if (spaced.includes('lutron') && spaced.includes('green')) {
+    return lastMatch((row) => row.includes('lutron') && row.includes('green'))
+  }
+  if (spaced.includes('lutron')) return lastMatch((row) => row.includes('lutron'))
+  if (/fiber|optical/.test(compact)) return lastMatch((row) => /fiber|optical/.test(row))
+  const gauge = spaced.match(/\b(18|22|16|14|12)\s+([24])(?!\d)/)
+  if (gauge) {
+    const token = `${gauge[1]} ${gauge[2]}`
+    let idx = -1
+    ROUGH_IN_WIRE_REPORT_ROWS.forEach((row, i) => {
+      if (normWireLabel(row.label).includes(token)) idx = i
+    })
+    return idx
+  }
+  return -1
+}
+
+function isOutdoorWireVariant(label: string): boolean {
+  const n = normWireLabel(label)
+  return n.includes('direct burial') || n.includes('outdoor')
+}
+
+/**
+ * Schedule order, with similar cables kept together.
+ * Cat6 direct burial and Cat6 outdoor follow the Cat6 colors, next to each other.
+ */
+export function compareWireTypeLabels(a: string, b: string): number {
+  const rank = (label: string): [number, number, string] => {
+    const norm = normWireLabel(label)
+    const exact = ROUGH_IN_WIRE_REPORT_ROWS.findIndex((row) => normWireLabel(row.label) === norm)
+    if (exact >= 0) return [exact, 0, norm]
+    const anchor = wireFamilyAnchor(label)
+    if (anchor < 0) return [10_000, 0, norm]
+    return [anchor, isOutdoorWireVariant(label) ? 1 : 2, norm]
+  }
+  const [aGroup, aVariant, aNorm] = rank(a)
+  const [bGroup, bVariant, bNorm] = rank(b)
+  if (aGroup !== bGroup) return aGroup - bGroup
+  if (aVariant !== bVariant) return aVariant - bVariant
+  return aNorm.localeCompare(bNorm, undefined, { sensitivity: 'base', numeric: true })
+}
+
 export interface WireReportRow {
   wireType: string
   /** Sum of per-box “start” footage (first scan on this job for each spool). */
@@ -502,20 +572,8 @@ function mergeReportRowsByWireType(rows: WireReportRow[]): WireReportRow[] {
       notes: agg.notes,
     })
   }
-  const ordered: WireReportRow[] = []
-  const seen = new Set<string>()
-  for (const tpl of ROUGH_IN_WIRE_REPORT_ROWS) {
-    const r = merged.get(tpl.label)
-    if (r) {
-      ordered.push(r)
-      seen.add(tpl.label)
-    }
-  }
-  const rest = [...merged.keys()]
-    .filter((k) => !seen.has(k))
-    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))
-  for (const k of rest) ordered.push(merged.get(k)!)
-  return ordered
+  const orderedKeys = [...merged.keys()].sort(compareWireTypeLabels)
+  return orderedKeys.map((key) => merged.get(key)!)
 }
 
 export type BuildWireMaterialsReportOptions = {
@@ -1201,7 +1259,7 @@ export function buildWireInventoryRows(summaries: WireBoxSummary[]): WireInvento
       boxesWithUnknownFootage: data.boxesWithUnknownFootage,
     })
   }
-  rows.sort((a, b) => a.wireType.localeCompare(b.wireType, undefined, { sensitivity: 'base' }))
+  rows.sort((a, b) => compareWireTypeLabels(a.wireType, b.wireType))
   return rows
 }
 
@@ -1272,9 +1330,6 @@ export function buildWireLowStockRows(
       row.lowBoxCount = row.boxCount <= limit ? row.boxCount : 0
     }
   }
-  rows.sort((a, b) => {
-    if (b.lowBoxCount !== a.lowBoxCount) return b.lowBoxCount - a.lowBoxCount
-    return a.wireType.localeCompare(b.wireType, undefined, { sensitivity: 'base' })
-  })
+  rows.sort((a, b) => compareWireTypeLabels(a.wireType, b.wireType))
   return rows
 }
