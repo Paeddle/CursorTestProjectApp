@@ -59,6 +59,7 @@ import {
   saveMaterialsReport,
   type SavedMaterialsReport,
 } from './services/materialsReportsService'
+import { RoughInEstimatePanel } from './RoughInEstimatePanel'
 import './WirePage.css'
 
 function isConfigured(): boolean {
@@ -360,9 +361,9 @@ export function WirePage() {
   const [lowStockOnly, setLowStockOnly] = useState(true)
   /** Active = warehouse or checked out on a job; inactive = Retired. */
   const [boxListMode, setBoxListMode] = useState<'active' | 'inactive'>('active')
-  const [workspaceTab, setWorkspaceTab] = useState<'reports' | 'inventory' | 'types' | 'boxes'>(
-    'reports',
-  )
+  const [workspaceTab, setWorkspaceTab] = useState<
+    'reports' | 'inventory' | 'types' | 'boxes' | 'roughin'
+  >('reports')
   const [expandedBox, setExpandedBox] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState(false)
   const [reportJob, setReportJob] = useState('')
@@ -1835,6 +1836,17 @@ export function WirePage() {
             >
               Boxes
             </button>
+            <button
+              type="button"
+              role="tab"
+              id="wire-tab-roughin"
+              aria-controls="wire-panel-roughin"
+              aria-selected={workspaceTab === 'roughin'}
+              className={`wire-sheet-tab${workspaceTab === 'roughin' ? ' active' : ''}`}
+              onClick={() => setWorkspaceTab('roughin')}
+            >
+              Rough-in
+            </button>
           </div>
         </div>
         <div className="wire-sheet-body">
@@ -3126,6 +3138,16 @@ export function WirePage() {
           </div>
         </div>
       )}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="wire-panel-roughin"
+            aria-labelledby="wire-tab-roughin"
+            hidden={workspaceTab !== 'roughin'}
+            className="wire-sheet-panel"
+          >
+            <RoughInEstimatePanel />
           </div>
         </div>
       </section>

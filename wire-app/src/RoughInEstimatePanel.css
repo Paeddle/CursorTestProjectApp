@@ -1,0 +1,168 @@
+.roughin-panel {
+  max-width: 920px;
+}
+
+.roughin-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
+.roughin-lead,
+.roughin-hint,
+.roughin-meta,
+.roughin-file {
+  margin: 0 0 0.75rem;
+  color: #cbd5e1;
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+
+.roughin-hint {
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.roughin-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin-bottom: 0.45rem;
+}
+
+.roughin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.roughin-field input[type='file'] {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: #e2e8f0;
+  font-size: 0.88rem;
+}
+
+.roughin-field input[type='number'] {
+  width: 6.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.roughin-error {
+  color: #fecaca;
+  margin: 0 0 0.75rem;
+}
+
+.roughin-callout {
+  padding: 0.85rem 1rem;
+  border: 1px solid #854d0e;
+  background: #422006;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+
+.roughin-callout p {
+  margin: 0 0 0.7rem;
+  color: #fde68a;
+}
+
+.roughin-table-wrap {
+  overflow-x: auto;
+  margin: 0.4rem 0 0.85rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+.roughin-table-wrap--runs {
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.roughin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.roughin-table th,
+.roughin-table td {
+  text-align: left;
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid #334155;
+  color: #e2e8f0;
+}
+
+.roughin-table th {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: #0f172a;
+}
+
+.roughin-dialog {
+  width: min(64rem, 100%);
+  max-height: min(92vh, 980px);
+  display: flex;
+  flex-direction: column;
+}
+
+.roughin-plan-scroll {
+  overflow: auto;
+  min-height: 0;
+  margin-bottom: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.roughin-plan {
+  margin: 0;
+}
+
+.roughin-plan figcaption {
+  margin-bottom: 0.3rem;
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.roughin-plan-hit {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid #475569;
+  background: #fff;
+  cursor: crosshair;
+}
+
+.roughin-plan-hit img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.roughin-pin {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: #facc15;
+  border: 2px solid #854d0e;
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.45);
+}
