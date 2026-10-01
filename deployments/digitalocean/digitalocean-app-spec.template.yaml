@@ -85,7 +85,8 @@ static_sites:
     environment_slug: node-js
     source_dir: wire-scanner-app
     output_dir: dist
-    build_command: npm install && npm run build
+    # Scanner typechecks wire-app/src/wireReport.ts, which dynamically imports jspdf.
+    build_command: npm install && npm install --prefix ../wire-app && npm run build
     catchall_document: index.html
     routes:
       - path: /wire-scanner
