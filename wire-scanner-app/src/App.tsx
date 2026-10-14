@@ -30,24 +30,12 @@ function normalizeBoxId(raw: string): string {
 /** Wire box labels on QR stickers, e.g. BX-0001. */
 const BOX_ID_PATTERN = /\b(BX-\d+)\b/i
 
-/**
- * Early sample stickers all encode this same placeholder ID.
- * Scanning many physical boxes with them only ever updates one shared BX-0000 row.
- */
-const PLACEHOLDER_BOX_ID = 'BX-0000'
-const PLACEHOLDER_STICKER_MESSAGE =
-  'This is an old sample sticker (BX-0000). Every one of these stickers uses the same ID, so they do not create real boxes on the Boxes tab. Use a real printed sticker (BX-0001 or higher).'
-
 /** Stickers in rotation use shswebapp.site and/or the DigitalOcean app URL (same ?box= payload). */
 const ALLOWED_SCANNER_HOSTS = new Set([
   'shswebapp.site',
   'www.shswebapp.site',
   'cursor-test-project-app-4w9pp.ondigitalocean.app',
 ])
-
-function isPlaceholderBoxId(id: string): boolean {
-  return normalizeBoxId(id).toUpperCase() === PLACEHOLDER_BOX_ID
-}
 
 function stripScanValuePrefixes(raw: string): string {
   // Some camera / barcode UIs prepend "URL:" before the decoded payload.
@@ -103,17 +91,12 @@ function getBoxIdFromQueryOrHash(searchOrHash: string): string | null {
   return null
 }
 
-type StickerScanResult =
-  | { status: 'ok'; id: string }
-  | { status: 'placeholder' }
-  | { status: 'unsupported' }
+type StickerScanResult = { status: 'ok'; id: string } | { status: 'unsupported' }
 
-/** URL wire-scanner stickers on allowed hosts; reject BX-0000 samples and non-URL payloads. */
+/** URL wire-scanner stickers on allowed hosts; reject non-URL payloads. */
 function classifyScannedSticker(value: string): StickerScanResult {
   const raw = stripScanValuePrefixes(value || '')
   if (!raw) return { status: 'unsupported' }
-
-  if (isPlaceholderBoxId(raw)) return { status: 'placeholder' }
 
   const looksLikeUrl =
     /^https?:\/\//i.test(raw) || /[/?#].*=/.test(raw) || /\.(app|com|io|net|org|site)\b/i.test(raw)
@@ -127,7 +110,6 @@ function classifyScannedSticker(value: string): StickerScanResult {
       getBoxIdFromQueryOrHash(url.hash) ||
       findBoxIdInText(`${url.pathname}${url.search}${url.hash}`)
 
-    if (id && isPlaceholderBoxId(id)) return { status: 'placeholder' }
     if (!isAllowedScannerHost(url.hostname)) return { status: 'unsupported' }
     if (!isWireScannerPath(url.pathname)) return { status: 'unsupported' }
     if (!id) return { status: 'unsupported' }
@@ -141,20 +123,10 @@ function getInitialBoxIdFromWindow(): string {
   if (typeof window === 'undefined') return ''
   if (!isAllowedScannerHost(window.location.hostname)) return ''
   const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
-  if (fromSearch && !isPlaceholderBoxId(fromSearch)) return fromSearch
+  if (fromSearch) return fromSearch
   const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
-  if (fromHash && !isPlaceholderBoxId(fromHash)) return fromHash
+  if (fromHash) return fromHash
   return ''
-}
-
-function initialStickerGateMessage(): string | null {
-  if (typeof window === 'undefined') return null
-  const fromSearch = getBoxIdFromQueryOrHash(window.location.search)
-  const fromHash = getBoxIdFromQueryOrHash(window.location.hash)
-  const linkedId = fromSearch || fromHash
-  if (!linkedId) return null
-  if (isPlaceholderBoxId(linkedId)) return PLACEHOLDER_STICKER_MESSAGE
-  return null
 }
 
 type CheckType = 'check_in' | 'check_out'
@@ -204,10 +176,7 @@ function App() {
   const [actualMode, setActualMode] = useState<'' | 'empty' | 'custom'>('')
   const [actualFootage, setActualFootage] = useState('')
   const [jobOptions, setJobOptions] = useState<string[]>([])
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(() => {
-    const gate = initialStickerGateMessage()
-    return gate ? { type: 'error', message: gate } : null
-  })
+  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const [boxMetaLoading, setBoxMetaLoading] = useState(false)
@@ -556,13 +525,6 @@ function App() {
     boxId,
   ])
 
-  // Drop placeholder sample stickers (BX-0000) if they somehow get into state.
-  useEffect(() => {
-    if (!boxId || !isPlaceholderBoxId(boxId)) return
-    setBoxId('')
-    setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
-  }, [boxId])
-
   const clearStatus = useCallback(() => setStatus(null), [])
 
   const showSuccess = (msg: string) => {
@@ -599,14 +561,10 @@ function App() {
       return
     }
     setShowScanner(false)
-    if (result.status === 'placeholder') {
-      setStatus({ type: 'error', message: PLACEHOLDER_STICKER_MESSAGE })
-      return
-    }
     setStatus({
       type: 'error',
       message:
-        'Could not read a wire-scanner URL from that QR. Use a sticker with the full link (DigitalOcean or shswebapp.site) and a unique BX number — not BX-0000.',
+        'Could not read a wire-scanner URL from that QR. Use a sticker with the full link (DigitalOcean or shswebapp.site) and a BX number.',
     })
   }, [])
 
@@ -663,11 +621,6 @@ function App() {
     const footage = (currentFootage || '').trim()
     if (!id) {
       showError('Scan a QR code first.')
-      return
-    }
-    if (isPlaceholderBoxId(id)) {
-      showError(PLACEHOLDER_STICKER_MESSAGE)
-      setBoxId('')
       return
     }
     if (boxRetired) {
