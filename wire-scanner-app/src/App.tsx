@@ -65,6 +65,69 @@ function isRetiredJobName(name: string): boolean {
   return normalizeJobNameKey(name) === normalizeJobNameKey(RETIRED_JOB_NAME)
 }
 
+/** Rows written together in one save stay within a few seconds of each other. */
+const SAME_CHECK_IN_ACTION_MS = 8000
+
+type CheckType = 'check_in' | 'check_out'
+
+interface RecentScan {
+  id: string
+  jobName: string
+  checkType: CheckType
+  remainingFt: string
+  scannedAt: string
+  note: string | null
+}
+
+function isAutoRetireAfterCheckIn(scan: RecentScan): boolean {
+  return (
+    scan.checkType === 'check_out' &&
+    isRetiredJobName(scan.jobName) &&
+    (scan.note || '').toLowerCase().includes('at check-in')
+  )
+}
+
+function isSameActionCompanion(scan: RecentScan): boolean {
+  const note = (scan.note || '').toLowerCase()
+  return note.includes('footage dropped') || note.includes('checkout filled in') || note.startsWith('returned from ')
+}
+
+/**
+ * Rows to delete to undo the latest check-in.
+ * Includes the warehouse check-in, an automatic retire that followed it, and
+ * gap rows written in the same save. A later real checkout is left alone.
+ */
+function rowsForLatestCheckInUndo(scansNewestFirst: RecentScan[]): RecentScan[] {
+  if (scansNewestFirst.length === 0) return []
+  const newest = scansNewestFirst[0]!
+  const undo: RecentScan[] = []
+  let startIndex = 0
+
+  if (isAutoRetireAfterCheckIn(newest)) {
+    const prev = scansNewestFirst[1]
+    if (!prev || prev.checkType !== 'check_in' || !isWarehouseJobName(prev.jobName)) return []
+    const dt = new Date(newest.scannedAt).getTime() - new Date(prev.scannedAt).getTime()
+    if (!Number.isFinite(dt) || dt < 0 || dt > SAME_CHECK_IN_ACTION_MS) return []
+    undo.push(newest, prev)
+    startIndex = 2
+  } else if (newest.checkType === 'check_in' && isWarehouseJobName(newest.jobName)) {
+    undo.push(newest)
+    startIndex = 1
+  } else {
+    return []
+  }
+
+  const anchorMs = new Date(undo[undo.length - 1]!.scannedAt).getTime()
+  for (let i = startIndex; i < scansNewestFirst.length; i++) {
+    const scan = scansNewestFirst[i]!
+    const dt = anchorMs - new Date(scan.scannedAt).getTime()
+    if (!Number.isFinite(dt) || dt < 0 || dt > SAME_CHECK_IN_ACTION_MS) break
+    if (!isSameActionCompanion(scan)) break
+    undo.push(scan)
+  }
+  return undo
+}
+
 function isAllowedScannerHost(hostname: string): boolean {
   const h = hostname.trim().toLowerCase()
   if (ALLOWED_SCANNER_HOSTS.has(h)) return true
@@ -129,8 +192,6 @@ function getInitialBoxIdFromWindow(): string {
   return ''
 }
 
-type CheckType = 'check_in' | 'check_out'
-
 interface BoxProfile {
   wireTypeId: string
   capacityFt: string
@@ -178,6 +239,15 @@ function App() {
   const [jobOptions, setJobOptions] = useState<string[]>([])
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [recentScans, setRecentScans] = useState<RecentScan[]>([])
+  const [boxVersion, setBoxVersion] = useState(0)
+  const [undoOffer, setUndoOffer] = useState<{
+    boxId: string
+    ids: string[]
+    footage: string
+    retired: boolean
+  } | null>(null)
 
   const [boxMetaLoading, setBoxMetaLoading] = useState(false)
   /** null = not loaded yet */
@@ -252,6 +322,7 @@ function App() {
     setBoxProfile(null)
     setBoxRetired(false)
     setLastScan(null)
+    setRecentScans([])
     setHasExistingScans(null)
     setCounterWrong(false)
     setActualMode('')
@@ -301,6 +372,21 @@ function App() {
             .limit(1)
             .maybeSingle()
         }
+        const recentWithNote = await supabase
+          .from('wire_box_scans')
+          .select('id, job_name, check_type, current_footage, scanned_at, footage_note')
+          .ilike('box_id', idMatch)
+          .order('scanned_at', { ascending: false })
+          .limit(8)
+        const recentPlain =
+          recentWithNote.error && /footage_note/i.test(recentWithNote.error.message || '')
+            ? await supabase
+                .from('wire_box_scans')
+                .select('id, job_name, check_type, current_footage, scanned_at')
+                .ilike('box_id', idMatch)
+                .order('scanned_at', { ascending: false })
+                .limit(8)
+            : null
 
         if (cancelled) return
 
@@ -361,6 +447,33 @@ function App() {
           setLastScan(null)
         }
 
+        const recentRows = (recentPlain?.data ?? recentWithNote.data ?? []) as {
+          id?: string | null
+          job_name?: string | null
+          check_type?: string | null
+          current_footage?: string | null
+          scanned_at?: string | null
+          footage_note?: string | null
+        }[]
+        setRecentScans(
+          recentRows
+            .map((row) => {
+              const scanId = row.id ? String(row.id).trim() : ''
+              if (!scanId) return null
+              const ctRaw = String(row.check_type ?? '').trim().toLowerCase()
+              const scan: RecentScan = {
+                id: scanId,
+                jobName: String(row.job_name ?? '').trim(),
+                checkType: ctRaw === 'check_out' ? 'check_out' : 'check_in',
+                remainingFt: row.current_footage ? String(row.current_footage).trim() : '',
+                scannedAt: row.scanned_at ? String(row.scanned_at) : '',
+                note: row.footage_note ? String(row.footage_note).trim() : null,
+              }
+              return scan
+            })
+            .filter((row): row is RecentScan => row !== null),
+        )
+
         const row = (profileRes.data ?? latest) as {
           wire_type: string
           spool_capacity_ft: string
@@ -396,6 +509,7 @@ function App() {
           setBoxProfile(null)
           setBoxRetired(false)
           setLastScan(null)
+          setRecentScans([])
         }
       } finally {
         if (!cancelled) setBoxMetaLoading(false)
@@ -405,7 +519,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [boxId, wireTypes])
+  }, [boxId, wireTypes, boxVersion])
 
   useEffect(() => {
     if (boxMetaLoading || hasExistingScans !== false) return
@@ -534,6 +648,50 @@ function App() {
 
   const showError = (msg: string) => {
     setStatus({ type: 'error', message: msg })
+  }
+
+  const deleteScanIds = async (ids: string[]) => {
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const unique = [...new Set(ids.map((scanId) => scanId.trim()).filter(Boolean))]
+    if (unique.length === 0) throw new Error('Nothing to undo.')
+    const { data, error } = await supabase.from('wire_box_scans').delete().in('id', unique).select('id')
+    if (error) throw new Error(error.message)
+    if (!data?.length) {
+      throw new Error(
+        'No row was deleted. Run supabase/fix-wire-box-scans-delete-rls.sql in the Supabase SQL Editor.',
+      )
+    }
+  }
+
+  const handleUndoCheckIn = async (target: {
+    boxId: string
+    ids: string[]
+    footage: string
+    retired: boolean
+  }) => {
+    const retiredNote = target.retired ? ' The box will be active again.' : ''
+    const footageNote = target.footage ? ` (${target.footage} ft)` : ''
+    if (
+      !window.confirm(
+        `Undo the check-in for ${target.boxId}${footageNote}? The box goes back to how it was before that check-in.${retiredNote}`,
+      )
+    ) {
+      return
+    }
+    setUndoing(true)
+    setStatus(null)
+    try {
+      await deleteScanIds(target.ids)
+      setUndoOffer((prev) => (prev && prev.ids.some((id) => target.ids.includes(id)) ? null : prev))
+      showSuccess(`Undid the check-in for ${target.boxId}.`)
+      if (normalizeBoxId(boxId).toLowerCase() === target.boxId.toLowerCase()) {
+        setBoxVersion((version) => version + 1)
+      }
+    } catch (err: unknown) {
+      showError(err instanceof Error ? err.message : 'Could not undo that check-in.')
+    } finally {
+      setUndoing(false)
+    }
   }
 
   const persistJobOption = useCallback(async (rawName: string) => {
@@ -825,7 +983,7 @@ function App() {
     setSubmitting(true)
     setStatus(null)
     try {
-      const { error } = await supabase.from('wire_box_scans').insert(rows)
+      const { data: inserted, error } = await supabase.from('wire_box_scans').insert(rows).select('id')
       if (error) {
         const msg = error.message || 'Save failed'
         if (/printed_footage|footage_note/i.test(msg)) {
@@ -872,6 +1030,19 @@ function App() {
         ? ` Please throw the box away. It is inactive at ${storedFootage} ft.`
         : ''
       showSuccess(`Saved: ${modeLabel} — ${id} — ${checkType === 'check_out' ? job : 'Warehouse'} — ${remainingLabel}${capHint}.${counterHint}${gapHint}${takeoverHint}${retireHint}`)
+      const insertedIds = ((inserted ?? []) as { id?: string | null }[])
+        .map((row) => (row.id ? String(row.id).trim() : ''))
+        .filter(Boolean)
+      if (checkType === 'check_in' && insertedIds.length > 0) {
+        setUndoOffer({
+          boxId: id,
+          ids: insertedIds,
+          footage: storedFootage,
+          retired: retireLowBox,
+        })
+      } else {
+        setUndoOffer(null)
+      }
       setBoxId('')
       setJobName('')
       setGapJob('')
@@ -898,6 +1069,20 @@ function App() {
     setStatus(null)
     setShowScanner(true)
   }
+
+  const undoRows = rowsForLatestCheckInUndo(recentScans)
+  const checkInToUndo = undoRows.find(
+    (row) => row.checkType === 'check_in' && isWarehouseJobName(row.jobName),
+  )
+  const loadedUndo =
+    undoRows.length > 0
+      ? {
+          boxId: normalizeBoxId(boxId),
+          ids: undoRows.map((row) => row.id),
+          footage: checkInToUndo?.remainingFt || '',
+          retired: undoRows.some((row) => isRetiredJobName(row.jobName)),
+        }
+      : null
 
   if (!isSupabaseConfigured) {
     return (
@@ -935,6 +1120,19 @@ function App() {
       <main className="app-main">
         {!boxId ? (
           <section className="section">
+            {undoOffer && (
+              <div className="undo-checkin-block">
+                <p className="undo-checkin-hint">Wrong box or footage?</p>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-full"
+                  onClick={() => void handleUndoCheckIn(undoOffer)}
+                  disabled={undoing}
+                >
+                  {undoing ? 'Undoing…' : `Undo check-in for ${undoOffer.boxId}`}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               className="btn btn-primary btn-full"
@@ -952,10 +1150,17 @@ function App() {
             {!boxMetaLoading && boxRetired && (
               <div className="retired-banner" role="alert">
                 <strong>Retired (inactive)</strong>
-                <p>
-                  This box cannot be checked in or checked out. Delete it in Wire Tracker if you need
-                  to reuse this box ID for new data.
-                </p>
+                {loadedUndo ? (
+                  <p>
+                    This check-in marked the box inactive. Undo it if that was a mistake. The box
+                    goes back to how it was before the check-in.
+                  </p>
+                ) : (
+                  <p>
+                    This box cannot be checked in or checked out. Delete it in Wire Tracker if you need
+                    to reuse this box ID for new data.
+                  </p>
+                )}
                 {boxProfile && (
                   <p className="retired-banner-meta">
                     {boxProfile.label}
@@ -1222,12 +1427,27 @@ function App() {
                 </select>
               </div>
             )}
+            {!boxMetaLoading && loadedUndo && (
+              <div className="undo-checkin-block">
+                <button
+                  type="button"
+                  className="btn btn-danger btn-full"
+                  onClick={() => void handleUndoCheckIn(loadedUndo)}
+                  disabled={undoing || submitting}
+                >
+                  {undoing ? 'Undoing…' : 'Undo check-in'}
+                </button>
+                <p className="undo-checkin-hint">
+                  Removes this check-in and puts the box back to its previous state.
+                </p>
+              </div>
+            )}
             <div className="form-actions">
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={handleScanAnother}
-                disabled={submitting || boxMetaLoading}
+                disabled={submitting || undoing || boxMetaLoading}
               >
                 Scan another
               </button>
@@ -1235,7 +1455,7 @@ function App() {
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={submitting || boxMetaLoading}
+                disabled={submitting || undoing || boxMetaLoading}
               >
                 {submitting ? 'Saving…' : 'Save'}
               </button>
